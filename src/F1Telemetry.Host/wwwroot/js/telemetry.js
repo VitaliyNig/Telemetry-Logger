@@ -96,6 +96,11 @@ let participantNames = [];
 let maxEvents = 50;
 let events = [];
 let pinnedPenalties = [];
+let prevTrackTemp = null;
+let prevAirTemp = null;
+let trackTempHistory = [];
+let airTempHistory = [];
+const TEMP_HISTORY_MAX = 30;
 
 function el(id) { return document.getElementById(id); }
 
@@ -129,12 +134,50 @@ function setDamageBar(elId, pct) {
     else bar.style.background = "var(--safe)";
 }
 
+function getTempTrend(current, history) {
+    if (history.length < 2) return { arrow: "", cls: "", delta: 0 };
+    const oldest = history[0];
+    const delta = current - oldest;
+    if (delta > 0) return { arrow: "▲", cls: "temp-trend-up", delta };
+    if (delta < 0) return { arrow: "▼", cls: "temp-trend-down", delta };
+    return { arrow: "—", cls: "temp-trend-stable", delta: 0 };
+}
+
+function pushTempHistory(history, value) {
+    history.push(value);
+    if (history.length > TEMP_HISTORY_MAX) history.shift();
+}
+
+function renderTempWithTrend(elemId, temp, trend) {
+    const e = el(elemId);
+    const deltaAbs = Math.abs(trend.delta);
+    const deltaText = deltaAbs > 0 ? ` (${trend.delta > 0 ? "+" : ""}${trend.delta}°)` : "";
+    e.innerHTML = `${temp}°C <span class="temp-trend ${trend.cls}">${trend.arrow}${deltaText}</span>`;
+}
+
 function updateSession(data) {
     el("trackName").textContent = TRACK_NAMES[data.trackId] || `Track ${data.trackId}`;
     el("sessionType").textContent = SESSION_TYPES[data.sessionType] || `Type ${data.sessionType}`;
     el("weather").textContent = WEATHER_NAMES[data.weather] || "Unknown";
-    el("trackTemp").textContent = data.trackTemperature + "°C";
-    el("airTemp").textContent = data.airTemperature + "°C";
+
+    const trackTemp = data.trackTemperature;
+    const airTemp = data.airTemperature;
+
+    if (prevTrackTemp !== null && trackTemp !== prevTrackTemp) {
+        pushTempHistory(trackTempHistory, prevTrackTemp);
+    }
+    if (prevAirTemp !== null && airTemp !== prevAirTemp) {
+        pushTempHistory(airTempHistory, prevAirTemp);
+    }
+    prevTrackTemp = trackTemp;
+    prevAirTemp = airTemp;
+
+    pushTempHistory(trackTempHistory, trackTemp);
+    pushTempHistory(airTempHistory, airTemp);
+
+    renderTempWithTrend("trackTemp", trackTemp, getTempTrend(trackTemp, trackTempHistory));
+    renderTempWithTrend("airTemp", airTemp, getTempTrend(airTemp, airTempHistory));
+
     el("safetyCarStatus").textContent = SAFETY_CAR_STATUS[data.safetyCarStatus] || "None";
     el("totalLaps").textContent = data.totalLaps > 0 ? data.totalLaps : "--";
 

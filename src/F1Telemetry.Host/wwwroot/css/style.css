@@ -528,3 +528,23 @@
 .temp-optimal { color: var(--accent-green); }
 .temp-hot { color: var(--accent-orange); }
 .temp-critical { color: var(--accent-red); }
+
+/* Temperature trend indicators */
+.temp-trend {
+    font-size: 11px;
+    font-weight: 600;
+    margin-left: 2px;
+    vertical-align: middle;
+}
+
+.temp-trend-up {
+    color: var(--accent-red);
+}
+
+.temp-trend-down {
+    color: #00a6ff;
+}
+
+.temp-trend-stable {
+    color: var(--text-dim);
+}
