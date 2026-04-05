@@ -61,9 +61,11 @@ const PRESET_DEFAULTS = {
 
 const PRESETS_STORAGE_KEY = "f1telemetry_presets_v1";
 const ACTIVE_PRESET_KEY = "f1telemetry_active_preset_v1";
+const AUTO_SWITCH_KEY = "f1telemetry_autoswitch_v1";
 let grid = null;
 let activePreset = "race";
 let autoSwitchEnabled = true;
+let autoSwitchSetting = true;
 
 function getWidgetContent(widgetId) {
     const reg = WIDGET_REGISTRY[widgetId];
@@ -249,7 +251,7 @@ const SESSION_TYPE_TO_PRESET = {
 };
 
 function onSessionTypeChanged(sessionType) {
-    if (!autoSwitchEnabled) return;
+    if (!autoSwitchSetting || !autoSwitchEnabled) return;
     const preset = SESSION_TYPE_TO_PRESET[sessionType];
     if (preset && preset !== activePreset) {
         switchPreset(preset);
@@ -268,6 +270,18 @@ function initWidgets() {
         disableResize: false,
     }, "#dashboardGrid");
 
+    autoSwitchSetting = localStorage.getItem(AUTO_SWITCH_KEY) !== "false";
+    autoSwitchEnabled = autoSwitchSetting;
+    const autoSwitchCheckbox = document.getElementById("autoSwitchPreset");
+    if (autoSwitchCheckbox) {
+        autoSwitchCheckbox.checked = autoSwitchSetting;
+        autoSwitchCheckbox.addEventListener("change", () => {
+            autoSwitchSetting = autoSwitchCheckbox.checked;
+            autoSwitchEnabled = autoSwitchSetting;
+            localStorage.setItem(AUTO_SWITCH_KEY, autoSwitchSetting);
+        });
+    }
+
     activePreset = localStorage.getItem(ACTIVE_PRESET_KEY) || "race";
     const layout = loadLayoutForPreset(activePreset);
     applyLayout(layout);
@@ -277,7 +291,7 @@ function initWidgets() {
 
     document.querySelectorAll(".preset-btn").forEach(btn => {
         btn.addEventListener("click", () => {
-            autoSwitchEnabled = false;
+            if (autoSwitchSetting) autoSwitchEnabled = false;
             switchPreset(btn.dataset.preset);
         });
     });
