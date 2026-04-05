@@ -406,7 +406,7 @@ body {
 
 /* Events */
 .events-list {
-    max-height: 200px;
+    max-height: 300px;
     overflow-y: auto;
     display: flex;
     flex-direction: column;
@@ -417,6 +417,24 @@ body {
 .events-list::-webkit-scrollbar-track { background: transparent; }
 .events-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
 
+.pinned-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.pinned-header {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--accent-red);
+    font-weight: 700;
+    padding: 2px 0;
+}
+
 .event-item {
     font-size: 12px;
     padding: 6px 10px;
@@ -426,6 +444,7 @@ body {
     color: var(--text-secondary);
     display: flex;
     justify-content: space-between;
+    align-items: center;
 }
 
 .event-item.placeholder {
@@ -434,10 +453,51 @@ body {
     font-family: var(--font-sans);
 }
 
+.event-item.penalty {
+    background: rgba(225, 6, 0, 0.08);
+    color: #ff6b6b;
+    border-left: 3px solid var(--accent-red);
+}
+
+.event-item.penalty.pinned {
+    background: rgba(225, 6, 0, 0.14);
+    color: #ff8a8a;
+    border-left: 3px solid var(--accent-red);
+    box-shadow: 0 0 8px rgba(225, 6, 0, 0.15);
+}
+
+.event-item.penalty.pinned .event-detail {
+    color: #ff8a8a;
+}
+
 .event-item .event-code {
     font-weight: 700;
     color: var(--accent-blue);
     min-width: 48px;
+    flex-shrink: 0;
+}
+
+.event-item .penalty-code {
+    color: var(--accent-red);
+}
+
+.pin-icon {
+    font-size: 10px;
+    margin-right: 2px;
+}
+
+.served-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 1px 6px;
+    border-radius: 3px;
+    background: rgba(0, 215, 0, 0.15);
+    color: var(--accent-green);
+    border: 1px solid rgba(0, 215, 0, 0.3);
+    margin-left: 6px;
+    vertical-align: middle;
 }
 
 .event-item .event-detail {
@@ -448,6 +508,8 @@ body {
 .event-item .event-time {
     color: var(--text-dim);
     font-size: 11px;
+    flex-shrink: 0;
+    margin-left: 8px;
 }
 
 /* Standings */

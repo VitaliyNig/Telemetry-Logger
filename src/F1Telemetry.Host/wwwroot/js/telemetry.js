@@ -56,10 +56,46 @@ const EVENT_NAMES = {
     "OVTK": "Overtake", "SCAR": "Safety Car", "COLL": "Collision"
 };
 
+const PENALTY_CODES = new Set(["PENA", "DTSV", "SGSV"]);
+
+const PENALTY_TYPES = {
+    0: "Drive Through", 1: "Stop-Go", 2: "Grid Penalty", 3: "Penalty Reminder",
+    4: "Time Penalty", 5: "Warning", 6: "Disqualified", 7: "Removed Formation Lap",
+    8: "Parked Too Long", 9: "Tyre Regulations", 10: "This Lap Invalidated",
+    11: "This And Next Invalidated", 12: "This And Previous Invalidated",
+    13: "Fast Pit", 14: "Pit Lane Speeding", 15: "Retired (Mechanical)",
+};
+
+const INFRINGEMENT_TYPES = {
+    0: "Blocking", 1: "Colliding", 2: "Colliding (Opponent)",
+    3: "Assist Turn Off", 4: "Too Many Flashbacks", 5: "Too Many Flashbacks (Eliminated)",
+    6: "Collision (Below Speed)", 7: "Collision (Below Speed (Opponent))",
+    8: "Collision (Mini-race)", 9: "Collision (Mini-race (Opponent))",
+    10: "AI Too Slow", 11: "Too Slow", 12: "Lap Invalidated (Wrong Way)",
+    13: "Lap Invalidated (Cut Corner)", 14: "Received Drive Through (Cut Corner)",
+    15: "Received Stop-Go (Cut Corner)", 16: "Went Too Slow",
+    17: "Tyre Regulations", 18: "Too Many Penalties",
+    19: "Multiple Warnings", 20: "Approaching Disqualification",
+    21: "Tyre Regulations (Select Single)", 22: "Tyre Regulations (Select Multiple)",
+    23: "Lap Invalidated (Corner Cutting)", 24: "Lap Invalidated (Running Wide)",
+    25: "Corner Cutting (Gained Time, No Lap Invalid)",
+    26: "Corner Cutting (Gained Time, Removed Overtake)",
+    27: "Corner Cutting (Slow Down, No Lap Invalid)",
+    28: "Corner Cutting (Slow Down, Removed Overtake)", 29: "Formation Lap (Below Allowed Speed)",
+    30: "Formation Lap (Parking)", 31: "Retired (Mechanical Failure)",
+    32: "Retired (Terminal Damage)", 33: "Safety Car (Falling Too Far)",
+    34: "Black Flag (Timer)", 35: "Unserved Stop-Go (Penalty)",
+    36: "Unserved Drive-Through (Penalty)", 37: "Engine Component Change",
+    38: "Gearbox Change", 39: "Parc Fermé Change",
+    40: "League Grid Penalty", 41: "Retry Penalty", 42: "Illegal Time Gain",
+    43: "Mandatory Pitstop", 44: "Attribute Assigned",
+};
+
 let playerCarIndex = 0;
 let participantNames = [];
 let maxEvents = 50;
 let events = [];
+let pinnedPenalties = [];
 
 function el(id) { return document.getElementById(id); }
 
@@ -217,49 +253,103 @@ function updateParticipants(data) {
     }
 }
 
+function buildPenaltyDetail(d) {
+    const driver = participantNames[d.vehicleIdx] || `Car ${d.vehicleIdx}`;
+    const penType = PENALTY_TYPES[d.penaltyType] || `Penalty #${d.penaltyType}`;
+    const infType = INFRINGEMENT_TYPES[d.infringementType] || `Infr. #${d.infringementType}`;
+    let text = `${driver}: ${penType}`;
+    if (d.time > 0) text += ` (+${d.time}s)`;
+    text += ` — ${infType}`;
+    if (d.lapNum > 0) text += ` (Lap ${d.lapNum})`;
+    return text;
+}
+
 function updateEvent(data, header) {
     const code = data.eventCode;
     const name = EVENT_NAMES[code] || code;
     let detail = "";
+    const isPenalty = PENALTY_CODES.has(code);
 
     if (data.details) {
         const d = data.details;
-        if (d.vehicleIdx !== undefined) {
-            detail = participantNames[d.vehicleIdx] || `Car ${d.vehicleIdx}`;
-        }
-        if (d.lapTime) detail += ` ${d.lapTime.toFixed(3)}s`;
-        if (d.speed) detail += ` ${d.speed.toFixed(1)} km/h`;
-        if (d.overtakingVehicleIdx !== undefined && d.beingOvertakenVehicleIdx !== undefined) {
-            const overtaker = participantNames[d.overtakingVehicleIdx] || `Car ${d.overtakingVehicleIdx}`;
-            const overtaken = participantNames[d.beingOvertakenVehicleIdx] || `Car ${d.beingOvertakenVehicleIdx}`;
-            detail = `${overtaker} → ${overtaken}`;
-        }
-        if (d.vehicle1Idx !== undefined && d.vehicle2Idx !== undefined) {
-            const v1 = participantNames[d.vehicle1Idx] || `Car ${d.vehicle1Idx}`;
-            const v2 = participantNames[d.vehicle2Idx] || `Car ${d.vehicle2Idx}`;
-            detail = `${v1} ↔ ${v2}`;
+
+        if (code === "PENA") {
+            detail = buildPenaltyDetail(d);
+        } else if (code === "DTSV") {
+            const driver = participantNames[d.vehicleIdx] || `Car ${d.vehicleIdx}`;
+            detail = `${driver}: Drive Through served`;
+        } else if (code === "SGSV") {
+            const driver = participantNames[d.vehicleIdx] || `Car ${d.vehicleIdx}`;
+            detail = `${driver}: Stop-Go served (${d.stopTime?.toFixed(1) || 0}s)`;
+        } else {
+            if (d.vehicleIdx !== undefined) {
+                detail = participantNames[d.vehicleIdx] || `Car ${d.vehicleIdx}`;
+            }
+            if (d.lapTime) detail += ` ${d.lapTime.toFixed(3)}s`;
+            if (d.speed) detail += ` ${d.speed.toFixed(1)} km/h`;
+            if (d.overtakingVehicleIdx !== undefined && d.beingOvertakenVehicleIdx !== undefined) {
+                const overtaker = participantNames[d.overtakingVehicleIdx] || `Car ${d.overtakingVehicleIdx}`;
+                const overtaken = participantNames[d.beingOvertakenVehicleIdx] || `Car ${d.beingOvertakenVehicleIdx}`;
+                detail = `${overtaker} → ${overtaken}`;
+            }
+            if (d.vehicle1Idx !== undefined && d.vehicle2Idx !== undefined) {
+                const v1 = participantNames[d.vehicle1Idx] || `Car ${d.vehicle1Idx}`;
+                const v2 = participantNames[d.vehicle2Idx] || `Car ${d.vehicle2Idx}`;
+                detail = `${v1} ↔ ${v2}`;
+            }
         }
     }
 
     const time = header?.sessionTime?.toFixed(1) || "--";
-    events.unshift({ code, name, detail, time });
+    const entry = { code, name, detail, time, isPenalty };
+
+    if (isPenalty) {
+        if (code === "DTSV" || code === "SGSV") {
+            entry.served = true;
+        }
+        pinnedPenalties.unshift(entry);
+    }
+
+    events.unshift(entry);
     if (events.length > maxEvents) events.length = maxEvents;
     renderEvents();
 }
 
+function renderEventItem(e, pinned) {
+    const cls = pinned ? "event-item penalty pinned" :
+                e.isPenalty ? "event-item penalty" : "event-item";
+    const codeClass = e.isPenalty ? "event-code penalty-code" : "event-code";
+    const icon = pinned ? '<span class="pin-icon">&#128204;</span> ' : "";
+    const servedBadge = e.served ? ' <span class="served-badge">SERVED</span>' : "";
+    return `<div class="${cls}">
+        <span class="${codeClass}">${icon}${e.code}</span>
+        <span class="event-detail">${e.name}${e.detail ? " — " + e.detail : ""}${servedBadge}</span>
+        <span class="event-time">${e.time}s</span>
+    </div>`;
+}
+
 function renderEvents() {
     const list = el("eventsList");
-    if (events.length === 0) {
+    if (events.length === 0 && pinnedPenalties.length === 0) {
         list.innerHTML = '<div class="event-item placeholder">Waiting for events...</div>';
         return;
     }
-    list.innerHTML = events.map(e => `
-        <div class="event-item">
-            <span class="event-code">${e.code}</span>
-            <span class="event-detail">${e.name}${e.detail ? " — " + e.detail : ""}</span>
-            <span class="event-time">${e.time}s</span>
-        </div>
-    `).join("");
+
+    let html = "";
+
+    if (pinnedPenalties.length > 0) {
+        html += '<div class="pinned-section">';
+        html += '<div class="pinned-header">PENALTIES</div>';
+        html += pinnedPenalties.map(e => renderEventItem(e, true)).join("");
+        html += '</div>';
+    }
+
+    const regularEvents = events.filter(e => !e.isPenalty);
+    if (regularEvents.length > 0) {
+        html += regularEvents.map(e => renderEventItem(e, false)).join("");
+    }
+
+    list.innerHTML = html;
 }
 
 function updateStandings(lapDataPacket) {
