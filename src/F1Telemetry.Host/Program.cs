@@ -1,10 +1,11 @@
 using F1Telemetry.Config;
 using F1Telemetry.Debug;
+using F1Telemetry.F125;
 using F1Telemetry.F125.Protocol;
 using F1Telemetry.Host.Hubs;
 using F1Telemetry.Host.Ingress;
 using F1Telemetry.Ingress;
-using F1Telemetry.Telemetry;
+using F1Telemetry.State;
 using F1Telemetry.Udp;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -17,11 +18,17 @@ builder.Services.Configure<TelemetryUdpOptions>(
 builder.Services.Configure<AppSettings>(
     builder.Configuration.GetSection(AppSettings.SectionName));
 
-builder.Services.AddSingleton<IPacketHeaderReader, F125PacketHeaderReader>();
+builder.Services.AddF125Protocol();
+builder.Services.AddSingleton<TelemetryState>();
 builder.Services.AddSingleton<DebugPacketTracker>();
-builder.Services.AddSingleton<ITelemetryIngress, HeaderLoggingTelemetryIngress>();
+builder.Services.AddSingleton<ITelemetryIngress, TelemetryPipelineIngress>();
 builder.Services.AddTelemetryUdpListener();
-builder.Services.AddSignalR();
+builder.Services.AddSignalR()
+    .AddJsonProtocol(options =>
+    {
+        options.PayloadSerializerOptions.PropertyNamingPolicy =
+            System.Text.Json.JsonNamingPolicy.CamelCase;
+    });
 
 var app = builder.Build();
 
@@ -38,8 +45,30 @@ app.MapGet("/api/info", (IConfiguration config) => Results.Ok(new
     udpAddress = config.GetValue<string>("TelemetryUdp:ListenAddress") ?? "0.0.0.0",
     udpPort = config.GetValue<int?>("TelemetryUdp:Port") ?? 20777,
     webPort = appSettings.WebPort,
-    debugMode = appSettings.DebugMode
+    debugMode = appSettings.DebugMode,
+    packetTypes = Enum.GetNames<F125PacketId>()
 }));
+
+app.MapGet("/api/state", (TelemetryState state) =>
+{
+    var all = state.GetAll();
+    var result = new Dictionary<string, object>();
+    foreach (var (key, value) in all)
+    {
+        var name = ((F125PacketId)key).ToString();
+        result[name] = value;
+    }
+    return Results.Ok(result);
+});
+
+app.MapGet("/api/state/{packetType}", (string packetType, TelemetryState state) =>
+{
+    if (!Enum.TryParse<F125PacketId>(packetType, true, out var packetId))
+        return Results.NotFound(new { error = $"Unknown packet type: {packetType}" });
+
+    var data = state.Get((byte)packetId);
+    return data != null ? Results.Ok(data) : Results.NotFound(new { error = $"No data for {packetType}" });
+});
 
 app.MapGet("/api/settings", (IConfiguration config) =>
 {
@@ -83,6 +112,60 @@ app.MapPost("/api/settings", async (HttpContext ctx, IConfiguration config) =>
     });
 });
 
+var pitTimesPath = Path.Combine(app.Environment.WebRootPath, "data", "pit-times.json");
+
+app.MapGet("/api/pit-times", async () =>
+{
+    if (!File.Exists(pitTimesPath))
+        return Results.Ok(new Dictionary<string, object>());
+    var json = await File.ReadAllTextAsync(pitTimesPath);
+    var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+    return Results.Ok(data);
+});
+
+app.MapGet("/api/pit-times/{trackId}", async (string trackId) =>
+{
+    if (!File.Exists(pitTimesPath))
+        return Results.NotFound(new { error = "Pit times file not found" });
+    var json = await File.ReadAllTextAsync(pitTimesPath);
+    using var doc = System.Text.Json.JsonDocument.Parse(json);
+    if (doc.RootElement.TryGetProperty(trackId, out var entry))
+        return Results.Ok(System.Text.Json.JsonSerializer.Deserialize<object>(entry.GetRawText()));
+    return Results.NotFound(new { error = $"No pit time for track {trackId}" });
+});
+
+app.MapPut("/api/pit-times/{trackId}", async (string trackId, HttpContext ctx) =>
+{
+    var body = await ctx.Request.ReadFromJsonAsync<PitTimeUpdateRequest>();
+    if (body is null || body.PitTimeSec <= 0)
+        return Results.BadRequest("Invalid pit time");
+
+    var existing = new Dictionary<string, System.Text.Json.JsonElement>();
+    if (File.Exists(pitTimesPath))
+    {
+        var json = await File.ReadAllTextAsync(pitTimesPath);
+        existing = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(json)
+                   ?? new();
+    }
+
+    var entryJson = System.Text.Json.JsonSerializer.SerializeToElement(new
+    {
+        trackName = body.TrackName ?? $"Track {trackId}",
+        pitTimeSec = body.PitTimeSec
+    });
+    existing[trackId] = entryJson;
+
+    var dir = Path.GetDirectoryName(pitTimesPath);
+    if (dir != null && !Directory.Exists(dir))
+        Directory.CreateDirectory(dir);
+
+    var newJson = System.Text.Json.JsonSerializer.Serialize(existing,
+        new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+    await File.WriteAllTextAsync(pitTimesPath, newJson);
+
+    return Results.Ok(new { saved = true, trackId, pitTimeSec = body.PitTimeSec });
+});
+
 app.MapGet("/api/debug/stats", (DebugPacketTracker tracker) =>
 {
     return Results.Ok(new
@@ -121,3 +204,7 @@ record SettingsUpdateRequest(
     int UdpListenPort,
     int WebPort,
     bool DebugMode);
+
+record PitTimeUpdateRequest(
+    string? TrackName,
+    double PitTimeSec);
