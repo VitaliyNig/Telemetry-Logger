@@ -1,0 +1,17 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net9.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <RootNamespace>F1Telemetry</RootNamespace>
+    <AssemblyName>F1Telemetry.Host</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\F1Telemetry.Core\F1Telemetry.Core.csproj" />
+    <ProjectReference Include="..\F1Telemetry.F125\F1Telemetry.F125.csproj" />
+    <ProjectReference Include="..\F1Telemetry.Udp\F1Telemetry.Udp.csproj" />
+  </ItemGroup>
+
+</Project>
