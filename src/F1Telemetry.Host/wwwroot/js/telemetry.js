@@ -721,7 +721,43 @@ function requestCurrentState(connection) {
         .catch(err => console.warn("Failed to get current state:", err));
 }
 
+function loadDemoData() {
+    const demo = [
+        { pos: 1,  name: "VER",           lap: 42, lastLap: "1:31.245", gap: "Leader",  pit: "" },
+        { pos: 2,  name: "NOR",           lap: 42, lastLap: "1:31.502", gap: "2.314",   pit: "" },
+        { pos: 3,  name: "LEC",           lap: 42, lastLap: "1:31.789", gap: "5.672",   pit: "" },
+        { pos: 4,  name: "PIA",           lap: 42, lastLap: "1:31.901", gap: "8.103",   pit: "" },
+        { pos: 5,  name: "SAI",           lap: 42, lastLap: "1:32.044", gap: "10.445",  pit: "" },
+        { pos: 6,  name: "HAM",           lap: 42, lastLap: "1:32.112", gap: "14.209",  pit: "" },
+        { pos: 7,  name: "RUS",           lap: 42, lastLap: "1:32.334", gap: "16.877",  pit: "" },
+        { pos: 8,  name: "Player",        lap: 42, lastLap: "1:32.501", gap: "19.332",  pit: "",      isPlayer: true },
+        { pos: 9,  name: "ALO",           lap: 42, lastLap: "1:32.667", gap: "22.508",  pit: "" },
+        { pos: 10, name: "GAS",           lap: 42, lastLap: "1:32.890", gap: "25.114",  pit: "" },
+        { pos: 11, name: "STR",           lap: 42, lastLap: "1:33.012", gap: "28.776",  pit: "" },
+        { pos: 12, name: "OCO",           lap: 41, lastLap: "1:33.245", gap: "+1 Lap",  pit: "" },
+        { pos: 13, name: "TSU",           lap: 41, lastLap: "1:33.410", gap: "+1 Lap",  pit: "" },
+        { pos: 14, name: "HUL",           lap: 41, lastLap: "1:33.589", gap: "+1 Lap",  pit: "" },
+        { pos: 15, name: "MAG",           lap: 41, lastLap: "1:33.701", gap: "+1 Lap",  pit: "" },
+        { pos: 16, name: "RIC",           lap: 41, lastLap: "1:33.890", gap: "+1 Lap",  pit: "Pitting" },
+        { pos: 17, name: "ALB",           lap: 41, lastLap: "1:34.012", gap: "+1 Lap",  pit: "" },
+        { pos: 18, name: "BOT",           lap: 41, lastLap: "1:34.234", gap: "+1 Lap",  pit: "" },
+        { pos: 19, name: "ZHO",           lap: 40, lastLap: "1:34.501", gap: "+2 Laps", pit: "" },
+        { pos: 20, name: "SAR",           lap: 40, lastLap: "1:34.776", gap: "+2 Laps", pit: "" },
+    ];
+
+    const tbody = el("standingsBody");
+    tbody.innerHTML = demo.map(r => `<tr class="${r.isPlayer ? "player-row" : ""}">
+        <td>${r.pos}</td>
+        <td>${r.name}</td>
+        <td>${r.lap}</td>
+        <td>${r.lastLap}</td>
+        <td>${r.gap}</td>
+        <td class="pit-status">${r.pit}</td>
+    </tr>`).join("");
+}
+
 document.addEventListener("DOMContentLoaded", async () => {
+    loadDemoData();
     await loadPitTimes();
     initConnection();
 
