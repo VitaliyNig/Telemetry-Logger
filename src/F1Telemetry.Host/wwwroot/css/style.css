@@ -171,6 +171,37 @@
     position: relative;
 }
 
+.preset-selector {
+    display: flex;
+    gap: 2px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 6px;
+    padding: 2px;
+}
+
+.preset-btn {
+    padding: 5px 14px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.5px;
+}
+
+.preset-btn:hover {
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.06);
+}
+
+.preset-btn.active {
+    background: var(--accent-red);
+    color: #fff;
+}
+
 .toolbar-toggle {
     display: flex;
     align-items: center;

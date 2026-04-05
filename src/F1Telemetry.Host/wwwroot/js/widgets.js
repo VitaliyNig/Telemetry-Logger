@@ -1,33 +1,69 @@
 "use strict";
 
 const WIDGET_REGISTRY = {
-    session:      { title: "Session",             tpl: "tpl-session",      w: 4, h: 2, minW: 2, minH: 2 },
-    telemetry:    { title: "Car Telemetry",       tpl: "tpl-telemetry",    w: 4, h: 3, minW: 3, minH: 2 },
-    tyres:        { title: "Tyres",               tpl: "tpl-tyres",        w: 2, h: 3, minW: 2, minH: 2 },
-    tyreSets:     { title: "Available Tyre Sets",  tpl: "tpl-tyreSets",    w: 6, h: 3, minW: 3, minH: 2 },
-    pitPredictor: { title: "Pit Stop Predictor",  tpl: "tpl-pitPredictor", w: 4, h: 3, minW: 2, minH: 2 },
-    carStatus:    { title: "Car Status",          tpl: "tpl-carStatus",    w: 3, h: 2, minW: 2, minH: 2 },
-    lapData:      { title: "Lap Data",            tpl: "tpl-lapData",      w: 3, h: 3, minW: 2, minH: 2 },
-    damage:       { title: "Damage",              tpl: "tpl-damage",       w: 2, h: 3, minW: 2, minH: 2 },
-    events:       { title: "Events",              tpl: "tpl-events",       w: 4, h: 3, minW: 2, minH: 2 },
-    standings:    { title: "Standings",            tpl: "tpl-standings",    w: 6, h: 5, minW: 3, minH: 3 },
+    session:      { title: "Session",              tpl: "tpl-session",      w: 4, h: 2, minW: 2, minH: 2 },
+    telemetry:    { title: "Car Telemetry",        tpl: "tpl-telemetry",    w: 4, h: 3, minW: 3, minH: 2 },
+    tyres:        { title: "Tyres",                tpl: "tpl-tyres",        w: 2, h: 3, minW: 2, minH: 2 },
+    tyreSets:     { title: "Available Tyre Sets",  tpl: "tpl-tyreSets",     w: 6, h: 3, minW: 3, minH: 2 },
+    pitPredictor: { title: "Pit Stop Predictor",   tpl: "tpl-pitPredictor", w: 4, h: 3, minW: 2, minH: 2 },
+    carStatus:    { title: "Car Status",           tpl: "tpl-carStatus",    w: 3, h: 2, minW: 2, minH: 2 },
+    lapData:      { title: "Lap Data",             tpl: "tpl-lapData",      w: 3, h: 3, minW: 2, minH: 2 },
+    damage:       { title: "Damage",               tpl: "tpl-damage",       w: 2, h: 3, minW: 2, minH: 2 },
+    events:       { title: "Events",               tpl: "tpl-events",       w: 4, h: 3, minW: 2, minH: 2 },
+    standings:    { title: "Standings",             tpl: "tpl-standings",    w: 6, h: 5, minW: 3, minH: 3 },
 };
 
-const DEFAULT_LAYOUT = [
-    { id: "session",      x: 0, y: 0,  w: 4, h: 2 },
-    { id: "telemetry",    x: 4, y: 0,  w: 4, h: 3 },
-    { id: "tyres",        x: 8, y: 0,  w: 2, h: 3 },
-    { id: "lapData",      x: 0, y: 2,  w: 3, h: 3 },
-    { id: "carStatus",    x: 3, y: 2,  w: 3, h: 2 },
-    { id: "damage",       x: 10, y: 0, w: 2, h: 3 },
-    { id: "pitPredictor", x: 6, y: 3,  w: 4, h: 3 },
-    { id: "events",       x: 0, y: 5,  w: 4, h: 3 },
-    { id: "tyreSets",     x: 4, y: 6,  w: 6, h: 3 },
-    { id: "standings",    x: 0, y: 8,  w: 6, h: 5 },
-];
+const PRESET_DEFAULTS = {
+    practice: [
+        { id: "session",      x: 0, y: 0, w: 4, h: 2 },
+        { id: "telemetry",    x: 4, y: 0, w: 4, h: 3 },
+        { id: "tyres",        x: 8, y: 0, w: 2, h: 3 },
+        { id: "carStatus",    x: 0, y: 2, w: 4, h: 2 },
+        { id: "damage",       x: 10, y: 0, w: 2, h: 3 },
+        { id: "tyreSets",     x: 0, y: 4, w: 6, h: 3 },
+        { id: "lapData",      x: 6, y: 3, w: 3, h: 3 },
+        { id: "events",       x: 0, y: 7, w: 6, h: 3 },
+    ],
+    qualifying: [
+        { id: "session",      x: 0, y: 0, w: 4, h: 2 },
+        { id: "telemetry",    x: 4, y: 0, w: 5, h: 3 },
+        { id: "lapData",      x: 0, y: 2, w: 4, h: 3 },
+        { id: "tyres",        x: 9, y: 0, w: 3, h: 3 },
+        { id: "carStatus",    x: 4, y: 3, w: 3, h: 2 },
+        { id: "events",       x: 0, y: 5, w: 5, h: 3 },
+        { id: "standings",    x: 5, y: 5, w: 7, h: 5 },
+    ],
+    race: [
+        { id: "session",      x: 0, y: 0, w: 4, h: 2 },
+        { id: "telemetry",    x: 4, y: 0, w: 4, h: 3 },
+        { id: "tyres",        x: 8, y: 0, w: 2, h: 3 },
+        { id: "damage",       x: 10, y: 0, w: 2, h: 3 },
+        { id: "lapData",      x: 0, y: 2, w: 3, h: 3 },
+        { id: "carStatus",    x: 3, y: 2, w: 3, h: 2 },
+        { id: "pitPredictor", x: 6, y: 3, w: 4, h: 3 },
+        { id: "events",       x: 0, y: 5, w: 4, h: 3 },
+        { id: "tyreSets",     x: 4, y: 6, w: 6, h: 3 },
+        { id: "standings",    x: 0, y: 8, w: 6, h: 5 },
+    ],
+    custom: [
+        { id: "session",      x: 0, y: 0, w: 4, h: 2 },
+        { id: "telemetry",    x: 4, y: 0, w: 4, h: 3 },
+        { id: "tyres",        x: 8, y: 0, w: 2, h: 3 },
+        { id: "lapData",      x: 0, y: 2, w: 3, h: 3 },
+        { id: "carStatus",    x: 3, y: 2, w: 3, h: 2 },
+        { id: "damage",       x: 10, y: 0, w: 2, h: 3 },
+        { id: "pitPredictor", x: 6, y: 3, w: 4, h: 3 },
+        { id: "events",       x: 0, y: 5, w: 4, h: 3 },
+        { id: "tyreSets",     x: 4, y: 6, w: 6, h: 3 },
+        { id: "standings",    x: 0, y: 8, w: 6, h: 5 },
+    ],
+};
 
-const LAYOUT_KEY = "f1telemetry_layout_v1";
+const PRESETS_STORAGE_KEY = "f1telemetry_presets_v1";
+const ACTIVE_PRESET_KEY = "f1telemetry_active_preset_v1";
 let grid = null;
+let activePreset = "race";
+let autoSwitchEnabled = true;
 
 function getWidgetContent(widgetId) {
     const reg = WIDGET_REGISTRY[widgetId];
@@ -50,10 +86,9 @@ function makeWidgetHtml(widgetId) {
     </div>`;
 }
 
-function saveLayout() {
-    if (!grid) return;
-    const items = grid.getGridItems();
-    const layout = items.map(el => {
+function getCurrentLayout() {
+    if (!grid) return [];
+    return grid.getGridItems().map(el => {
         const node = el.gridstackNode;
         const wrapper = el.querySelector(".widget-wrapper");
         return {
@@ -61,18 +96,34 @@ function saveLayout() {
             x: node.x, y: node.y, w: node.w, h: node.h,
         };
     }).filter(i => i.id);
-    localStorage.setItem(LAYOUT_KEY, JSON.stringify(layout));
 }
 
-function loadLayout() {
+function loadAllPresets() {
     try {
-        const raw = localStorage.getItem(LAYOUT_KEY);
-        if (raw) {
-            const layout = JSON.parse(raw);
-            if (Array.isArray(layout) && layout.length > 0) return layout;
-        }
+        const raw = localStorage.getItem(PRESETS_STORAGE_KEY);
+        if (raw) return JSON.parse(raw);
     } catch (_) { /* ignore */ }
-    return null;
+    return {};
+}
+
+function saveAllPresets(presets) {
+    localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
+}
+
+function saveLayout() {
+    if (!grid) return;
+    const layout = getCurrentLayout();
+    const presets = loadAllPresets();
+    presets[activePreset] = layout;
+    saveAllPresets(presets);
+}
+
+function loadLayoutForPreset(presetName) {
+    const presets = loadAllPresets();
+    if (presets[presetName] && Array.isArray(presets[presetName]) && presets[presetName].length > 0) {
+        return presets[presetName];
+    }
+    return PRESET_DEFAULTS[presetName] || PRESET_DEFAULTS.custom;
 }
 
 function getActiveWidgetIds() {
@@ -85,19 +136,59 @@ function getActiveWidgetIds() {
     return ids;
 }
 
+function applyLayout(layout) {
+    if (!grid) return;
+    grid.removeAll();
+    grid.batchUpdate();
+    for (const item of layout) {
+        if (WIDGET_REGISTRY[item.id]) {
+            const reg = WIDGET_REGISTRY[item.id];
+            grid.addWidget({
+                content: makeWidgetHtml(item.id),
+                x: item.x, y: item.y,
+                w: item.w, h: item.h,
+                minW: reg.minW, minH: reg.minH,
+                id: item.id,
+            });
+            wireWidgetEvents(item.id);
+        }
+    }
+    grid.commit();
+    updateDropdown();
+}
+
+function switchPreset(presetName) {
+    if (presetName === activePreset) return;
+    saveLayout();
+    activePreset = presetName;
+    localStorage.setItem(ACTIVE_PRESET_KEY, presetName);
+    const layout = loadLayoutForPreset(presetName);
+    applyLayout(layout);
+    updatePresetButtons();
+}
+
+function updatePresetButtons() {
+    document.querySelectorAll(".preset-btn").forEach(btn => {
+        btn.classList.toggle("active", btn.dataset.preset === activePreset);
+    });
+}
+
 function addWidget(widgetId, opts) {
     const reg = WIDGET_REGISTRY[widgetId];
     if (!reg || !grid) return;
-    const active = getActiveWidgetIds();
-    if (active.has(widgetId)) return;
+    if (getActiveWidgetIds().has(widgetId)) return;
 
     const html = makeWidgetHtml(widgetId);
-    const w = opts?.w ?? reg.w;
-    const h = opts?.h ?? reg.h;
-    const x = opts?.x;
-    const y = opts?.y;
-
-    grid.addWidget({ content: html, w, h, x, y, minW: reg.minW, minH: reg.minH, id: widgetId });
+    grid.addWidget({
+        content: html,
+        w: opts?.w ?? reg.w,
+        h: opts?.h ?? reg.h,
+        x: opts?.x,
+        y: opts?.y,
+        minW: reg.minW,
+        minH: reg.minH,
+        id: widgetId,
+    });
     wireWidgetEvents(widgetId);
     saveLayout();
     updateDropdown();
@@ -105,8 +196,7 @@ function addWidget(widgetId, opts) {
 
 function removeWidget(widgetId) {
     if (!grid) return;
-    const items = grid.getGridItems();
-    for (const item of items) {
+    for (const item of grid.getGridItems()) {
         const wrapper = item.querySelector(".widget-wrapper");
         if (wrapper?.dataset.widgetId === widgetId) {
             grid.removeWidget(item);
@@ -143,13 +233,27 @@ function updateDropdown() {
     dropdown.querySelectorAll(".widget-dropdown-item").forEach(item => {
         item.addEventListener("click", () => {
             const id = item.dataset.id;
-            if (getActiveWidgetIds().has(id)) {
-                removeWidget(id);
-            } else {
-                addWidget(id);
-            }
+            if (getActiveWidgetIds().has(id)) removeWidget(id);
+            else addWidget(id);
         });
     });
+}
+
+const SESSION_TYPE_TO_PRESET = {
+    1: "practice", 2: "practice", 3: "practice", 4: "practice",
+    5: "qualifying", 6: "qualifying", 7: "qualifying", 8: "qualifying", 9: "qualifying",
+    10: "race", 11: "race", 12: "race",
+    13: "practice",
+    14: "qualifying", 15: "qualifying", 16: "qualifying", 17: "qualifying", 18: "qualifying",
+    19: "race",
+};
+
+function onSessionTypeChanged(sessionType) {
+    if (!autoSwitchEnabled) return;
+    const preset = SESSION_TYPE_TO_PRESET[sessionType];
+    if (preset && preset !== activePreset) {
+        switchPreset(preset);
+    }
 }
 
 function initWidgets() {
@@ -164,25 +268,19 @@ function initWidgets() {
         disableResize: false,
     }, "#dashboardGrid");
 
-    const layout = loadLayout() || DEFAULT_LAYOUT;
-    grid.batchUpdate();
-    for (const item of layout) {
-        if (WIDGET_REGISTRY[item.id]) {
-            const reg = WIDGET_REGISTRY[item.id];
-            const html = makeWidgetHtml(item.id);
-            grid.addWidget({
-                content: html,
-                x: item.x, y: item.y,
-                w: item.w, h: item.h,
-                minW: reg.minW, minH: reg.minH,
-                id: item.id,
-            });
-            wireWidgetEvents(item.id);
-        }
-    }
-    grid.commit();
+    activePreset = localStorage.getItem(ACTIVE_PRESET_KEY) || "race";
+    const layout = loadLayoutForPreset(activePreset);
+    applyLayout(layout);
+    updatePresetButtons();
 
     grid.on("change", saveLayout);
+
+    document.querySelectorAll(".preset-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            autoSwitchEnabled = false;
+            switchPreset(btn.dataset.preset);
+        });
+    });
 
     const addBtn = document.getElementById("btnAddWidget");
     const dropdown = document.getElementById("widgetDropdown");
@@ -194,6 +292,14 @@ function initWidgets() {
     document.addEventListener("click", () => dropdown?.classList.add("hidden"));
     dropdown?.addEventListener("click", (e) => e.stopPropagation());
 
+    document.getElementById("btnSavePreset")?.addEventListener("click", () => {
+        saveLayout();
+        const btn = document.getElementById("btnSavePreset");
+        const orig = btn.textContent;
+        btn.textContent = "Saved!";
+        setTimeout(() => { btn.textContent = orig; }, 1500);
+    });
+
     const lockToggle = document.getElementById("lockToggle");
     lockToggle?.addEventListener("change", () => {
         const locked = lockToggle.checked;
@@ -204,25 +310,12 @@ function initWidgets() {
     });
 
     document.getElementById("btnResetLayout")?.addEventListener("click", () => {
-        localStorage.removeItem(LAYOUT_KEY);
-        grid.removeAll();
-        grid.batchUpdate();
-        for (const item of DEFAULT_LAYOUT) {
-            if (WIDGET_REGISTRY[item.id]) {
-                const reg = WIDGET_REGISTRY[item.id];
-                grid.addWidget({
-                    content: makeWidgetHtml(item.id),
-                    x: item.x, y: item.y,
-                    w: item.w, h: item.h,
-                    minW: reg.minW, minH: reg.minH,
-                    id: item.id,
-                });
-                wireWidgetEvents(item.id);
-            }
-        }
-        grid.commit();
+        const presets = loadAllPresets();
+        delete presets[activePreset];
+        saveAllPresets(presets);
+        const layout = PRESET_DEFAULTS[activePreset] || PRESET_DEFAULTS.custom;
+        applyLayout(layout);
         saveLayout();
-        updateDropdown();
     });
 
     updateDropdown();

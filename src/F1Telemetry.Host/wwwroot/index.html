@@ -32,8 +32,15 @@
         <section class="tab-panel active" id="panel-live">
             <div class="widget-toolbar">
                 <div class="widget-toolbar-left">
+                    <div class="preset-selector">
+                        <button class="preset-btn active" data-preset="practice">Practice</button>
+                        <button class="preset-btn" data-preset="qualifying">Qualifying</button>
+                        <button class="preset-btn" data-preset="race">Race</button>
+                        <button class="preset-btn" data-preset="custom">Custom</button>
+                    </div>
                     <button class="btn btn-small btn-primary" id="btnAddWidget">+ Add Widget</button>
                     <div class="widget-dropdown hidden" id="widgetDropdown"></div>
+                    <button class="btn btn-small btn-secondary" id="btnSavePreset" title="Save current layout to active preset">Save Preset</button>
                 </div>
                 <div class="widget-toolbar-right">
                     <label class="toolbar-toggle">
