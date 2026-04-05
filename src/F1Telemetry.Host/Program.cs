@@ -21,7 +21,7 @@ app.MapGet("/api/info", () => Results.Ok(new
 {
     game = "F1 25",
     udpPort = app.Configuration.GetValue<int?>("TelemetryUdp:Port") ?? 20777,
-    docs = "See F1 25 Telemetry Output Structures.txt in repository root."
+    docs = "See docs/F1 25 Telemetry Output Structures.txt."
 }));
 
 app.Run();
