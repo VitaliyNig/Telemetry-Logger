@@ -4,6 +4,8 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>F1 25 Telemetry Logger</title>
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-extra.min.css">
     <link rel="stylesheet" href="/css/app.css">
     <link rel="stylesheet" href="/css/style.css">
 </head>
@@ -28,277 +30,27 @@
     <main class="app-main">
         <!-- Live Tab -->
         <section class="tab-panel active" id="panel-live">
-            <div class="dashboard">
-                <!-- Session Info -->
-                <section class="card session-card" id="sessionCard">
-                    <h2>Session</h2>
-                    <div class="session-grid">
-                        <div class="stat-box">
-                            <span class="stat-label">Track</span>
-                            <span class="stat-value" id="trackName">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Session</span>
-                            <span class="stat-value" id="sessionType">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Weather</span>
-                            <span class="stat-value" id="weather">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Track Temp</span>
-                            <span class="stat-value" id="trackTemp">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Air Temp</span>
-                            <span class="stat-value" id="airTemp">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Time Left</span>
-                            <span class="stat-value" id="timeLeft">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Safety Car</span>
-                            <span class="stat-value" id="safetyCarStatus">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Laps</span>
-                            <span class="stat-value" id="totalLaps">--</span>
-                        </div>
+            <div class="widget-toolbar">
+                <div class="widget-toolbar-left">
+                    <div class="preset-selector">
+                        <button class="preset-btn active" data-preset="practice">Practice</button>
+                        <button class="preset-btn" data-preset="qualifying">Qualifying</button>
+                        <button class="preset-btn" data-preset="race">Race</button>
+                        <button class="preset-btn" data-preset="custom">Custom</button>
                     </div>
-                </section>
-
-                <!-- Player Car Telemetry -->
-                <section class="card telemetry-card" id="telemetryCard">
-                    <h2>Car Telemetry</h2>
-                    <div class="telemetry-main">
-                        <div class="speed-display">
-                            <div class="speed-value" id="speed">0</div>
-                            <div class="speed-unit">KM/H</div>
-                        </div>
-                        <div class="gear-display">
-                            <div class="gear-label">GEAR</div>
-                            <div class="gear-value" id="gear">N</div>
-                        </div>
-                        <div class="rpm-container">
-                            <div class="rpm-bar-bg">
-                                <div class="rpm-bar-fill" id="rpmBar"></div>
-                            </div>
-                            <div class="rpm-value" id="rpmValue">0 RPM</div>
-                        </div>
-                    </div>
-                    <div class="pedals-row">
-                        <div class="pedal-group">
-                            <span class="pedal-label">Throttle</span>
-                            <div class="pedal-bar-bg">
-                                <div class="pedal-bar-fill throttle-fill" id="throttleBar"></div>
-                            </div>
-                            <span class="pedal-pct" id="throttlePct">0%</span>
-                        </div>
-                        <div class="pedal-group">
-                            <span class="pedal-label">Brake</span>
-                            <div class="pedal-bar-bg">
-                                <div class="pedal-bar-fill brake-fill" id="brakeBar"></div>
-                            </div>
-                            <span class="pedal-pct" id="brakePct">0%</span>
-                        </div>
-                        <div class="pedal-group">
-                            <span class="pedal-label">DRS</span>
-                            <div class="drs-indicator" id="drsIndicator">OFF</div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Tyre Info -->
-                <section class="card tyres-card" id="tyresCard">
-                    <h2>Tyres</h2>
-                    <div class="tyres-layout">
-                        <div class="tyre-box" id="tyreFL">
-                            <span class="tyre-pos">FL</span>
-                            <span class="tyre-temp" id="tyreTempFL">--°</span>
-                            <span class="tyre-wear" id="tyreWearFL">--%</span>
-                        </div>
-                        <div class="tyre-box" id="tyreFR">
-                            <span class="tyre-pos">FR</span>
-                            <span class="tyre-temp" id="tyreTempFR">--°</span>
-                            <span class="tyre-wear" id="tyreWearFR">--%</span>
-                        </div>
-                        <div class="tyre-box" id="tyreRL">
-                            <span class="tyre-pos">RL</span>
-                            <span class="tyre-temp" id="tyreTempRL">--°</span>
-                            <span class="tyre-wear" id="tyreWearRL">--%</span>
-                        </div>
-                        <div class="tyre-box" id="tyreRR">
-                            <span class="tyre-pos">RR</span>
-                            <span class="tyre-temp" id="tyreTempRR">--°</span>
-                            <span class="tyre-wear" id="tyreWearRR">--%</span>
-                        </div>
-                    </div>
-                    <div class="compound-info">
-                        <span class="compound-label">Compound:</span>
-                        <span class="compound-value" id="tyreCompound">--</span>
-                        <span class="compound-label">Age:</span>
-                        <span class="compound-value" id="tyreAge">-- laps</span>
-                    </div>
-                </section>
-
-                <!-- Available Tyre Sets -->
-                <section class="card tyresets-card" id="tyreSetsCard">
-                    <h2>Available Tyre Sets</h2>
-                    <div class="tyreset-fitted" id="tyreSetFitted">
-                        <span class="fitted-label">Fitted:</span>
-                        <span class="fitted-value" id="fittedCompound">--</span>
-                    </div>
-                    <div class="tyreset-groups" id="tyreSetGroups">
-                        <div class="tyreset-placeholder">Waiting for tyre set data...</div>
-                    </div>
-                </section>
-
-                <!-- Pit Position Predictor -->
-                <section class="card pitstop-card" id="pitStopCard">
-                    <h2>Pit Stop Predictor</h2>
-                    <div class="pitstop-config">
-                        <span class="stat-label">Pit Time (s)</span>
-                        <input type="number" id="pitTimeInput" class="pit-time-input" step="0.1" min="15" max="40" value="23.0">
-                        <button class="btn btn-small btn-primary" id="btnSavePitTime">Save</button>
-                        <span class="pit-save-status" id="pitSaveStatus"></span>
-                    </div>
-                    <div class="pitstop-prediction" id="pitPrediction">
-                        <div class="pit-result">
-                            <span class="stat-label">Predicted Position</span>
-                            <span class="stat-value big" id="pitPredPos">--</span>
-                        </div>
-                        <div class="pit-gaps">
-                            <div class="pit-gap-item">
-                                <span class="pit-gap-label">Car Ahead</span>
-                                <span class="pit-gap-driver" id="pitAheadName">--</span>
-                                <span class="pit-gap-value" id="pitAheadGap">--</span>
-                            </div>
-                            <div class="pit-gap-item">
-                                <span class="pit-gap-label">Car Behind</span>
-                                <span class="pit-gap-driver" id="pitBehindName">--</span>
-                                <span class="pit-gap-value" id="pitBehindGap">--</span>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Car Status -->
-                <section class="card status-card" id="statusCard">
-                    <h2>Car Status</h2>
-                    <div class="status-grid">
-                        <div class="stat-box">
-                            <span class="stat-label">Fuel</span>
-                            <span class="stat-value" id="fuelRemaining">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Fuel Laps</span>
-                            <span class="stat-value" id="fuelLaps">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">ERS Deploy</span>
-                            <span class="stat-value" id="ersMode">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">ERS Store</span>
-                            <div class="ers-bar-bg">
-                                <div class="ers-bar-fill" id="ersBar"></div>
-                            </div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Lap Data -->
-                <section class="card lap-card" id="lapCard">
-                    <h2>Lap Data</h2>
-                    <div class="lap-grid">
-                        <div class="stat-box">
-                            <span class="stat-label">Position</span>
-                            <span class="stat-value big" id="position">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Current Lap</span>
-                            <span class="stat-value" id="currentLap">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Current Time</span>
-                            <span class="stat-value" id="currentLapTime">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Last Lap</span>
-                            <span class="stat-value" id="lastLapTime">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Sector 1</span>
-                            <span class="stat-value" id="sector1">--</span>
-                        </div>
-                        <div class="stat-box">
-                            <span class="stat-label">Sector 2</span>
-                            <span class="stat-value" id="sector2">--</span>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Damage -->
-                <section class="card damage-card" id="damageCard">
-                    <h2>Damage</h2>
-                    <div class="damage-grid">
-                        <div class="damage-item">
-                            <span class="damage-label">FL Wing</span>
-                            <div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFL"></div></div>
-                        </div>
-                        <div class="damage-item">
-                            <span class="damage-label">FR Wing</span>
-                            <div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFR"></div></div>
-                        </div>
-                        <div class="damage-item">
-                            <span class="damage-label">Rear Wing</span>
-                            <div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgRear"></div></div>
-                        </div>
-                        <div class="damage-item">
-                            <span class="damage-label">Floor</span>
-                            <div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFloor"></div></div>
-                        </div>
-                        <div class="damage-item">
-                            <span class="damage-label">Engine</span>
-                            <div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgEngine"></div></div>
-                        </div>
-                        <div class="damage-item">
-                            <span class="damage-label">Gearbox</span>
-                            <div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgGearbox"></div></div>
-                        </div>
-                    </div>
-                </section>
-
-                <!-- Events Log -->
-                <section class="card events-card" id="eventsCard">
-                    <h2>Events</h2>
-                    <div class="events-list" id="eventsList">
-                        <div class="event-item placeholder">Waiting for events...</div>
-                    </div>
-                </section>
-
-                <!-- Standings -->
-                <section class="card standings-card" id="standingsCard">
-                    <h2>Standings</h2>
-                    <div class="standings-table-wrap">
-                        <table class="standings-table" id="standingsTable">
-                            <thead>
-                                <tr>
-                                    <th>Pos</th>
-                                    <th>Driver</th>
-                                    <th>Lap</th>
-                                    <th>Last Lap</th>
-                                    <th>Gap</th>
-                                    <th>Pit</th>
-                                </tr>
-                            </thead>
-                            <tbody id="standingsBody">
-                            </tbody>
-                        </table>
-                    </div>
-                </section>
+                    <button class="btn btn-small btn-primary" id="btnAddWidget">+ Add Widget</button>
+                    <div class="widget-dropdown hidden" id="widgetDropdown"></div>
+                    <button class="btn btn-small btn-secondary" id="btnSavePreset" title="Save current layout to active preset">Save Preset</button>
+                </div>
+                <div class="widget-toolbar-right">
+                    <label class="toolbar-toggle">
+                        <input type="checkbox" id="lockToggle">
+                        <span class="toolbar-toggle-label">Lock Layout</span>
+                    </label>
+                    <button class="btn btn-small btn-secondary" id="btnResetLayout">Reset Layout</button>
+                </div>
             </div>
+            <div class="grid-stack" id="dashboardGrid"></div>
         </section>
 
         <!-- History Tab -->
@@ -318,13 +70,11 @@
 
                 <div class="settings-group">
                     <h3>UDP Connection</h3>
-
                     <div class="setting-row">
                         <label for="udpListenIp">UDP Listen IP</label>
                         <input type="text" id="udpListenIp" value="0.0.0.0" placeholder="0.0.0.0">
                         <span class="setting-hint">Network interface to listen on. <code>0.0.0.0</code> = all interfaces.</span>
                     </div>
-
                     <div class="setting-row">
                         <label for="udpListenPort">UDP Listen Port</label>
                         <input type="number" id="udpListenPort" value="20777" min="1" max="65535">
@@ -334,17 +84,27 @@
 
                 <div class="settings-group">
                     <h3>Web Server</h3>
-
                     <div class="setting-row">
                         <label for="webPort">Web Port</label>
                         <input type="number" id="webPort" value="5000" min="1" max="65535">
-                        <span class="setting-hint">Local web server port. Access via <code>http://localhost:&lt;port&gt;</code>. <strong>Requires restart</strong> on change.</span>
+                        <span class="setting-hint">Local web server port. <strong>Requires restart</strong> on change.</span>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3>Dashboard</h3>
+                    <div class="setting-row setting-toggle">
+                        <label for="autoSwitchPreset">Auto-switch Preset</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoSwitchPreset" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="setting-hint">Automatically switch layout preset when session type changes (Practice / Qualifying / Race).</span>
                     </div>
                 </div>
 
                 <div class="settings-group">
                     <h3>Developer</h3>
-
                     <div class="setting-row setting-toggle">
                         <label for="debugMode">Debug Mode</label>
                         <label class="toggle-switch">
@@ -399,8 +159,112 @@
         </section>
     </main>
 
+    <!-- Widget HTML Templates (hidden, cloned by JS) -->
+    <template id="tpl-session">
+        <div class="card"><h2 class="widget-title">Session</h2>
+        <div class="session-grid">
+            <div class="stat-box"><span class="stat-label">Track</span><span class="stat-value" id="trackName">--</span></div>
+            <div class="stat-box"><span class="stat-label">Session</span><span class="stat-value" id="sessionType">--</span></div>
+            <div class="stat-box"><span class="stat-label">Weather</span><span class="stat-value" id="weather">--</span></div>
+            <div class="stat-box"><span class="stat-label">Track Temp</span><span class="stat-value" id="trackTemp">--</span></div>
+            <div class="stat-box"><span class="stat-label">Air Temp</span><span class="stat-value" id="airTemp">--</span></div>
+            <div class="stat-box"><span class="stat-label">Time Left</span><span class="stat-value" id="timeLeft">--</span></div>
+            <div class="stat-box"><span class="stat-label">Safety Car</span><span class="stat-value" id="safetyCarStatus">--</span></div>
+            <div class="stat-box"><span class="stat-label">Laps</span><span class="stat-value" id="totalLaps">--</span></div>
+        </div></div>
+    </template>
+
+    <template id="tpl-telemetry">
+        <div class="card"><h2 class="widget-title">Car Telemetry</h2>
+        <div class="telemetry-main">
+            <div class="speed-display"><div class="speed-value" id="speed">0</div><div class="speed-unit">KM/H</div></div>
+            <div class="gear-display"><div class="gear-label">GEAR</div><div class="gear-value" id="gear">N</div></div>
+            <div class="rpm-container"><div class="rpm-bar-bg"><div class="rpm-bar-fill" id="rpmBar"></div></div><div class="rpm-value" id="rpmValue">0 RPM</div></div>
+        </div>
+        <div class="pedals-row">
+            <div class="pedal-group"><span class="pedal-label">Throttle</span><div class="pedal-bar-bg"><div class="pedal-bar-fill throttle-fill" id="throttleBar"></div></div><span class="pedal-pct" id="throttlePct">0%</span></div>
+            <div class="pedal-group"><span class="pedal-label">Brake</span><div class="pedal-bar-bg"><div class="pedal-bar-fill brake-fill" id="brakeBar"></div></div><span class="pedal-pct" id="brakePct">0%</span></div>
+            <div class="pedal-group"><span class="pedal-label">DRS</span><div class="drs-indicator" id="drsIndicator">OFF</div></div>
+        </div></div>
+    </template>
+
+    <template id="tpl-tyres">
+        <div class="card"><h2 class="widget-title">Tyres</h2>
+        <div class="tyres-layout">
+            <div class="tyre-box"><span class="tyre-pos">FL</span><span class="tyre-temp" id="tyreTempFL">--°</span><span class="tyre-wear" id="tyreWearFL">--%</span></div>
+            <div class="tyre-box"><span class="tyre-pos">FR</span><span class="tyre-temp" id="tyreTempFR">--°</span><span class="tyre-wear" id="tyreWearFR">--%</span></div>
+            <div class="tyre-box"><span class="tyre-pos">RL</span><span class="tyre-temp" id="tyreTempRL">--°</span><span class="tyre-wear" id="tyreWearRL">--%</span></div>
+            <div class="tyre-box"><span class="tyre-pos">RR</span><span class="tyre-temp" id="tyreTempRR">--°</span><span class="tyre-wear" id="tyreWearRR">--%</span></div>
+        </div>
+        <div class="compound-info"><span class="compound-label">Compound:</span><span class="compound-value" id="tyreCompound">--</span><span class="compound-label">Age:</span><span class="compound-value" id="tyreAge">-- laps</span></div></div>
+    </template>
+
+    <template id="tpl-tyreSets">
+        <div class="card"><h2 class="widget-title">Available Tyre Sets</h2>
+        <div class="tyreset-fitted"><span class="fitted-label">Fitted:</span><span class="fitted-value" id="fittedCompound">--</span></div>
+        <div class="tyreset-groups" id="tyreSetGroups"><div class="tyreset-placeholder">Waiting for tyre set data...</div></div></div>
+    </template>
+
+    <template id="tpl-pitPredictor">
+        <div class="card"><h2 class="widget-title">Pit Stop Predictor</h2>
+        <div class="pitstop-config"><span class="stat-label">Pit Time (s)</span><input type="number" id="pitTimeInput" class="pit-time-input" step="0.1" min="15" max="40" value="23.0"><button class="btn btn-small btn-primary" id="btnSavePitTime">Save</button><span class="pit-save-status" id="pitSaveStatus"></span></div>
+        <div class="pitstop-prediction">
+            <div class="pit-result"><span class="stat-label">Predicted Position</span><span class="stat-value big" id="pitPredPos">--</span></div>
+            <div class="pit-gaps">
+                <div class="pit-gap-item"><span class="pit-gap-label">Car Ahead</span><span class="pit-gap-driver" id="pitAheadName">--</span><span class="pit-gap-value" id="pitAheadGap">--</span></div>
+                <div class="pit-gap-item"><span class="pit-gap-label">Car Behind</span><span class="pit-gap-driver" id="pitBehindName">--</span><span class="pit-gap-value" id="pitBehindGap">--</span></div>
+            </div>
+        </div></div>
+    </template>
+
+    <template id="tpl-carStatus">
+        <div class="card"><h2 class="widget-title">Car Status</h2>
+        <div class="status-grid">
+            <div class="stat-box"><span class="stat-label">Fuel</span><span class="stat-value" id="fuelRemaining">--</span></div>
+            <div class="stat-box"><span class="stat-label">Fuel Laps</span><span class="stat-value" id="fuelLaps">--</span></div>
+            <div class="stat-box"><span class="stat-label">ERS Deploy</span><span class="stat-value" id="ersMode">--</span></div>
+            <div class="stat-box"><span class="stat-label">ERS Store</span><div class="ers-bar-bg"><div class="ers-bar-fill" id="ersBar"></div></div></div>
+        </div></div>
+    </template>
+
+    <template id="tpl-lapData">
+        <div class="card"><h2 class="widget-title">Lap Data</h2>
+        <div class="lap-grid">
+            <div class="stat-box"><span class="stat-label">Position</span><span class="stat-value big" id="position">--</span></div>
+            <div class="stat-box"><span class="stat-label">Current Lap</span><span class="stat-value" id="currentLap">--</span></div>
+            <div class="stat-box"><span class="stat-label">Current Time</span><span class="stat-value" id="currentLapTime">--</span></div>
+            <div class="stat-box"><span class="stat-label">Last Lap</span><span class="stat-value" id="lastLapTime">--</span></div>
+            <div class="stat-box"><span class="stat-label">Sector 1</span><span class="stat-value" id="sector1">--</span></div>
+            <div class="stat-box"><span class="stat-label">Sector 2</span><span class="stat-value" id="sector2">--</span></div>
+        </div></div>
+    </template>
+
+    <template id="tpl-damage">
+        <div class="card"><h2 class="widget-title">Damage</h2>
+        <div class="damage-grid">
+            <div class="damage-item"><span class="damage-label">FL Wing</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFL"></div></div></div>
+            <div class="damage-item"><span class="damage-label">FR Wing</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFR"></div></div></div>
+            <div class="damage-item"><span class="damage-label">Rear Wing</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgRear"></div></div></div>
+            <div class="damage-item"><span class="damage-label">Floor</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFloor"></div></div></div>
+            <div class="damage-item"><span class="damage-label">Engine</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgEngine"></div></div></div>
+            <div class="damage-item"><span class="damage-label">Gearbox</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgGearbox"></div></div></div>
+        </div></div>
+    </template>
+
+    <template id="tpl-events">
+        <div class="card"><h2 class="widget-title">Events</h2>
+        <div class="events-list" id="eventsList"><div class="event-item placeholder">Waiting for events...</div></div></div>
+    </template>
+
+    <template id="tpl-standings">
+        <div class="card"><h2 class="widget-title">Standings</h2>
+        <div class="standings-table-wrap"><table class="standings-table"><thead><tr><th>Pos</th><th>Driver</th><th>Lap</th><th>Last Lap</th><th>Gap</th><th>Pit</th></tr></thead><tbody id="standingsBody"></tbody></table></div></div>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
     <script src="/js/app.js"></script>
+    <script src="/js/widgets.js"></script>
     <script src="/js/telemetry.js"></script>
 </body>
 </html>

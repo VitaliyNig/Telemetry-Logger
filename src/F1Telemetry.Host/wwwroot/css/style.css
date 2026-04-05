@@ -49,26 +49,228 @@
     50% { opacity: 0.4; }
 }
 
-.dashboard {
-    display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
-    gap: 16px;
-    padding: 16px 0 32px;
-    max-width: 1600px;
-    margin: 0 auto;
+/* GridStack dark theme overrides */
+.grid-stack {
+    min-height: 400px;
 }
 
-.card {
+.grid-stack-item-content {
+    background: var(--bg-card) !important;
+    border: 1px solid var(--border) !important;
+    border-radius: var(--radius) !important;
+    overflow: hidden !important;
+    display: flex;
+    flex-direction: column;
+}
+
+.grid-stack-item-content:hover {
+    border-color: rgba(225, 6, 0, 0.3) !important;
+}
+
+.grid-stack > .grid-stack-item > .grid-stack-item-content {
+    inset: 4px !important;
+}
+
+.grid-stack-placeholder > .placeholder-content {
+    background: rgba(225, 6, 0, 0.08) !important;
+    border: 2px dashed var(--accent-red) !important;
+    border-radius: var(--radius) !important;
+}
+
+.ui-resizable-handle {
+    opacity: 0;
+    transition: opacity 0.2s;
+}
+
+.grid-stack-item:hover .ui-resizable-handle {
+    opacity: 0.6;
+}
+
+/* Widget chrome */
+.widget-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.widget-header {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 10px;
+    background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.widget-drag-handle {
+    cursor: grab;
+    color: var(--text-dim);
+    font-size: 14px;
+    user-select: none;
+    line-height: 1;
+}
+
+.widget-drag-handle:active { cursor: grabbing; }
+
+.widget-header-title {
+    flex: 1;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.widget-close-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    border-radius: 3px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.widget-close-btn:hover {
+    color: var(--accent-red);
+    background: rgba(225, 6, 0, 0.1);
+}
+
+.widget-body {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+}
+
+.widget-body > .card {
+    border: none;
+    border-radius: 0;
+    height: 100%;
+    overflow: auto;
+}
+
+/* Widget toolbar */
+.widget-toolbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 8px 0;
+    gap: 12px;
+    flex-wrap: wrap;
+}
+
+.widget-toolbar-left,
+.widget-toolbar-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    position: relative;
+}
+
+.preset-selector {
+    display: flex;
+    gap: 2px;
+    background: rgba(255,255,255,0.04);
+    border-radius: 6px;
+    padding: 2px;
+}
+
+.preset-btn {
+    padding: 5px 14px;
+    border: none;
+    border-radius: 4px;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.15s;
+    letter-spacing: 0.5px;
+}
+
+.preset-btn:hover {
+    color: var(--text-secondary);
+    background: rgba(255,255,255,0.06);
+}
+
+.preset-btn.active {
+    background: var(--accent-red);
+    color: #fff;
+}
+
+.toolbar-toggle {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    color: var(--text-secondary);
+    cursor: pointer;
+}
+
+.toolbar-toggle input { cursor: pointer; }
+
+.toolbar-toggle-label {
+    user-select: none;
+}
+
+.widget-dropdown {
+    position: absolute;
+    top: 100%;
+    left: 0;
+    margin-top: 4px;
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    padding: 16px 20px;
-    transition: border-color 0.2s;
+    min-width: 220px;
+    max-height: 400px;
+    overflow-y: auto;
+    z-index: 200;
+    box-shadow: 0 8px 24px rgba(0,0,0,0.4);
 }
 
-.card:hover { border-color: rgba(225, 6, 0, 0.3); }
+.widget-dropdown.hidden { display: none; }
 
-.card h2 {
+.widget-dropdown-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.1s;
+}
+
+.widget-dropdown-item:hover {
+    background: rgba(255,255,255,0.06);
+}
+
+.widget-dropdown-item.active {
+    color: var(--text-primary);
+}
+
+.widget-dropdown-check {
+    width: 16px;
+    text-align: center;
+    color: var(--accent-green);
+    font-weight: 700;
+}
+
+/* Card styles (now inside widget body) */
+.card {
+    background: transparent;
+    padding: 12px 16px;
+}
+
+.widget-title {
+    display: none;
+}
+
+.card h2:not(.widget-title) {
     font-size: 12px;
     text-transform: uppercase;
     letter-spacing: 2px;
@@ -460,10 +662,6 @@
 }
 
 /* Standings */
-.standings-card {
-    grid-column: 1 / -1;
-}
-
 .standings-table-wrap {
     max-height: 400px;
     overflow-y: auto;
@@ -509,18 +707,12 @@
 
 /* Responsive */
 @media (max-width: 768px) {
-    .dashboard {
-        grid-template-columns: 1fr;
-        padding: 12px;
-    }
-
     .telemetry-main {
         flex-wrap: wrap;
     }
 
     .speed-value { font-size: 48px; }
     .gear-value { font-size: 40px; }
-    .standings-card { grid-column: 1; }
 }
 
 /* Temperature color helpers set via JS */
@@ -550,10 +742,6 @@
 }
 
 /* Available Tyre Sets */
-.tyresets-card {
-    grid-column: 1 / -1;
-}
-
 .tyreset-fitted {
     display: flex;
     align-items: center;
@@ -756,7 +944,6 @@
 }
 
 @media (max-width: 768px) {
-    .tyresets-card { grid-column: 1; }
     .tyreset-groups { flex-direction: column; }
     .pitstop-prediction { flex-direction: column; }
 }

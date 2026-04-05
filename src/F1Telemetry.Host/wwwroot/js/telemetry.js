@@ -167,8 +167,12 @@ function updateSession(data) {
 
     if (data.trackId !== currentTrackId) {
         currentTrackId = data.trackId;
-        const pitTime = getPitTimeForTrack(currentTrackId);
-        el("pitTimeInput").value = pitTime.toFixed(1);
+        const pitInput = el("pitTimeInput");
+        if (pitInput) pitInput.value = getPitTimeForTrack(currentTrackId).toFixed(1);
+    }
+
+    if (typeof onSessionTypeChanged === "function") {
+        onSessionTypeChanged(data.sessionType);
     }
 
     const trackTemp = data.trackTemperature;
@@ -722,9 +726,7 @@ function requestCurrentState(connection) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+    if (typeof initWidgets === "function") initWidgets();
     await loadPitTimes();
     initConnection();
-
-    el("btnSavePitTime")?.addEventListener("click", savePitTime);
-    el("pitTimeInput")?.addEventListener("change", updatePitPredictor);
 });
