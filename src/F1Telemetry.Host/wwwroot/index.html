@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>F1 25 Telemetry Logger</title>
+    <link rel="stylesheet" href="/css/app.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-brand">
+            <span class="brand-icon">🏎</span>
+            <span class="brand-title">F1 25 Telemetry</span>
+        </div>
+        <nav class="tab-nav" id="tabNav">
+            <button class="tab-btn active" data-tab="live">Live</button>
+            <button class="tab-btn" data-tab="history">History</button>
+            <button class="tab-btn" data-tab="settings">Settings</button>
+            <button class="tab-btn tab-debug hidden" data-tab="debug">Debug</button>
+        </nav>
+    </header>
+
+    <main class="app-main">
+        <!-- Live Tab -->
+        <section class="tab-panel active" id="panel-live">
+            <div class="placeholder-panel">
+                <div class="placeholder-icon">📡</div>
+                <h2>Live Telemetry</h2>
+                <p>Real-time telemetry data will appear here when connected to F1 25.</p>
+                <p class="hint">Make sure the game is running and UDP telemetry is enabled in settings.</p>
+            </div>
+        </section>
+
+        <!-- History Tab -->
+        <section class="tab-panel" id="panel-history">
+            <div class="placeholder-panel">
+                <div class="placeholder-icon">📊</div>
+                <h2>Session History</h2>
+                <p>Past sessions and recorded data will be listed here.</p>
+                <p class="hint">This feature is coming soon.</p>
+            </div>
+        </section>
+
+        <!-- Settings Tab -->
+        <section class="tab-panel" id="panel-settings">
+            <div class="settings-container">
+                <h2>Settings</h2>
+
+                <div class="settings-group">
+                    <h3>UDP Connection</h3>
+
+                    <div class="setting-row">
+                        <label for="udpListenIp">UDP Listen IP</label>
+                        <input type="text" id="udpListenIp" value="0.0.0.0" placeholder="0.0.0.0">
+                        <span class="setting-hint">Network interface to listen on. <code>0.0.0.0</code> = all interfaces.</span>
+                    </div>
+
+                    <div class="setting-row">
+                        <label for="udpListenPort">UDP Listen Port</label>
+                        <input type="number" id="udpListenPort" value="20777" min="1" max="65535">
+                        <span class="setting-hint">Must match the port configured in F1 25 game settings. Default: <code>20777</code></span>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3>Web Server</h3>
+
+                    <div class="setting-row">
+                        <label for="webPort">Web Port</label>
+                        <input type="number" id="webPort" value="5000" min="1" max="65535">
+                        <span class="setting-hint">Local web server port. Access via <code>http://localhost:&lt;port&gt;</code>. <strong>Requires restart</strong> on change.</span>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3>Developer</h3>
+
+                    <div class="setting-row setting-toggle">
+                        <label for="debugMode">Debug Mode</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="debugMode">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="setting-hint">Enables the Debug tab with packet inspection and logging.</span>
+                    </div>
+                </div>
+
+                <div class="settings-actions">
+                    <button class="btn btn-primary" id="btnSaveSettings">Save Settings</button>
+                    <span class="save-status" id="saveStatus"></span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Debug Tab -->
+        <section class="tab-panel" id="panel-debug">
+            <div class="debug-container">
+                <div class="debug-left">
+                    <h3>Packet Counts</h3>
+                    <div class="packet-stats" id="packetStats">
+                        <div class="stat-total">
+                            <span class="stat-label">Total Packets</span>
+                            <span class="stat-value" id="totalPackets">0</span>
+                        </div>
+                        <div class="stat-list" id="packetCountsList">
+                            <p class="muted">No packets received yet.</p>
+                        </div>
+                    </div>
+                    <div class="debug-actions">
+                        <button class="btn btn-secondary" id="btnDownloadLog">Download Log</button>
+                        <button class="btn btn-danger" id="btnResetStats">Reset</button>
+                    </div>
+                </div>
+                <div class="debug-right">
+                    <h3>Packet Console</h3>
+                    <div class="console-toolbar">
+                        <label class="toggle-switch small">
+                            <input type="checkbox" id="autoScroll" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toolbar-label">Auto-scroll</span>
+                        <button class="btn btn-small btn-secondary" id="btnClearConsole">Clear</button>
+                    </div>
+                    <div class="debug-console" id="debugConsole">
+                        <p class="muted">Waiting for packets...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+    <script src="/js/app.js"></script>
+</body>
+</html>

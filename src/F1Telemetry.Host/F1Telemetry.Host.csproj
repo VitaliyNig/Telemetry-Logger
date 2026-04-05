@@ -14,4 +14,8 @@
     <ProjectReference Include="..\F1Telemetry.Udp\F1Telemetry.Udp.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <None Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
 </Project>
