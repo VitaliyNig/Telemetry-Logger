@@ -101,6 +101,10 @@ let prevAirTemp = null;
 let trackTempHistory = [];
 let airTempHistory = [];
 const TEMP_HISTORY_MAX = 30;
+let currentTrackId = -1;
+let pitTimesData = {};
+let lastLapDataPacket = null;
+let lastSessionPacket = null;
 
 function el(id) { return document.getElementById(id); }
 
@@ -156,9 +160,16 @@ function renderTempWithTrend(elemId, temp, trend) {
 }
 
 function updateSession(data) {
+    lastSessionPacket = data;
     el("trackName").textContent = TRACK_NAMES[data.trackId] || `Track ${data.trackId}`;
     el("sessionType").textContent = SESSION_TYPES[data.sessionType] || `Type ${data.sessionType}`;
     el("weather").textContent = WEATHER_NAMES[data.weather] || "Unknown";
+
+    if (data.trackId !== currentTrackId) {
+        currentTrackId = data.trackId;
+        const pitTime = getPitTimeForTrack(currentTrackId);
+        el("pitTimeInput").value = pitTime.toFixed(1);
+    }
 
     const trackTemp = data.trackTemperature;
     const airTemp = data.airTemperature;
@@ -256,6 +267,7 @@ function updateCarStatus(data) {
 }
 
 function updateLapData(data) {
+    lastLapDataPacket = data;
     const car = data.lapDataItems?.[playerCarIndex];
     if (!car) return;
 
@@ -267,6 +279,7 @@ function updateLapData(data) {
     el("sector2").textContent = formatSectorTime(car.sector2TimeMsPart, car.sector2TimeMinutesPart);
 
     updateStandings(data);
+    updatePitPredictor();
 }
 
 function updateCarDamage(data) {
@@ -448,6 +461,192 @@ function updateStandings(lapDataPacket) {
     }).join("");
 }
 
+function getVisualCompoundInfo(visualId) {
+    const map = {
+        16: { name: "Soft", css: "compound-soft", dot: "#ff3333" },
+        17: { name: "Medium", css: "compound-medium", dot: "#ffd700" },
+        18: { name: "Hard", css: "compound-hard", dot: "#e0e0e0" },
+        7:  { name: "Inter", css: "compound-inter", dot: "#00cc00" },
+        8:  { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
+    };
+    return map[visualId] || { name: `ID:${visualId}`, css: "", dot: "#888" };
+}
+
+function updateTyreSets(data) {
+    if (data.carIdx !== playerCarIndex) return;
+
+    const sets = data.tyreSetDataItems;
+    const fittedIdx = data.fittedIdx;
+    if (!sets || sets.length === 0) return;
+
+    const groups = {};
+    for (let i = 0; i < sets.length; i++) {
+        const s = sets[i];
+        const info = getVisualCompoundInfo(s.visualTyreCompound);
+        const key = info.name;
+        if (!groups[key]) groups[key] = { info, items: [] };
+        groups[key].items.push({ ...s, idx: i, isFitted: i === fittedIdx, compoundInfo: info });
+    }
+
+    const fittedSet = sets[fittedIdx];
+    const fittedInfo = fittedSet ? getVisualCompoundInfo(fittedSet.visualTyreCompound) : null;
+    const fittedEl = el("fittedCompound");
+    if (fittedInfo) {
+        fittedEl.innerHTML = `<span style="color:${fittedInfo.dot}">●</span> ${fittedInfo.name} (${fittedSet.wear}% wear, ${fittedSet.lifeSpan} laps left)`;
+    }
+
+    const container = el("tyreSetGroups");
+    const order = ["Soft", "Medium", "Hard", "Inter", "Wet"];
+    let html = "";
+
+    for (const groupName of order) {
+        const g = groups[groupName];
+        if (!g) continue;
+        html += `<div class="tyreset-group">`;
+        html += `<div class="tyreset-group-title ${g.info.css}">${groupName} (${g.items.filter(x => x.available).length} avail.)</div>`;
+        for (const s of g.items) {
+            const wearPct = s.wear;
+            const isFitted = s.isFitted;
+            const available = s.available;
+            const cls = isFitted ? "tyreset-item fitted" : available ? "tyreset-item" : "tyreset-item unavailable";
+            const wearColor = wearPct > 60 ? "var(--danger)" : wearPct > 30 ? "var(--warning)" : "var(--safe)";
+            const delta = s.lapDeltaTime;
+            const deltaSign = delta > 0 ? "+" : "";
+            const deltaCls = delta > 0 ? "positive" : delta < 0 ? "negative" : "zero";
+            const deltaText = delta !== 0 ? `${deltaSign}${(delta / 1000).toFixed(1)}s` : "base";
+            const tag = isFitted ? ' <span style="color:var(--accent-red);font-weight:700;">FIT</span>' : "";
+            html += `<div class="${cls}">`;
+            html += `<span class="tyreset-compound-dot" style="background:${s.compoundInfo.dot}"></span>`;
+            html += `<div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div>`;
+            html += `<span class="tyreset-detail">${wearPct}% worn${tag}</span>`;
+            html += `<span class="tyreset-life">${s.lifeSpan}L / ${s.usableLife}L</span>`;
+            html += `<span class="tyreset-delta ${deltaCls}">${deltaText}</span>`;
+            html += `</div>`;
+        }
+        html += `</div>`;
+    }
+
+    container.innerHTML = html || '<div class="tyreset-placeholder">No tyre sets available</div>';
+}
+
+async function loadPitTimes() {
+    try {
+        const resp = await fetch("/api/pit-times");
+        if (resp.ok) pitTimesData = await resp.json();
+    } catch (e) {
+        console.warn("Failed to load pit times:", e);
+    }
+}
+
+function getPitTimeForTrack(trackId) {
+    const entry = pitTimesData[String(trackId)];
+    if (entry && entry.pitTimeSec) return entry.pitTimeSec;
+    return 23.0;
+}
+
+function updatePitPredictor() {
+    if (!lastLapDataPacket) return;
+    const items = lastLapDataPacket.lapDataItems;
+    if (!items) return;
+
+    const playerLap = items[playerCarIndex];
+    if (!playerLap || playerLap.resultStatus < 2) return;
+
+    const pitTimeSec = parseFloat(el("pitTimeInput").value) || getPitTimeForTrack(currentTrackId);
+    const pitTimeMs = pitTimeSec * 1000;
+
+    const sorted = [];
+    for (let i = 0; i < items.length; i++) {
+        const ld = items[i];
+        if (ld.resultStatus < 2) continue;
+        const gapToLeaderMs = ld.deltaToRaceLeaderMinutesPart * 60000 + ld.deltaToRaceLeaderMsPart;
+        sorted.push({
+            idx: i,
+            pos: ld.carPosition,
+            gapToLeaderMs,
+            name: participantNames[i] || `Car ${i}`,
+            isPlayer: i === playerCarIndex,
+            pitStatus: ld.pitStatus,
+        });
+    }
+    sorted.sort((a, b) => a.pos - b.pos);
+
+    const playerEntry = sorted.find(r => r.isPlayer);
+    if (!playerEntry) return;
+
+    const playerGapAfterPit = playerEntry.gapToLeaderMs + pitTimeMs;
+
+    let predictedPos = 1;
+    for (const r of sorted) {
+        if (r.isPlayer) continue;
+        if (r.gapToLeaderMs < playerGapAfterPit) {
+            predictedPos++;
+        }
+    }
+
+    el("pitPredPos").textContent = predictedPos;
+
+    let carAhead = null;
+    let carBehind = null;
+    const positionsAfterPit = sorted
+        .filter(r => !r.isPlayer)
+        .map(r => ({ ...r, effectiveGap: r.gapToLeaderMs }))
+        .concat([{ ...playerEntry, effectiveGap: playerGapAfterPit, isPlayer: true }])
+        .sort((a, b) => a.effectiveGap - b.effectiveGap);
+
+    const playerIdx = positionsAfterPit.findIndex(r => r.isPlayer);
+    if (playerIdx > 0) {
+        const ahead = positionsAfterPit[playerIdx - 1];
+        carAhead = {
+            name: ahead.name,
+            gapMs: playerGapAfterPit - ahead.effectiveGap,
+        };
+    }
+    if (playerIdx < positionsAfterPit.length - 1) {
+        const behind = positionsAfterPit[playerIdx + 1];
+        carBehind = {
+            name: behind.name,
+            gapMs: behind.effectiveGap - playerGapAfterPit,
+        };
+    }
+
+    if (carAhead) {
+        el("pitAheadName").textContent = carAhead.name;
+        el("pitAheadGap").textContent = `+${(carAhead.gapMs / 1000).toFixed(1)}s`;
+    } else {
+        el("pitAheadName").textContent = "Leader";
+        el("pitAheadGap").textContent = "--";
+    }
+
+    if (carBehind) {
+        el("pitBehindName").textContent = carBehind.name;
+        el("pitBehindGap").textContent = `-${(carBehind.gapMs / 1000).toFixed(1)}s`;
+    } else {
+        el("pitBehindName").textContent = "No car behind";
+        el("pitBehindGap").textContent = "--";
+    }
+}
+
+async function savePitTime() {
+    const val = parseFloat(el("pitTimeInput").value);
+    if (!val || val <= 0 || currentTrackId < 0) return;
+    const trackName = TRACK_NAMES[currentTrackId] || `Track ${currentTrackId}`;
+    try {
+        const resp = await fetch(`/api/pit-times/${currentTrackId}`, {
+            method: "PUT",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ trackName, pitTimeSec: val }),
+        });
+        if (resp.ok) {
+            pitTimesData[String(currentTrackId)] = { trackName, pitTimeSec: val };
+            el("pitSaveStatus").textContent = "Saved!";
+            setTimeout(() => { el("pitSaveStatus").textContent = ""; }, 2000);
+        }
+    } catch (e) {
+        console.warn("Failed to save pit time:", e);
+    }
+}
+
 const PACKET_HANDLERS = {
     Session: updateSession,
     CarTelemetry: updateCarTelemetry,
@@ -456,6 +655,7 @@ const PACKET_HANDLERS = {
     CarDamage: updateCarDamage,
     Participants: updateParticipants,
     Event: updateEvent,
+    TyreSets: updateTyreSets,
 };
 
 function initConnection() {
@@ -521,4 +721,10 @@ function requestCurrentState(connection) {
         .catch(err => console.warn("Failed to get current state:", err));
 }
 
-document.addEventListener("DOMContentLoaded", initConnection);
+document.addEventListener("DOMContentLoaded", async () => {
+    await loadPitTimes();
+    initConnection();
+
+    el("btnSavePitTime")?.addEventListener("click", savePitTime);
+    el("pitTimeInput")?.addEventListener("change", updatePitPredictor);
+});

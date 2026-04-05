@@ -112,6 +112,60 @@ app.MapPost("/api/settings", async (HttpContext ctx, IConfiguration config) =>
     });
 });
 
+var pitTimesPath = Path.Combine(app.Environment.WebRootPath, "data", "pit-times.json");
+
+app.MapGet("/api/pit-times", async () =>
+{
+    if (!File.Exists(pitTimesPath))
+        return Results.Ok(new Dictionary<string, object>());
+    var json = await File.ReadAllTextAsync(pitTimesPath);
+    var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+    return Results.Ok(data);
+});
+
+app.MapGet("/api/pit-times/{trackId}", async (string trackId) =>
+{
+    if (!File.Exists(pitTimesPath))
+        return Results.NotFound(new { error = "Pit times file not found" });
+    var json = await File.ReadAllTextAsync(pitTimesPath);
+    using var doc = System.Text.Json.JsonDocument.Parse(json);
+    if (doc.RootElement.TryGetProperty(trackId, out var entry))
+        return Results.Ok(System.Text.Json.JsonSerializer.Deserialize<object>(entry.GetRawText()));
+    return Results.NotFound(new { error = $"No pit time for track {trackId}" });
+});
+
+app.MapPut("/api/pit-times/{trackId}", async (string trackId, HttpContext ctx) =>
+{
+    var body = await ctx.Request.ReadFromJsonAsync<PitTimeUpdateRequest>();
+    if (body is null || body.PitTimeSec <= 0)
+        return Results.BadRequest("Invalid pit time");
+
+    var existing = new Dictionary<string, System.Text.Json.JsonElement>();
+    if (File.Exists(pitTimesPath))
+    {
+        var json = await File.ReadAllTextAsync(pitTimesPath);
+        existing = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(json)
+                   ?? new();
+    }
+
+    var entryJson = System.Text.Json.JsonSerializer.SerializeToElement(new
+    {
+        trackName = body.TrackName ?? $"Track {trackId}",
+        pitTimeSec = body.PitTimeSec
+    });
+    existing[trackId] = entryJson;
+
+    var dir = Path.GetDirectoryName(pitTimesPath);
+    if (dir != null && !Directory.Exists(dir))
+        Directory.CreateDirectory(dir);
+
+    var newJson = System.Text.Json.JsonSerializer.Serialize(existing,
+        new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
+    await File.WriteAllTextAsync(pitTimesPath, newJson);
+
+    return Results.Ok(new { saved = true, trackId, pitTimeSec = body.PitTimeSec });
+});
+
 app.MapGet("/api/debug/stats", (DebugPacketTracker tracker) =>
 {
     return Results.Ok(new
@@ -150,3 +204,7 @@ record SettingsUpdateRequest(
     int UdpListenPort,
     int WebPort,
     bool DebugMode);
+
+record PitTimeUpdateRequest(
+    string? TrackName,
+    double PitTimeSec);

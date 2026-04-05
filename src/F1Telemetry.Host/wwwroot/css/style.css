@@ -548,3 +548,215 @@
 .temp-trend-stable {
     color: var(--text-dim);
 }
+
+/* Available Tyre Sets */
+.tyresets-card {
+    grid-column: 1 / -1;
+}
+
+.tyreset-fitted {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.fitted-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+}
+
+.fitted-value {
+    font-weight: 700;
+    font-family: var(--font-mono);
+    font-size: 14px;
+}
+
+.tyreset-groups {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+}
+
+.tyreset-placeholder {
+    color: var(--text-dim);
+    font-style: italic;
+    font-size: 13px;
+}
+
+.tyreset-group {
+    flex: 1;
+    min-width: 200px;
+}
+
+.tyreset-group-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    margin-bottom: 6px;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+}
+
+.tyreset-group-title.compound-soft { color: #ff3333; }
+.tyreset-group-title.compound-medium { color: #ffd700; }
+.tyreset-group-title.compound-hard { color: #e0e0e0; }
+.tyreset-group-title.compound-inter { color: #00cc00; }
+.tyreset-group-title.compound-wet { color: #00a6ff; }
+
+.tyreset-item {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 5px 8px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.03);
+    margin-bottom: 4px;
+    font-size: 12px;
+    font-family: var(--font-mono);
+}
+
+.tyreset-item.fitted {
+    background: rgba(225, 6, 0, 0.12);
+    border-left: 3px solid var(--accent-red);
+}
+
+.tyreset-item.unavailable {
+    opacity: 0.35;
+}
+
+.tyreset-compound-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.tyreset-wear-bar {
+    flex: 1;
+    height: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+    min-width: 50px;
+}
+
+.tyreset-wear-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.3s;
+}
+
+.tyreset-detail {
+    color: var(--text-secondary);
+    font-size: 11px;
+    min-width: 70px;
+    text-align: right;
+}
+
+.tyreset-life {
+    color: var(--text-dim);
+    font-size: 11px;
+    min-width: 50px;
+    text-align: right;
+}
+
+.tyreset-delta {
+    font-size: 11px;
+    min-width: 55px;
+    text-align: right;
+}
+
+.tyreset-delta.positive { color: var(--accent-red); }
+.tyreset-delta.negative { color: var(--accent-green); }
+.tyreset-delta.zero { color: var(--text-dim); }
+
+/* Pit Stop Predictor */
+.pitstop-config {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 14px;
+    flex-wrap: wrap;
+}
+
+.pit-time-input {
+    width: 70px;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: rgba(255,255,255,0.05);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
+    font-size: 13px;
+    text-align: center;
+}
+
+.pit-time-input:focus {
+    outline: none;
+    border-color: var(--accent-blue);
+}
+
+.pit-save-status {
+    font-size: 11px;
+    color: var(--accent-green);
+}
+
+.pitstop-prediction {
+    display: flex;
+    gap: 20px;
+    align-items: flex-start;
+    flex-wrap: wrap;
+}
+
+.pit-result {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+}
+
+.pit-gaps {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.pit-gap-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 6px 10px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 4px;
+}
+
+.pit-gap-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    min-width: 70px;
+}
+
+.pit-gap-driver {
+    font-size: 13px;
+    font-weight: 600;
+    flex: 1;
+}
+
+.pit-gap-value {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    color: var(--accent-yellow);
+}
+
+@media (max-width: 768px) {
+    .tyresets-card { grid-column: 1; }
+    .tyreset-groups { flex-direction: column; }
+    .pitstop-prediction { flex-direction: column; }
+}

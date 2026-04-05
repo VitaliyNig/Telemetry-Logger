@@ -142,6 +142,47 @@
                     </div>
                 </section>
 
+                <!-- Available Tyre Sets -->
+                <section class="card tyresets-card" id="tyreSetsCard">
+                    <h2>Available Tyre Sets</h2>
+                    <div class="tyreset-fitted" id="tyreSetFitted">
+                        <span class="fitted-label">Fitted:</span>
+                        <span class="fitted-value" id="fittedCompound">--</span>
+                    </div>
+                    <div class="tyreset-groups" id="tyreSetGroups">
+                        <div class="tyreset-placeholder">Waiting for tyre set data...</div>
+                    </div>
+                </section>
+
+                <!-- Pit Position Predictor -->
+                <section class="card pitstop-card" id="pitStopCard">
+                    <h2>Pit Stop Predictor</h2>
+                    <div class="pitstop-config">
+                        <span class="stat-label">Pit Time (s)</span>
+                        <input type="number" id="pitTimeInput" class="pit-time-input" step="0.1" min="15" max="40" value="23.0">
+                        <button class="btn btn-small btn-primary" id="btnSavePitTime">Save</button>
+                        <span class="pit-save-status" id="pitSaveStatus"></span>
+                    </div>
+                    <div class="pitstop-prediction" id="pitPrediction">
+                        <div class="pit-result">
+                            <span class="stat-label">Predicted Position</span>
+                            <span class="stat-value big" id="pitPredPos">--</span>
+                        </div>
+                        <div class="pit-gaps">
+                            <div class="pit-gap-item">
+                                <span class="pit-gap-label">Car Ahead</span>
+                                <span class="pit-gap-driver" id="pitAheadName">--</span>
+                                <span class="pit-gap-value" id="pitAheadGap">--</span>
+                            </div>
+                            <div class="pit-gap-item">
+                                <span class="pit-gap-label">Car Behind</span>
+                                <span class="pit-gap-driver" id="pitBehindName">--</span>
+                                <span class="pit-gap-value" id="pitBehindGap">--</span>
+                            </div>
+                        </div>
+                    </div>
+                </section>
+
                 <!-- Car Status -->
                 <section class="card status-card" id="statusCard">
                     <h2>Car Status</h2>
