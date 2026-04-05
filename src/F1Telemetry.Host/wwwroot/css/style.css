@@ -1,0 +1,521 @@
+:root {
+    --bg-dark: #0f1117;
+    --bg-card: #1a1d26;
+    --bg-card-hover: #22262f;
+    --border: #2a2e3a;
+    --text-primary: #e8eaed;
+    --text-secondary: #9aa0a6;
+    --text-dim: #5f6368;
+    --accent-red: #e10600;
+    --accent-green: #00d700;
+    --accent-blue: #00a6ff;
+    --accent-yellow: #ffd700;
+    --accent-orange: #ff8c00;
+    --throttle: #00d700;
+    --brake: #e10600;
+    --ers: #ffd700;
+    --danger: #e10600;
+    --warning: #ff8c00;
+    --safe: #00d700;
+    --font-mono: 'Courier New', monospace;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    --radius: 8px;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+body {
+    font-family: var(--font-sans);
+    background: var(--bg-dark);
+    color: var(--text-primary);
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+.top-bar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 12px 24px;
+    background: linear-gradient(135deg, #1a1d26 0%, #0f1117 100%);
+    border-bottom: 2px solid var(--accent-red);
+    position: sticky;
+    top: 0;
+    z-index: 100;
+}
+
+.logo {
+    display: flex;
+    align-items: baseline;
+    gap: 6px;
+}
+
+.logo-f1 {
+    font-size: 28px;
+    font-weight: 900;
+    color: var(--accent-red);
+    letter-spacing: -1px;
+}
+
+.logo-year {
+    font-size: 20px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.logo-sep {
+    color: var(--text-dim);
+    font-weight: 300;
+    font-size: 24px;
+}
+
+.logo-text {
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 3px;
+    color: var(--text-secondary);
+}
+
+.connection-status {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 6px 14px;
+    border-radius: 20px;
+    background: rgba(255,255,255,0.05);
+    font-size: 13px;
+}
+
+.status-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-orange);
+    animation: pulse 1.5s infinite;
+}
+
+.connection-status.connected .status-dot { background: var(--accent-green); animation: none; }
+.connection-status.disconnected .status-dot { background: var(--accent-red); animation: none; }
+
+@keyframes pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.dashboard {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
+    gap: 16px;
+    padding: 16px 24px 32px;
+    max-width: 1600px;
+    margin: 0 auto;
+}
+
+.card {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 16px 20px;
+    transition: border-color 0.2s;
+}
+
+.card:hover { border-color: rgba(225, 6, 0, 0.3); }
+
+.card h2 {
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--text-secondary);
+    margin-bottom: 14px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.session-grid, .status-grid, .lap-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    gap: 10px;
+}
+
+.stat-box {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.stat-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+}
+
+.stat-value {
+    font-size: 16px;
+    font-weight: 600;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+}
+
+.stat-value.big {
+    font-size: 32px;
+    color: var(--accent-red);
+}
+
+/* Telemetry card */
+.telemetry-main {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    margin-bottom: 16px;
+}
+
+.speed-display {
+    text-align: center;
+}
+
+.speed-value {
+    font-size: 64px;
+    font-weight: 900;
+    font-family: var(--font-mono);
+    line-height: 1;
+    color: var(--text-primary);
+}
+
+.speed-unit {
+    font-size: 12px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+}
+
+.gear-display {
+    text-align: center;
+}
+
+.gear-label {
+    font-size: 10px;
+    letter-spacing: 2px;
+    color: var(--text-dim);
+}
+
+.gear-value {
+    font-size: 56px;
+    font-weight: 900;
+    font-family: var(--font-mono);
+    color: var(--accent-red);
+    line-height: 1;
+}
+
+.rpm-container {
+    flex: 1;
+    min-width: 100px;
+}
+
+.rpm-bar-bg {
+    height: 12px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 6px;
+    overflow: hidden;
+}
+
+.rpm-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: linear-gradient(90deg, var(--accent-green), var(--accent-yellow), var(--accent-red));
+    border-radius: 6px;
+    transition: width 0.1s;
+}
+
+.rpm-value {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 4px;
+    text-align: right;
+    font-family: var(--font-mono);
+}
+
+.pedals-row {
+    display: flex;
+    gap: 16px;
+    align-items: center;
+}
+
+.pedal-group {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.pedal-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+}
+
+.pedal-bar-bg {
+    height: 8px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    overflow: hidden;
+}
+
+.pedal-bar-fill {
+    height: 100%;
+    width: 0%;
+    border-radius: 4px;
+    transition: width 0.05s;
+}
+
+.throttle-fill { background: var(--throttle); }
+.brake-fill { background: var(--brake); }
+
+.pedal-pct {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+}
+
+.drs-indicator {
+    padding: 4px 16px;
+    border-radius: 4px;
+    font-weight: 700;
+    font-size: 14px;
+    text-align: center;
+    background: rgba(255,255,255,0.05);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+}
+
+.drs-indicator.active {
+    background: rgba(0, 215, 0, 0.15);
+    color: var(--accent-green);
+    border-color: var(--accent-green);
+}
+
+/* Tyres */
+.tyres-layout {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-bottom: 12px;
+}
+
+.tyre-box {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 12px;
+    background: rgba(255,255,255,0.03);
+    border-radius: 6px;
+    border: 1px solid var(--border);
+}
+
+.tyre-pos {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+}
+
+.tyre-temp {
+    font-size: 20px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+}
+
+.tyre-wear {
+    font-size: 12px;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+}
+
+.compound-info {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+}
+
+.compound-label {
+    color: var(--text-dim);
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    font-size: 10px;
+}
+
+.compound-value {
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+
+/* ERS bar */
+.ers-bar-bg {
+    height: 8px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 4px;
+    overflow: hidden;
+    margin-top: 4px;
+}
+
+.ers-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--ers);
+    border-radius: 4px;
+    transition: width 0.2s;
+}
+
+/* Damage */
+.damage-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+}
+
+.damage-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.damage-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+}
+
+.damage-bar-bg {
+    height: 6px;
+    background: rgba(255,255,255,0.08);
+    border-radius: 3px;
+    overflow: hidden;
+}
+
+.damage-bar-fill {
+    height: 100%;
+    width: 0%;
+    background: var(--safe);
+    border-radius: 3px;
+    transition: width 0.3s, background 0.3s;
+}
+
+/* Events */
+.events-list {
+    max-height: 200px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.events-list::-webkit-scrollbar { width: 4px; }
+.events-list::-webkit-scrollbar-track { background: transparent; }
+.events-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.event-item {
+    font-size: 12px;
+    padding: 6px 10px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.03);
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    display: flex;
+    justify-content: space-between;
+}
+
+.event-item.placeholder {
+    color: var(--text-dim);
+    font-style: italic;
+    font-family: var(--font-sans);
+}
+
+.event-item .event-code {
+    font-weight: 700;
+    color: var(--accent-blue);
+    min-width: 48px;
+}
+
+.event-item .event-detail {
+    flex: 1;
+    margin-left: 10px;
+}
+
+.event-item .event-time {
+    color: var(--text-dim);
+    font-size: 11px;
+}
+
+/* Standings */
+.standings-card {
+    grid-column: 1 / -1;
+}
+
+.standings-table-wrap {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.standings-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.standings-table th {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--bg-card);
+}
+
+.standings-table td {
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-family: var(--font-mono);
+}
+
+.standings-table tr.player-row {
+    background: rgba(225, 6, 0, 0.08);
+}
+
+.standings-table tr.player-row td:first-child {
+    color: var(--accent-red);
+    font-weight: 700;
+}
+
+.standings-table td.pit-status {
+    color: var(--accent-orange);
+}
+
+/* Responsive */
+@media (max-width: 768px) {
+    .dashboard {
+        grid-template-columns: 1fr;
+        padding: 12px;
+    }
+
+    .telemetry-main {
+        flex-wrap: wrap;
+    }
+
+    .speed-value { font-size: 48px; }
+    .gear-value { font-size: 40px; }
+    .standings-card { grid-column: 1; }
+}
+
+/* Temperature color helpers set via JS */
+.temp-cold { color: #00a6ff; }
+.temp-optimal { color: var(--accent-green); }
+.temp-hot { color: var(--accent-orange); }
+.temp-critical { color: var(--accent-red); }
