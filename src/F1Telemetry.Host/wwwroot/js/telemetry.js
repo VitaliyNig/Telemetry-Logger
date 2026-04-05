@@ -264,23 +264,41 @@ function buildPenaltyDetail(d) {
     return text;
 }
 
+function unpinServedPenalty(vehicleIdx, matchPenaltyType) {
+    const idx = pinnedPenalties.findIndex(
+        p => p.vehicleIdx === vehicleIdx && p.penaltyType === matchPenaltyType && !p.served
+    );
+    if (idx === -1) return;
+    const penalty = pinnedPenalties[idx];
+    penalty.served = true;
+    pinnedPenalties.splice(idx, 1);
+}
+
 function updateEvent(data, header) {
     const code = data.eventCode;
     const name = EVENT_NAMES[code] || code;
     let detail = "";
     const isPenalty = PENALTY_CODES.has(code);
+    let vehicleIdx = -1;
+    let penaltyType = -1;
 
     if (data.details) {
         const d = data.details;
 
         if (code === "PENA") {
             detail = buildPenaltyDetail(d);
+            vehicleIdx = d.vehicleIdx;
+            penaltyType = d.penaltyType;
         } else if (code === "DTSV") {
+            vehicleIdx = d.vehicleIdx;
             const driver = participantNames[d.vehicleIdx] || `Car ${d.vehicleIdx}`;
             detail = `${driver}: Drive Through served`;
+            unpinServedPenalty(vehicleIdx, 0);
         } else if (code === "SGSV") {
+            vehicleIdx = d.vehicleIdx;
             const driver = participantNames[d.vehicleIdx] || `Car ${d.vehicleIdx}`;
             detail = `${driver}: Stop-Go served (${d.stopTime?.toFixed(1) || 0}s)`;
+            unpinServedPenalty(vehicleIdx, 1);
         } else {
             if (d.vehicleIdx !== undefined) {
                 detail = participantNames[d.vehicleIdx] || `Car ${d.vehicleIdx}`;
@@ -301,13 +319,14 @@ function updateEvent(data, header) {
     }
 
     const time = header?.sessionTime?.toFixed(1) || "--";
-    const entry = { code, name, detail, time, isPenalty };
+    const entry = { code, name, detail, time, isPenalty, vehicleIdx, penaltyType };
 
-    if (isPenalty) {
-        if (code === "DTSV" || code === "SGSV") {
-            entry.served = true;
-        }
+    if (code === "PENA") {
         pinnedPenalties.unshift(entry);
+    }
+
+    if (code === "DTSV" || code === "SGSV") {
+        entry.served = true;
     }
 
     events.unshift(entry);
@@ -337,17 +356,15 @@ function renderEvents() {
 
     let html = "";
 
-    if (pinnedPenalties.length > 0) {
+    const activePinned = pinnedPenalties.filter(e => !e.served);
+    if (activePinned.length > 0) {
         html += '<div class="pinned-section">';
-        html += '<div class="pinned-header">PENALTIES</div>';
-        html += pinnedPenalties.map(e => renderEventItem(e, true)).join("");
+        html += '<div class="pinned-header">ACTIVE PENALTIES</div>';
+        html += activePinned.map(e => renderEventItem(e, true)).join("");
         html += '</div>';
     }
 
-    const regularEvents = events.filter(e => !e.isPenalty);
-    if (regularEvents.length > 0) {
-        html += regularEvents.map(e => renderEventItem(e, false)).join("");
-    }
+    html += events.map(e => renderEventItem(e, false)).join("");
 
     list.innerHTML = html;
 }
