@@ -722,9 +722,7 @@ function requestCurrentState(connection) {
 }
 
 document.addEventListener("DOMContentLoaded", async () => {
+    if (typeof initWidgets === "function") initWidgets();
     await loadPitTimes();
     initConnection();
-
-    el("btnSavePitTime")?.addEventListener("click", savePitTime);
-    el("pitTimeInput")?.addEventListener("change", updatePitPredictor);
 });
