@@ -6,4 +6,5 @@ namespace F1Telemetry.Host.Hubs;
 public interface ITelemetryClient
 {
     Task ReceivePacket(string packetType, TelemetryPacketHeader header, object data);
+    Task DebugPacket(object data);
 }

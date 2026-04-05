@@ -22,60 +22,7 @@
     --radius: 8px;
 }
 
-* { margin: 0; padding: 0; box-sizing: border-box; }
-
-body {
-    font-family: var(--font-sans);
-    background: var(--bg-dark);
-    color: var(--text-primary);
-    min-height: 100vh;
-    overflow-x: hidden;
-}
-
-.top-bar {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    padding: 12px 24px;
-    background: linear-gradient(135deg, #1a1d26 0%, #0f1117 100%);
-    border-bottom: 2px solid var(--accent-red);
-    position: sticky;
-    top: 0;
-    z-index: 100;
-}
-
-.logo {
-    display: flex;
-    align-items: baseline;
-    gap: 6px;
-}
-
-.logo-f1 {
-    font-size: 28px;
-    font-weight: 900;
-    color: var(--accent-red);
-    letter-spacing: -1px;
-}
-
-.logo-year {
-    font-size: 20px;
-    font-weight: 700;
-    color: var(--text-primary);
-}
-
-.logo-sep {
-    color: var(--text-dim);
-    font-weight: 300;
-    font-size: 24px;
-}
-
-.logo-text {
-    font-size: 14px;
-    font-weight: 600;
-    letter-spacing: 3px;
-    color: var(--text-secondary);
-}
-
+/* Connection status indicator (used in app header) */
 .connection-status {
     display: flex;
     align-items: center;
@@ -106,7 +53,7 @@ body {
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(360px, 1fr));
     gap: 16px;
-    padding: 16px 24px 32px;
+    padding: 16px 0 32px;
     max-width: 1600px;
     margin: 0 auto;
 }

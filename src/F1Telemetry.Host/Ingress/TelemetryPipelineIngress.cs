@@ -1,3 +1,5 @@
+using F1Telemetry.Config;
+using F1Telemetry.Debug;
 using F1Telemetry.F125.Protocol;
 using F1Telemetry.Ingress;
 using F1Telemetry.State;
@@ -5,31 +7,39 @@ using F1Telemetry.Telemetry;
 using F1Telemetry.Host.Hubs;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Options;
 
 namespace F1Telemetry.Host.Ingress;
 
 /// <summary>
-/// Full pipeline ingress: reads header, deserializes body, stores state, and broadcasts via SignalR.
+/// Full pipeline ingress: reads header, deserializes body, stores state, broadcasts via SignalR,
+/// and tracks packets for the debug panel.
 /// </summary>
 public sealed class TelemetryPipelineIngress : ITelemetryIngress
 {
     private readonly IPacketHeaderReader _headerReader;
     private readonly PacketDeserializerRegistry _registry;
     private readonly TelemetryState _state;
+    private readonly DebugPacketTracker _tracker;
     private readonly IHubContext<TelemetryHub, ITelemetryClient> _hubContext;
+    private readonly IOptionsMonitor<AppSettings> _appSettings;
     private readonly ILogger<TelemetryPipelineIngress> _logger;
 
     public TelemetryPipelineIngress(
         IPacketHeaderReader headerReader,
         PacketDeserializerRegistry registry,
         TelemetryState state,
+        DebugPacketTracker tracker,
         IHubContext<TelemetryHub, ITelemetryClient> hubContext,
+        IOptionsMonitor<AppSettings> appSettings,
         ILogger<TelemetryPipelineIngress> logger)
     {
         _headerReader = headerReader;
         _registry = registry;
         _state = state;
+        _tracker = tracker;
         _hubContext = hubContext;
+        _appSettings = appSettings;
         _logger = logger;
     }
 
@@ -49,6 +59,9 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
             _logger.LogWarning("Unexpected format year={Year} format={Format}", header.GameYear, header.PacketFormat);
             return;
         }
+
+        var packetName = ((F125PacketId)header.PacketId).ToString();
+        _tracker.RecordPacket(packetName);
 
         var deserializer = _registry.Get(header.PacketId);
         if (deserializer == null)
@@ -73,7 +86,6 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
 
         _state.Update(header.PacketId, deserialized);
 
-        var packetName = ((F125PacketId)header.PacketId).ToString();
         try
         {
             await _hubContext.Clients.All.ReceivePacket(packetName, header, deserialized);
@@ -81,6 +93,24 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         catch (Exception ex)
         {
             _logger.LogError(ex, "Failed to broadcast packet {PacketName}", packetName);
+        }
+
+        if (_appSettings.CurrentValue.DebugMode)
+        {
+            try
+            {
+                await _hubContext.Clients.All.DebugPacket(new
+                {
+                    timestamp = DateTimeOffset.UtcNow.ToString("HH:mm:ss.fff"),
+                    name = packetName,
+                    counts = _tracker.GetPacketCounts(),
+                    total = _tracker.TotalPackets
+                });
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "Failed to send debug packet");
+            }
         }
     }
 }
