@@ -6,15 +6,24 @@
     --text-primary: #e8eaed;
     --text-secondary: #9aa0a6;
     --text-dim: #5f6368;
-    --accent-red: #e10600;
+    --accent-brand: #9b3ff5;
+    --accent-brand-hover: #b56fff;
+    --accent-brand-muted: rgba(155, 63, 245, 0.12);
+    --accent-brand-soft: rgba(155, 63, 245, 0.08);
+    --accent-brand-border: rgba(155, 63, 245, 0.3);
+    --semantic-red: #e10600;
+    --semantic-red-soft: rgba(225, 6, 0, 0.08);
+    --semantic-red-mid: rgba(225, 6, 0, 0.14);
+    --semantic-red-glow: rgba(225, 6, 0, 0.15);
+    --accent-red: var(--accent-brand);
     --accent-green: #00d700;
     --accent-blue: #00a6ff;
     --accent-yellow: #ffd700;
     --accent-orange: #ff8c00;
     --throttle: #00d700;
-    --brake: #e10600;
+    --brake: var(--semantic-red);
     --ers: #ffd700;
-    --danger: #e10600;
+    --danger: var(--semantic-red);
     --warning: #ff8c00;
     --safe: #00d700;
     --font-mono: 'Courier New', monospace;
@@ -31,6 +40,7 @@
     border-radius: 20px;
     background: rgba(255,255,255,0.05);
     font-size: 13px;
+    flex-shrink: 0;
 }
 
 .status-dot {
@@ -42,7 +52,7 @@
 }
 
 .connection-status.connected .status-dot { background: var(--accent-green); animation: none; }
-.connection-status.disconnected .status-dot { background: var(--accent-red); animation: none; }
+.connection-status.disconnected .status-dot { background: var(--semantic-red); animation: none; }
 
 @keyframes pulse {
     0%, 100% { opacity: 1; }
@@ -64,7 +74,7 @@
 }
 
 .grid-stack-item-content:hover {
-    border-color: rgba(225, 6, 0, 0.3) !important;
+    border-color: var(--accent-brand-border) !important;
 }
 
 .grid-stack > .grid-stack-item > .grid-stack-item-content {
@@ -72,8 +82,8 @@
 }
 
 .grid-stack-placeholder > .placeholder-content {
-    background: rgba(225, 6, 0, 0.08) !important;
-    border: 2px dashed var(--accent-red) !important;
+    background: var(--accent-brand-soft) !important;
+    border: 2px dashed var(--accent-brand) !important;
     border-radius: var(--radius) !important;
 }
 
@@ -136,8 +146,8 @@
 }
 
 .widget-close-btn:hover {
-    color: var(--accent-red);
-    background: rgba(225, 6, 0, 0.1);
+    color: var(--accent-brand);
+    background: var(--accent-brand-muted);
 }
 
 .widget-body {
@@ -198,7 +208,7 @@
 }
 
 .preset-btn.active {
-    background: var(--accent-red);
+    background: var(--accent-brand);
     color: #fff;
 }
 
@@ -308,7 +318,7 @@
 
 .stat-value.big {
     font-size: 32px;
-    color: var(--accent-red);
+    color: var(--accent-brand);
 }
 
 /* Telemetry card */
@@ -352,7 +362,7 @@
     font-size: 56px;
     font-weight: 900;
     font-family: var(--font-mono);
-    color: var(--accent-red);
+    color: var(--accent-brand);
     line-height: 1;
 }
 
@@ -371,7 +381,7 @@
 .rpm-bar-fill {
     height: 100%;
     width: 0%;
-    background: linear-gradient(90deg, var(--accent-green), var(--accent-yellow), var(--accent-red));
+    background: linear-gradient(90deg, var(--accent-green), var(--accent-yellow), var(--accent-brand));
     border-radius: 6px;
     transition: width 0.1s;
 }
@@ -579,7 +589,7 @@
     font-size: 10px;
     text-transform: uppercase;
     letter-spacing: 2px;
-    color: var(--accent-red);
+    color: var(--accent-brand);
     font-weight: 700;
     padding: 2px 0;
 }
@@ -603,16 +613,16 @@
 }
 
 .event-item.penalty {
-    background: rgba(225, 6, 0, 0.08);
+    background: var(--semantic-red-soft);
     color: #ff6b6b;
-    border-left: 3px solid var(--accent-red);
+    border-left: 3px solid var(--semantic-red);
 }
 
 .event-item.penalty.pinned {
-    background: rgba(225, 6, 0, 0.14);
+    background: var(--semantic-red-mid);
     color: #ff8a8a;
-    border-left: 3px solid var(--accent-red);
-    box-shadow: 0 0 8px rgba(225, 6, 0, 0.15);
+    border-left: 3px solid var(--semantic-red);
+    box-shadow: 0 0 8px var(--semantic-red-glow);
 }
 
 .event-item.penalty.pinned .event-detail {
@@ -627,7 +637,7 @@
 }
 
 .event-item .penalty-code {
-    color: var(--accent-red);
+    color: var(--semantic-red);
 }
 
 .pin-icon {
@@ -693,11 +703,11 @@
 }
 
 .standings-table tr.player-row {
-    background: rgba(225, 6, 0, 0.08);
+    background: var(--accent-brand-soft);
 }
 
 .standings-table tr.player-row td:first-child {
-    color: var(--accent-red);
+    color: var(--accent-brand);
     font-weight: 700;
 }
 
@@ -719,7 +729,7 @@
 .temp-cold { color: #00a6ff; }
 .temp-optimal { color: var(--accent-green); }
 .temp-hot { color: var(--accent-orange); }
-.temp-critical { color: var(--accent-red); }
+.temp-critical { color: var(--semantic-red); }
 
 /* Temperature trend indicators */
 .temp-trend {
@@ -730,7 +740,7 @@
 }
 
 .temp-trend-up {
-    color: var(--accent-red);
+    color: var(--semantic-red);
 }
 
 .temp-trend-down {
@@ -808,8 +818,8 @@
 }
 
 .tyreset-item.fitted {
-    background: rgba(225, 6, 0, 0.12);
-    border-left: 3px solid var(--accent-red);
+    background: var(--accent-brand-muted);
+    border-left: 3px solid var(--accent-brand);
 }
 
 .tyreset-item.unavailable {
@@ -858,7 +868,7 @@
     text-align: right;
 }
 
-.tyreset-delta.positive { color: var(--accent-red); }
+.tyreset-delta.positive { color: var(--semantic-red); }
 .tyreset-delta.negative { color: var(--accent-green); }
 .tyreset-delta.zero { color: var(--text-dim); }
 
@@ -1014,7 +1024,7 @@
 }
 
 .qs-invalid {
-    color: var(--accent-red);
+    color: var(--semantic-red);
     font-weight: 700;
     font-size: 12px;
 }
@@ -1025,7 +1035,7 @@
 }
 
 .qs-sector-down {
-    color: var(--accent-red);
+    color: var(--semantic-red);
     font-weight: 600;
 }
 
@@ -1139,7 +1149,7 @@
     white-space: nowrap;
 }
 
-.wf-up { color: var(--accent-red); font-weight: 700; }
+.wf-up { color: var(--semantic-red); font-weight: 700; }
 .wf-down { color: #4dc9ff; font-weight: 700; }
 
 /* Gap Board */
@@ -1201,7 +1211,7 @@
 }
 
 .gap-pos-player {
-    color: var(--accent-red);
+    color: var(--accent-brand);
 }
 
 .gap-driver-name {
@@ -1213,7 +1223,7 @@
 }
 
 .gap-row-player {
-    background: rgba(225, 6, 0, 0.08);
+    background: var(--accent-brand-soft);
 }
 
 .gap-time-cell {
@@ -1227,7 +1237,7 @@
 }
 
 .gap-cell-slower {
-    color: var(--accent-red);
+    color: var(--semantic-red);
     font-weight: 600;
 }
 
