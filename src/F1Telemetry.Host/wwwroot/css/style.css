@@ -218,14 +218,16 @@
     color: #fff;
 }
 
-#btnSavePreset.btn-save-preset-dirty {
+#btnSavePreset.btn-save-preset-dirty,
+#btnSaveSettings.btn-settings-dirty {
     background: var(--accent-yellow);
     border-color: rgba(255, 215, 0, 0.45);
     color: #1a1a1a;
     font-weight: 700;
 }
 
-#btnSavePreset.btn-save-preset-dirty:hover {
+#btnSavePreset.btn-save-preset-dirty:hover,
+#btnSaveSettings.btn-settings-dirty:hover {
     background: #ffe033;
     border-color: rgba(255, 215, 0, 0.65);
     color: #0d0d0d;

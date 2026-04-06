@@ -19,10 +19,10 @@ const WIDGET_REGISTRY = {
 const PRESETS_STORAGE_KEY = "f1telemetry_presets_v1";
 const ACTIVE_PRESET_KEY = "f1telemetry_active_preset_v1";
 const AUTO_SWITCH_KEY = "f1telemetry_autoswitch_v1";
+const LOCK_LAYOUT_KEY = "f1telemetry_lock_layout_v1";
 let grid = null;
 let activePreset = "race";
 let autoSwitchEnabled = true;
-let autoSwitchSetting = true;
 
 /** In-memory drafts per preset for this page session (set when leaving a preset). */
 const sessionDrafts = {};
@@ -248,12 +248,25 @@ const SESSION_TYPE_TO_PRESET = {
 };
 
 function onSessionTypeChanged(sessionType) {
-    if (!autoSwitchSetting || !autoSwitchEnabled) return;
+    const autoCb = document.getElementById("autoSwitchPreset");
+    if (!autoCb || !autoCb.checked || !autoSwitchEnabled) return;
     const preset = SESSION_TYPE_TO_PRESET[sessionType];
     if (preset && preset !== activePreset) {
         switchPreset(preset);
     }
 }
+
+function applyDashboardLayoutLock() {
+    if (!grid) return;
+    const lockCb = document.getElementById("lockLayoutLock");
+    const locked = lockCb ? lockCb.checked : localStorage.getItem(LOCK_LAYOUT_KEY) === "true";
+    grid.enableMove(!locked);
+    grid.enableResize(!locked);
+    document.querySelectorAll(".widget-close-btn").forEach(b => { b.style.display = locked ? "none" : ""; });
+    document.querySelectorAll(".widget-drag-handle").forEach(h => { h.style.opacity = locked ? "0.2" : "1"; });
+}
+
+window.applyDashboardLayoutLock = applyDashboardLayoutLock;
 
 function initWidgets() {
     grid = GridStack.init({
@@ -267,17 +280,15 @@ function initWidgets() {
         disableResize: false,
     }, "#dashboardGrid");
 
-    autoSwitchSetting = localStorage.getItem(AUTO_SWITCH_KEY) !== "false";
-    autoSwitchEnabled = autoSwitchSetting;
-    const autoSwitchCheckbox = document.getElementById("autoSwitchPreset");
-    if (autoSwitchCheckbox) {
-        autoSwitchCheckbox.checked = autoSwitchSetting;
-        autoSwitchCheckbox.addEventListener("change", () => {
-            autoSwitchSetting = autoSwitchCheckbox.checked;
-            autoSwitchEnabled = autoSwitchSetting;
-            localStorage.setItem(AUTO_SWITCH_KEY, autoSwitchSetting);
-        });
+    const autoSwitchCbEarly = document.getElementById("autoSwitchPreset");
+    if (autoSwitchCbEarly) {
+        autoSwitchCbEarly.checked = localStorage.getItem(AUTO_SWITCH_KEY) !== "false";
     }
+    const lockCbEarly = document.getElementById("lockLayoutLock");
+    if (lockCbEarly) {
+        lockCbEarly.checked = localStorage.getItem(LOCK_LAYOUT_KEY) === "true";
+    }
+    autoSwitchEnabled = localStorage.getItem(AUTO_SWITCH_KEY) !== "false";
 
     activePreset = localStorage.getItem(ACTIVE_PRESET_KEY) || "race";
     const layout = loadLayoutForPreset(activePreset);
@@ -288,7 +299,8 @@ function initWidgets() {
 
     document.querySelectorAll(".preset-btn").forEach(btn => {
         btn.addEventListener("click", () => {
-            if (autoSwitchSetting) autoSwitchEnabled = false;
+            const autoCb = document.getElementById("autoSwitchPreset");
+            if (autoCb && autoCb.checked) autoSwitchEnabled = false;
             switchPreset(btn.dataset.preset);
         });
     });
@@ -312,14 +324,7 @@ function initWidgets() {
         updateSavePresetButtonState();
     });
 
-    const lockToggle = document.getElementById("lockToggle");
-    lockToggle?.addEventListener("change", () => {
-        const locked = lockToggle.checked;
-        grid.enableMove(!locked);
-        grid.enableResize(!locked);
-        document.querySelectorAll(".widget-close-btn").forEach(b => b.style.display = locked ? "none" : "");
-        document.querySelectorAll(".widget-drag-handle").forEach(h => h.style.opacity = locked ? "0.2" : "1");
-    });
+    applyDashboardLayoutLock();
 
     document.getElementById("btnUndoLayout")?.addEventListener("click", () => {
         const saved = getSavedLayoutForPreset(activePreset);

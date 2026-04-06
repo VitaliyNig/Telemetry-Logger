@@ -48,12 +48,6 @@
                         <button type="button" class="btn btn-small btn-secondary" id="btnUndoLayout" hidden title="Discard unsaved changes and restore the last saved layout for this preset">Undo</button>
                     </span>
                 </div>
-                <div class="widget-toolbar-right">
-                    <label class="toolbar-toggle">
-                        <input type="checkbox" id="lockToggle">
-                        <span class="toolbar-toggle-label">Lock Layout</span>
-                    </label>
-                </div>
             </div>
             <div class="grid-stack" id="dashboardGrid"></div>
         </section>
@@ -69,7 +63,8 @@
         </section>
 
         <!-- Settings Tab -->
-        <section class="tab-panel" id="panel-settings">
+        <section class="tab-panel settings-tab-panel" id="panel-settings">
+            <div class="settings-scroll">
             <div class="settings-container">
                 <h2>Settings</h2>
 
@@ -131,6 +126,14 @@
                         </label>
                         <span class="setting-hint">Automatically switch layout preset when session type changes (Practice / Qualifying / Race).</span>
                     </div>
+                    <div class="setting-row setting-toggle">
+                        <label for="lockLayoutLock">Lock dashboard layout</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="lockLayoutLock">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="setting-hint">When enabled, widgets on the Live tab cannot be moved, resized, or removed.</span>
+                    </div>
                 </div>
 
                 <div class="settings-group">
@@ -145,11 +148,14 @@
                     </div>
                 </div>
 
-                <div class="settings-actions">
-                    <button class="btn btn-primary" id="btnSaveSettings">Save Settings</button>
+            </div>
+            </div>
+            <footer class="settings-footer" id="settingsFooter">
+                <div class="settings-footer-inner">
+                    <button type="button" class="btn btn-primary" id="btnSaveSettings">Save Settings</button>
                     <span class="save-status" id="saveStatus"></span>
                 </div>
-            </div>
+            </footer>
         </section>
 
         <!-- Debug Tab -->
