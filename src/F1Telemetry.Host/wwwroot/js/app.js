@@ -1,35 +1,68 @@
 (function () {
     'use strict';
 
+    var AUTO_SWITCH_KEY = 'f1telemetry_autoswitch_v1';
+
     // --- State ---
-    let debugMode = false;
-    let connection = null;
-    const consoleEntries = [];
-    const MAX_CONSOLE = 2000;
+    var debugMode = false;
+    var connection = null;
+    var consoleEntries = [];
+    var MAX_CONSOLE = 2000;
+    var lastSavedSettingsSnapshot = null;
 
     // --- DOM refs ---
-    const tabNav = document.getElementById('tabNav');
-    const panels = document.querySelectorAll('.tab-panel');
-    const debugTabBtn = document.querySelector('.tab-debug');
+    var tabNav = document.getElementById('tabNav');
+    var panels = document.querySelectorAll('.tab-panel');
+    var debugTabBtn = document.querySelector('.tab-debug');
 
-    const udpListenIp = document.getElementById('udpListenIp');
-    const udpListenPort = document.getElementById('udpListenPort');
-    const webPort = document.getElementById('webPort');
-    const debugModeToggle = document.getElementById('debugMode');
-    const btnSave = document.getElementById('btnSaveSettings');
-    const saveStatus = document.getElementById('saveStatus');
+    var udpListenIp = document.getElementById('udpListenIp');
+    var udpListenPort = document.getElementById('udpListenPort');
+    var webPort = document.getElementById('webPort');
+    var debugModeToggle = document.getElementById('debugMode');
+    var autoSwitchPreset = document.getElementById('autoSwitchPreset');
+    var btnSave = document.getElementById('btnSaveSettings');
+    var saveStatus = document.getElementById('saveStatus');
 
-    const totalPacketsEl = document.getElementById('totalPackets');
-    const packetCountsList = document.getElementById('packetCountsList');
-    const debugConsole = document.getElementById('debugConsole');
-    const autoScrollToggle = document.getElementById('autoScroll');
-    const btnClearConsole = document.getElementById('btnClearConsole');
-    const btnDownloadLog = document.getElementById('btnDownloadLog');
-    const btnResetStats = document.getElementById('btnResetStats');
+    var totalPacketsEl = document.getElementById('totalPackets');
+    var packetCountsList = document.getElementById('packetCountsList');
+    var debugConsole = document.getElementById('debugConsole');
+    var autoScrollToggle = document.getElementById('autoScroll');
+    var btnClearConsole = document.getElementById('btnClearConsole');
+    var btnDownloadLog = document.getElementById('btnDownloadLog');
+    var btnResetStats = document.getElementById('btnResetStats');
+
+    function getSettingsSnapshot() {
+        return {
+            udpListenIp: udpListenIp ? udpListenIp.value.trim() : '',
+            udpListenPort: udpListenPort ? parseInt(udpListenPort.value, 10) : 0,
+            webPort: webPort ? parseInt(webPort.value, 10) : 0,
+            debugMode: !!(debugModeToggle && debugModeToggle.checked),
+            autoSwitchPreset: !!(autoSwitchPreset && autoSwitchPreset.checked)
+        };
+    }
+
+    function snapshotsEqual(a, b) {
+        return JSON.stringify(a) === JSON.stringify(b);
+    }
+
+    function updateSettingsDirtyState() {
+        if (!btnSave) return;
+        if (lastSavedSettingsSnapshot === null) {
+            btnSave.classList.remove('btn-settings-dirty');
+            return;
+        }
+        btnSave.classList.toggle('btn-settings-dirty', !snapshotsEqual(lastSavedSettingsSnapshot, getSettingsSnapshot()));
+    }
+
+    function syncDashboardTogglesFromStorage() {
+        if (autoSwitchPreset) {
+            autoSwitchPreset.checked = localStorage.getItem(AUTO_SWITCH_KEY) !== 'false';
+        }
+    }
 
     // --- Tab Navigation ---
     tabNav.addEventListener('click', function (e) {
-        const btn = e.target.closest('.tab-btn');
+        var btn = e.target.closest('.tab-btn');
         if (!btn) return;
         switchTab(btn.dataset.tab);
     });
@@ -45,6 +78,8 @@
 
     // --- Settings ---
     function loadSettings() {
+        syncDashboardTogglesFromStorage();
+
         fetch('/api/settings')
             .then(function (r) { return r.json(); })
             .then(function (data) {
@@ -53,9 +88,17 @@
                 webPort.value = data.webPort;
                 debugModeToggle.checked = data.debugMode;
                 setDebugMode(data.debugMode);
+                syncDashboardTogglesFromStorage();
+                lastSavedSettingsSnapshot = getSettingsSnapshot();
+                updateSettingsDirtyState();
+                if (typeof window.applyDashboardLayoutLock === 'function') {
+                    window.applyDashboardLayoutLock();
+                }
             })
             .catch(function (err) {
                 console.error('Failed to load settings:', err);
+                lastSavedSettingsSnapshot = getSettingsSnapshot();
+                updateSettingsDirtyState();
             });
     }
 
@@ -75,7 +118,21 @@
 
     debugModeToggle.addEventListener('change', function () {
         setDebugMode(this.checked);
+        updateSettingsDirtyState();
     });
+
+    if (autoSwitchPreset) {
+        autoSwitchPreset.addEventListener('change', updateSettingsDirtyState);
+    }
+
+    function wireSettingsInputsDirty() {
+        [udpListenIp, udpListenPort, webPort].forEach(function (el) {
+            if (!el) return;
+            el.addEventListener('input', updateSettingsDirtyState);
+            el.addEventListener('change', updateSettingsDirtyState);
+        });
+    }
+    wireSettingsInputsDirty();
 
     btnSave.addEventListener('click', function () {
         var body = {
@@ -95,6 +152,12 @@
         })
             .then(function (r) { return r.json(); })
             .then(function (data) {
+                localStorage.setItem(AUTO_SWITCH_KEY, autoSwitchPreset && autoSwitchPreset.checked ? 'true' : 'false');
+                lastSavedSettingsSnapshot = getSettingsSnapshot();
+                updateSettingsDirtyState();
+                if (typeof window.applyDashboardLayoutLock === 'function') {
+                    window.applyDashboardLayoutLock();
+                }
                 saveStatus.textContent = data.message || 'Saved!';
                 saveStatus.style.color = 'var(--green)';
                 setTimeout(function () { saveStatus.textContent = ''; }, 4000);

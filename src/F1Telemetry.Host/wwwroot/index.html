@@ -43,14 +43,19 @@
                     </div>
                     <button class="btn btn-small btn-primary" id="btnAddWidget">+ Add Widget</button>
                     <div class="widget-dropdown hidden" id="widgetDropdown"></div>
-                    <button class="btn btn-small btn-secondary" id="btnSavePreset" title="Save current layout to active preset">Save Preset</button>
+                    <span class="preset-save-group">
+                        <button type="button" class="btn btn-small btn-secondary" id="btnSavePreset" title="Save current layout to this preset">Save Preset</button>
+                        <button type="button" class="btn btn-small btn-secondary" id="btnUndoLayout" hidden title="Discard unsaved changes and restore the last saved layout for this preset">Undo</button>
+                    </span>
                 </div>
                 <div class="widget-toolbar-right">
-                    <label class="toolbar-toggle">
-                        <input type="checkbox" id="lockToggle">
-                        <span class="toolbar-toggle-label">Lock Layout</span>
+                    <label class="toolbar-lock-toggle">
+                        <span class="toggle-switch toggle-switch-toolbar">
+                            <input type="checkbox" id="lockToggle">
+                            <span class="toggle-slider"></span>
+                        </span>
+                        <span class="toolbar-lock-label">Lock Layout</span>
                     </label>
-                    <button class="btn btn-small btn-secondary" id="btnResetLayout">Reset Layout</button>
                 </div>
             </div>
             <div class="grid-stack" id="dashboardGrid"></div>
@@ -67,7 +72,8 @@
         </section>
 
         <!-- Settings Tab -->
-        <section class="tab-panel" id="panel-settings">
+        <section class="tab-panel settings-tab-panel" id="panel-settings">
+            <div class="settings-scroll">
             <div class="settings-container">
                 <h2>Settings</h2>
 
@@ -143,11 +149,14 @@
                     </div>
                 </div>
 
-                <div class="settings-actions">
-                    <button class="btn btn-primary" id="btnSaveSettings">Save Settings</button>
+            </div>
+            </div>
+            <footer class="settings-footer" id="settingsFooter">
+                <div class="settings-footer-inner">
+                    <button type="button" class="btn btn-primary" id="btnSaveSettings">Save Settings</button>
                     <span class="save-status" id="saveStatus"></span>
                 </div>
-            </div>
+            </footer>
         </section>
 
         <!-- Debug Tab -->
