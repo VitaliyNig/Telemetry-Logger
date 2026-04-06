@@ -59,6 +59,13 @@ html, body {
     min-width: 0;
 }
 
+.brand-logo {
+    display: block;
+    width: 28px;
+    height: 28px;
+    flex-shrink: 0;
+}
+
 .header-center {
     flex: 1;
     display: flex;
