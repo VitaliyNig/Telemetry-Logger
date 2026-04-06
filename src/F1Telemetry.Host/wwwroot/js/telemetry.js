@@ -593,7 +593,7 @@ function updateTyreSets(data) {
             const deltaSign = delta > 0 ? "+" : "";
             const deltaCls = delta > 0 ? "positive" : delta < 0 ? "negative" : "zero";
             const deltaText = delta !== 0 ? `${deltaSign}${(delta / 1000).toFixed(1)}s` : "base";
-            const tag = isFitted ? ' <span style="color:var(--accent-red);font-weight:700;">FIT</span>' : "";
+            const tag = isFitted ? ' <span style="color:var(--accent-brand);font-weight:700;">FIT</span>' : "";
             html += `<div class="${cls}">`;
             html += `<span class="tyreset-compound-dot" style="background:${s.compoundInfo.dot}"></span>`;
             html += `<div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div>`;

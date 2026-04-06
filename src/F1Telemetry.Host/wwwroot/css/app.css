@@ -8,9 +8,9 @@
     --text-primary: #e6edf3;
     --text-secondary: #8b949e;
     --text-muted: #6e7681;
-    --accent: #e10600;
-    --accent-hover: #ff1801;
-    --accent-glow: rgba(225, 6, 0, 0.25);
+    --accent: #9b3ff5;
+    --accent-hover: #b56fff;
+    --accent-glow: rgba(155, 63, 245, 0.35);
     --green: #3fb950;
     --yellow: #d29922;
     --blue: #58a6ff;
@@ -42,7 +42,8 @@ html, body {
 .app-header {
     display: flex;
     align-items: center;
-    gap: 24px;
+    justify-content: space-between;
+    gap: 16px;
     padding: 0 24px;
     height: 56px;
     background: var(--bg-secondary);
@@ -55,6 +56,16 @@ html, body {
     align-items: center;
     gap: 10px;
     flex-shrink: 0;
+    min-width: 0;
+}
+
+.header-center {
+    flex: 1;
+    display: flex;
+    justify-content: center;
+    align-items: stretch;
+    min-width: 0;
+    height: 100%;
 }
 
 .brand-icon {
@@ -73,6 +84,7 @@ html, body {
     gap: 4px;
     height: 100%;
     align-items: stretch;
+    justify-content: center;
 }
 
 .tab-btn {
@@ -582,10 +594,27 @@ html, body {
         gap: 8px;
     }
 
+    .header-center {
+        width: 100%;
+        order: 2;
+    }
+
+    .header-brand {
+        width: 100%;
+        justify-content: center;
+        order: 1;
+    }
+
+    .connection-status {
+        align-self: center;
+        order: 3;
+    }
+
     .tab-nav {
         width: 100%;
         overflow-x: auto;
         height: auto;
+        justify-content: center;
     }
 
     .tab-btn {
