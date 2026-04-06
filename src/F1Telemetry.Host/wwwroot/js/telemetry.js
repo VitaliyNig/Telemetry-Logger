@@ -195,6 +195,8 @@ function updateSession(data) {
     renderTempWithTrend("trackTemp", trackTemp, getTempTrend(trackTemp, trackTempHistory));
     renderTempWithTrend("airTemp", airTemp, getTempTrend(airTemp, airTempHistory));
 
+    updateWeatherForecast(data);
+
     el("safetyCarStatus").textContent = SAFETY_CAR_STATUS[data.safetyCarStatus] || "None";
     el("totalLaps").textContent = data.totalLaps > 0 ? data.totalLaps : "--";
 
@@ -206,6 +208,75 @@ function updateSession(data) {
     } else {
         el("timeLeft").textContent = "--";
     }
+}
+
+const WEATHER_ICONS = {
+    0: "☀️", 1: "🌤️", 2: "☁️", 3: "🌧️", 4: "🌧️", 5: "⛈️"
+};
+const WEATHER_LABELS = {
+    0: "Clear", 1: "Light Cloud", 2: "Overcast", 3: "Light Rain", 4: "Heavy Rain", 5: "Storm"
+};
+const TEMP_CHANGE_ARROW = { 0: "▲", 1: "▼", 2: "" };
+const TEMP_CHANGE_CLS = { 0: "wf-up", 1: "wf-down", 2: "" };
+
+function updateWeatherForecast(data) {
+    const container = document.getElementById("weatherForecastContent");
+    if (!container) return;
+
+    const count = data.numWeatherForecastSamples || 0;
+    const samples = data.weatherForecastSamples;
+    if (!samples || count === 0) {
+        container.innerHTML = '<div class="weather-placeholder">No forecast data available</div>';
+        return;
+    }
+
+    const currentSessionType = data.sessionType;
+    const relevant = [];
+    for (let i = 0; i < count && i < samples.length; i++) {
+        const s = samples[i];
+        if (s.sessionType === currentSessionType || s.sessionType === 0) {
+            relevant.push(s);
+        }
+    }
+
+    if (relevant.length === 0) {
+        container.innerHTML = '<div class="weather-placeholder">No forecast for current session</div>';
+        return;
+    }
+
+    const accuracy = data.forecastAccuracy === 0 ? "Perfect" : "Approximate";
+
+    let html = `<div class="wf-accuracy">Accuracy: <span class="wf-accuracy-val">${accuracy}</span></div>`;
+    html += '<div class="wf-timeline">';
+
+    for (const s of relevant) {
+        const icon = WEATHER_ICONS[s.weather] || "❓";
+        const label = WEATHER_LABELS[s.weather] || "Unknown";
+        const time = s.timeOffset === 0 ? "Now" : `+${s.timeOffset}m`;
+        const rain = s.rainPercentage;
+        const trackT = s.trackTemperature;
+        const airT = s.airTemperature;
+        const trackArr = TEMP_CHANGE_ARROW[s.trackTemperatureChange] || "";
+        const trackCls = TEMP_CHANGE_CLS[s.trackTemperatureChange] || "";
+        const airArr = TEMP_CHANGE_ARROW[s.airTemperatureChange] || "";
+        const airCls = TEMP_CHANGE_CLS[s.airTemperatureChange] || "";
+
+        const rainCls = rain >= 60 ? "wf-rain-high" : rain >= 30 ? "wf-rain-med" : "wf-rain-low";
+
+        html += `<div class="wf-card">
+            <div class="wf-time">${time}</div>
+            <div class="wf-icon">${icon}</div>
+            <div class="wf-label">${label}</div>
+            <div class="wf-rain ${rainCls}">${rain}%</div>
+            <div class="wf-temps">
+                <span class="wf-temp-row">T ${trackT}° <span class="${trackCls}">${trackArr}</span></span>
+                <span class="wf-temp-row">A ${airT}° <span class="${airCls}">${airArr}</span></span>
+            </div>
+        </div>`;
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
 }
 
 function updateCarTelemetry(data) {

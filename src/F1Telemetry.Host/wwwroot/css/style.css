@@ -1043,6 +1043,105 @@
     color: var(--text-dim);
 }
 
+/* Weather Forecast */
+.weather-forecast {
+    overflow-x: auto;
+}
+
+.weather-placeholder {
+    color: var(--text-dim);
+    font-style: italic;
+    font-size: 13px;
+    padding: 8px 0;
+}
+
+.wf-accuracy {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    margin-bottom: 10px;
+}
+
+.wf-accuracy-val {
+    color: var(--text-secondary);
+    font-weight: 600;
+}
+
+.wf-timeline {
+    display: flex;
+    gap: 6px;
+    overflow-x: auto;
+    padding-bottom: 4px;
+}
+
+.wf-timeline::-webkit-scrollbar { height: 4px; }
+.wf-timeline::-webkit-scrollbar-track { background: transparent; }
+.wf-timeline::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.wf-card {
+    flex-shrink: 0;
+    width: 80px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    padding: 8px 6px;
+    background: rgba(255,255,255,0.03);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    text-align: center;
+}
+
+.wf-card:first-child {
+    border-color: rgba(0, 166, 255, 0.3);
+    background: rgba(0, 166, 255, 0.06);
+}
+
+.wf-time {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+}
+
+.wf-icon {
+    font-size: 22px;
+    line-height: 1;
+}
+
+.wf-label {
+    font-size: 9px;
+    color: var(--text-dim);
+    line-height: 1.2;
+}
+
+.wf-rain {
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+}
+
+.wf-rain-low { color: var(--text-dim); }
+.wf-rain-med { color: var(--accent-yellow); }
+.wf-rain-high { color: var(--accent-blue); }
+
+.wf-temps {
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    font-size: 10px;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+}
+
+.wf-temp-row {
+    white-space: nowrap;
+}
+
+.wf-up { color: var(--accent-red); font-weight: 700; }
+.wf-down { color: #4dc9ff; font-weight: 700; }
+
 /* Gap Board */
 .gap-board {
     overflow-x: auto;
