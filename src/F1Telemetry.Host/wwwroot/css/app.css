@@ -183,6 +183,55 @@ html, body {
     margin-bottom: 16px;
 }
 
+.game-settings-memo-intro {
+    font-size: 13px;
+    color: var(--text-muted);
+    margin: -8px 0 14px;
+    line-height: 1.45;
+}
+
+.game-settings-memo-wrap {
+    overflow-x: auto;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+}
+
+.game-settings-memo {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.game-settings-memo th,
+.game-settings-memo td {
+    padding: 10px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.game-settings-memo tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.game-settings-memo th {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-secondary);
+    background: var(--bg-tertiary);
+}
+
+.game-settings-memo td:first-child {
+    color: var(--text-primary);
+    width: 52%;
+}
+
+.game-settings-memo td:last-child {
+    font-family: var(--font-mono);
+    color: var(--text-muted);
+}
+
 .setting-row {
     margin-bottom: 16px;
 }
