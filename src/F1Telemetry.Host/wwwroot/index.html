@@ -48,6 +48,12 @@
                         <button type="button" class="btn btn-small btn-secondary" id="btnUndoLayout" hidden title="Discard unsaved changes and restore the last saved layout for this preset">Undo</button>
                     </span>
                 </div>
+                <div class="widget-toolbar-right">
+                    <label class="toolbar-toggle">
+                        <input type="checkbox" id="lockToggle">
+                        <span class="toolbar-toggle-label">Lock Layout</span>
+                    </label>
+                </div>
             </div>
             <div class="grid-stack" id="dashboardGrid"></div>
         </section>
@@ -125,14 +131,6 @@
                             <span class="toggle-slider"></span>
                         </label>
                         <span class="setting-hint">Automatically switch layout preset when session type changes (Practice / Qualifying / Race).</span>
-                    </div>
-                    <div class="setting-row setting-toggle">
-                        <label for="lockLayoutLock">Lock dashboard layout</label>
-                        <label class="toggle-switch">
-                            <input type="checkbox" id="lockLayoutLock">
-                            <span class="toggle-slider"></span>
-                        </label>
-                        <span class="setting-hint">When enabled, widgets on the Live tab cannot be moved, resized, or removed.</span>
                     </div>
                 </div>
 

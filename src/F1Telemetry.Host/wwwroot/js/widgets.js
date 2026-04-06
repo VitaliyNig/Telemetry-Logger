@@ -258,8 +258,8 @@ function onSessionTypeChanged(sessionType) {
 
 function applyDashboardLayoutLock() {
     if (!grid) return;
-    const lockCb = document.getElementById("lockLayoutLock");
-    const locked = lockCb ? lockCb.checked : localStorage.getItem(LOCK_LAYOUT_KEY) === "true";
+    const lockToggle = document.getElementById("lockToggle");
+    const locked = lockToggle ? lockToggle.checked : localStorage.getItem(LOCK_LAYOUT_KEY) === "true";
     grid.enableMove(!locked);
     grid.enableResize(!locked);
     document.querySelectorAll(".widget-close-btn").forEach(b => { b.style.display = locked ? "none" : ""; });
@@ -284,9 +284,9 @@ function initWidgets() {
     if (autoSwitchCbEarly) {
         autoSwitchCbEarly.checked = localStorage.getItem(AUTO_SWITCH_KEY) !== "false";
     }
-    const lockCbEarly = document.getElementById("lockLayoutLock");
-    if (lockCbEarly) {
-        lockCbEarly.checked = localStorage.getItem(LOCK_LAYOUT_KEY) === "true";
+    const lockToggleEarly = document.getElementById("lockToggle");
+    if (lockToggleEarly) {
+        lockToggleEarly.checked = localStorage.getItem(LOCK_LAYOUT_KEY) === "true";
     }
     autoSwitchEnabled = localStorage.getItem(AUTO_SWITCH_KEY) !== "false";
 
@@ -322,6 +322,12 @@ function initWidgets() {
         btn.textContent = "Saved!";
         setTimeout(() => { btn.textContent = orig; }, 1500);
         updateSavePresetButtonState();
+    });
+
+    const lockToggle = document.getElementById("lockToggle");
+    lockToggle?.addEventListener("change", () => {
+        localStorage.setItem(LOCK_LAYOUT_KEY, lockToggle.checked ? "true" : "false");
+        applyDashboardLayoutLock();
     });
 
     applyDashboardLayoutLock();

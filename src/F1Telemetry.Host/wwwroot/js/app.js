@@ -2,7 +2,6 @@
     'use strict';
 
     var AUTO_SWITCH_KEY = 'f1telemetry_autoswitch_v1';
-    var LOCK_LAYOUT_KEY = 'f1telemetry_lock_layout_v1';
 
     // --- State ---
     var debugMode = false;
@@ -21,7 +20,6 @@
     var webPort = document.getElementById('webPort');
     var debugModeToggle = document.getElementById('debugMode');
     var autoSwitchPreset = document.getElementById('autoSwitchPreset');
-    var lockLayoutLock = document.getElementById('lockLayoutLock');
     var btnSave = document.getElementById('btnSaveSettings');
     var saveStatus = document.getElementById('saveStatus');
 
@@ -39,8 +37,7 @@
             udpListenPort: udpListenPort ? parseInt(udpListenPort.value, 10) : 0,
             webPort: webPort ? parseInt(webPort.value, 10) : 0,
             debugMode: !!(debugModeToggle && debugModeToggle.checked),
-            autoSwitchPreset: !!(autoSwitchPreset && autoSwitchPreset.checked),
-            lockLayout: !!(lockLayoutLock && lockLayoutLock.checked)
+            autoSwitchPreset: !!(autoSwitchPreset && autoSwitchPreset.checked)
         };
     }
 
@@ -60,9 +57,6 @@
     function syncDashboardTogglesFromStorage() {
         if (autoSwitchPreset) {
             autoSwitchPreset.checked = localStorage.getItem(AUTO_SWITCH_KEY) !== 'false';
-        }
-        if (lockLayoutLock) {
-            lockLayoutLock.checked = localStorage.getItem(LOCK_LAYOUT_KEY) === 'true';
         }
     }
 
@@ -130,14 +124,6 @@
     if (autoSwitchPreset) {
         autoSwitchPreset.addEventListener('change', updateSettingsDirtyState);
     }
-    if (lockLayoutLock) {
-        lockLayoutLock.addEventListener('change', function () {
-            if (typeof window.applyDashboardLayoutLock === 'function') {
-                window.applyDashboardLayoutLock();
-            }
-            updateSettingsDirtyState();
-        });
-    }
 
     function wireSettingsInputsDirty() {
         [udpListenIp, udpListenPort, webPort].forEach(function (el) {
@@ -167,7 +153,6 @@
             .then(function (r) { return r.json(); })
             .then(function (data) {
                 localStorage.setItem(AUTO_SWITCH_KEY, autoSwitchPreset && autoSwitchPreset.checked ? 'true' : 'false');
-                localStorage.setItem(LOCK_LAYOUT_KEY, lockLayoutLock && lockLayoutLock.checked ? 'true' : 'false');
                 lastSavedSettingsSnapshot = getSettingsSnapshot();
                 updateSettingsDirtyState();
                 if (typeof window.applyDashboardLayoutLock === 'function') {
