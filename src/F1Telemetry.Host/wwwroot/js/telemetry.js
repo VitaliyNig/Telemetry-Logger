@@ -105,6 +105,8 @@ let currentTrackId = -1;
 let pitTimesData = {};
 let lastLapDataPacket = null;
 let lastSessionPacket = null;
+const sessionHistories = {};
+const GAP_BOARD_LAPS = 4;
 
 function el(id) { return document.getElementById(id); }
 
@@ -284,6 +286,7 @@ function updateLapData(data) {
 
     updateStandings(data);
     updatePitPredictor();
+    updateGapBoard();
 }
 
 function updateCarDamage(data) {
@@ -651,6 +654,110 @@ async function savePitTime() {
     }
 }
 
+function updateSessionHistory(data) {
+    sessionHistories[data.carIdx] = data;
+    updateGapBoard();
+}
+
+function updateGapBoard() {
+    const container = el("gapBoardContent");
+    if (!container) return;
+    if (!lastLapDataPacket) return;
+
+    const items = lastLapDataPacket.lapDataItems;
+    if (!items) return;
+
+    const sorted = [];
+    for (let i = 0; i < items.length; i++) {
+        const ld = items[i];
+        if (ld.resultStatus < 2) continue;
+        sorted.push({ idx: i, pos: ld.carPosition, name: participantNames[i] || `Car ${i}`, isPlayer: i === playerCarIndex });
+    }
+    sorted.sort((a, b) => a.pos - b.pos);
+
+    const playerSortIdx = sorted.findIndex(r => r.isPlayer);
+    if (playerSortIdx === -1) return;
+
+    let chosen;
+    if (sorted.length <= 3) {
+        chosen = sorted.slice(0, 3);
+    } else if (playerSortIdx === 0) {
+        chosen = sorted.slice(0, 3);
+    } else if (playerSortIdx === sorted.length - 1) {
+        chosen = sorted.slice(-3);
+    } else {
+        chosen = [sorted[playerSortIdx - 1], sorted[playerSortIdx], sorted[playerSortIdx + 1]];
+    }
+
+    const playerHistory = sessionHistories[playerCarIndex];
+    const playerNumLaps = playerHistory?.numLaps || 0;
+
+    let lapColumns = [];
+    if (playerNumLaps >= 2) {
+        const endLap = playerNumLaps - 1;
+        const startLap = Math.max(0, endLap - GAP_BOARD_LAPS + 1);
+        for (let l = startLap; l <= endLap; l++) lapColumns.push(l);
+    }
+
+    if (lapColumns.length === 0) {
+        container.innerHTML = '<div class="gap-board-placeholder">Waiting for lap history...</div>';
+        return;
+    }
+
+    function getLapTimeMs(carIdx, lapIndex) {
+        const hist = sessionHistories[carIdx];
+        if (!hist || !hist.lapHistoryDataItems) return 0;
+        const entry = hist.lapHistoryDataItems[lapIndex];
+        if (!entry || !entry.lapTimeInMs) return 0;
+        return entry.lapTimeInMs;
+    }
+
+    function formatLapCell(carIdx, lapIndex, isPlayer) {
+        const timeMs = getLapTimeMs(carIdx, lapIndex);
+        const playerTimeMs = getLapTimeMs(playerCarIndex, lapIndex);
+
+        if (!timeMs) return { text: "--", cls: "gap-cell-dim" };
+
+        if (isPlayer) {
+            return { text: formatTime(timeMs), cls: "" };
+        }
+
+        if (playerTimeMs && timeMs) {
+            const deltaMs = timeMs - playerTimeMs;
+            if (deltaMs < 0) {
+                return { text: (deltaMs / 1000).toFixed(3), cls: "gap-cell-faster" };
+            } else if (deltaMs > 0) {
+                return { text: "+" + (deltaMs / 1000).toFixed(3), cls: "gap-cell-slower" };
+            }
+            return { text: formatTime(timeMs), cls: "" };
+        }
+
+        return { text: formatTime(timeMs), cls: "" };
+    }
+
+    let html = '<table class="gap-table">';
+    html += '<thead><tr><th class="gap-hdr-label">LAST ' + lapColumns.length + ' LAPS</th>';
+    for (const lapIdx of lapColumns) {
+        html += `<th>LAP ${lapIdx + 1}</th>`;
+    }
+    html += '</tr></thead><tbody>';
+
+    for (const driver of chosen) {
+        const rowCls = driver.isPlayer ? "gap-row-player" : "";
+        const posColor = driver.isPlayer ? "gap-pos-player" : "";
+        html += `<tr class="${rowCls}">`;
+        html += `<td class="gap-driver-cell"><span class="gap-pos ${posColor}">${driver.pos}</span> <span class="gap-driver-name">${driver.name}</span></td>`;
+        for (const lapIdx of lapColumns) {
+            const cell = formatLapCell(driver.idx, lapIdx, driver.isPlayer);
+            html += `<td class="gap-time-cell ${cell.cls}">${cell.text}</td>`;
+        }
+        html += '</tr>';
+    }
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
 const PACKET_HANDLERS = {
     Session: updateSession,
     CarTelemetry: updateCarTelemetry,
@@ -660,6 +767,7 @@ const PACKET_HANDLERS = {
     Participants: updateParticipants,
     Event: updateEvent,
     TyreSets: updateTyreSets,
+    SessionHistory: updateSessionHistory,
 };
 
 function initConnection() {

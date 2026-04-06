@@ -11,6 +11,7 @@ const WIDGET_REGISTRY = {
     damage:       { title: "Damage",               tpl: "tpl-damage",       w: 2, h: 3, minW: 2, minH: 2 },
     events:       { title: "Events",               tpl: "tpl-events",       w: 4, h: 3, minW: 2, minH: 2 },
     standings:    { title: "Standings",             tpl: "tpl-standings",    w: 6, h: 5, minW: 3, minH: 3 },
+    gapBoard:     { title: "Gap Board",             tpl: "tpl-gapBoard",    w: 5, h: 3, minW: 3, minH: 2 },
 };
 
 const PRESET_DEFAULTS = {
@@ -30,8 +31,9 @@ const PRESET_DEFAULTS = {
         { id: "lapData",      x: 0, y: 2, w: 4, h: 3 },
         { id: "tyres",        x: 9, y: 0, w: 3, h: 3 },
         { id: "carStatus",    x: 4, y: 3, w: 3, h: 2 },
+        { id: "gapBoard",     x: 7, y: 3, w: 5, h: 3 },
         { id: "events",       x: 0, y: 5, w: 5, h: 3 },
-        { id: "standings",    x: 5, y: 5, w: 7, h: 5 },
+        { id: "standings",    x: 5, y: 6, w: 7, h: 5 },
     ],
     race: [
         { id: "session",      x: 0, y: 0, w: 4, h: 2 },
@@ -40,10 +42,11 @@ const PRESET_DEFAULTS = {
         { id: "damage",       x: 10, y: 0, w: 2, h: 3 },
         { id: "lapData",      x: 0, y: 2, w: 3, h: 3 },
         { id: "carStatus",    x: 3, y: 2, w: 3, h: 2 },
-        { id: "pitPredictor", x: 6, y: 3, w: 4, h: 3 },
-        { id: "events",       x: 0, y: 5, w: 4, h: 3 },
-        { id: "tyreSets",     x: 4, y: 6, w: 6, h: 3 },
-        { id: "standings",    x: 0, y: 8, w: 6, h: 5 },
+        { id: "gapBoard",     x: 6, y: 3, w: 5, h: 3 },
+        { id: "pitPredictor", x: 0, y: 5, w: 4, h: 3 },
+        { id: "events",       x: 4, y: 5, w: 4, h: 3 },
+        { id: "tyreSets",     x: 0, y: 8, w: 6, h: 3 },
+        { id: "standings",    x: 6, y: 8, w: 6, h: 5 },
     ],
     custom: [
         { id: "session",      x: 0, y: 0, w: 4, h: 2 },
