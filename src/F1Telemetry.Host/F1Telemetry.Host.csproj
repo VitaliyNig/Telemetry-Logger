@@ -17,7 +17,6 @@
 
   <ItemGroup>
     <None Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\..\assets\logo.svg" Link="wwwroot\logo.svg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
