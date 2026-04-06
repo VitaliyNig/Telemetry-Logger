@@ -3,7 +3,7 @@
     "F1Telemetry.Host": {
       "commandName": "Project",
       "dotnetRunMessages": true,
-      "launchBrowser": false,
+      "launchBrowser": true,
       "applicationUrl": "http://127.0.0.1:5080",
       "environmentVariables": {
         "ASPNETCORE_ENVIRONMENT": "Development"

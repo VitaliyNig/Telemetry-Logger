@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using F1Telemetry.Config;
 using F1Telemetry.Debug;
 using F1Telemetry.F125;
@@ -7,6 +8,7 @@ using F1Telemetry.Host.Ingress;
 using F1Telemetry.Ingress;
 using F1Telemetry.State;
 using F1Telemetry.Udp;
+using Microsoft.Extensions.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -99,7 +101,13 @@ app.MapPost("/api/settings", async (HttpContext ctx, IConfiguration config) =>
     }
 
     existing["TelemetryUdp"] = new { ListenAddress = body.UdpListenIp, Port = body.UdpListenPort };
-    existing["App"] = new { WebPort = body.WebPort, DebugMode = body.DebugMode };
+    var currentApp = config.GetSection(AppSettings.SectionName).Get<AppSettings>() ?? new AppSettings();
+    existing["App"] = new
+    {
+        WebPort = body.WebPort,
+        DebugMode = body.DebugMode,
+        LaunchBrowserOnStart = currentApp.LaunchBrowserOnStart
+    };
 
     var newJson = System.Text.Json.JsonSerializer.Serialize(existing,
         new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
@@ -196,6 +204,29 @@ app.MapPost("/api/debug/reset", (DebugPacketTracker tracker) =>
     tracker.Reset();
     return Results.Ok(new { reset = true });
 });
+
+if (appSettings.LaunchBrowserOnStart)
+{
+    var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+    var log = app.Logger;
+    var port = appSettings.WebPort;
+    lifetime.ApplicationStarted.Register(() =>
+    {
+        var url = $"http://localhost:{port}/";
+        try
+        {
+            Process.Start(new ProcessStartInfo
+            {
+                FileName = url,
+                UseShellExecute = true
+            });
+        }
+        catch (Exception ex)
+        {
+            log.LogWarning(ex, "Could not launch browser for {Url}", url);
+        }
+    });
+}
 
 app.Run();
 
