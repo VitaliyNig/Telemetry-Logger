@@ -103,8 +103,10 @@ function isPresetDirty() {
 
 function updateSavePresetButtonState() {
     const btn = document.getElementById("btnSavePreset");
-    if (!btn) return;
-    btn.classList.toggle("btn-save-preset-dirty", isPresetDirty());
+    const undo = document.getElementById("btnUndoLayout");
+    const dirty = isPresetDirty();
+    if (btn) btn.classList.toggle("btn-save-preset-dirty", dirty);
+    if (undo) undo.hidden = !dirty;
 }
 
 function persistCurrentPreset() {
@@ -319,7 +321,7 @@ function initWidgets() {
         document.querySelectorAll(".widget-drag-handle").forEach(h => h.style.opacity = locked ? "0.2" : "1");
     });
 
-    document.getElementById("btnResetLayout")?.addEventListener("click", () => {
+    document.getElementById("btnUndoLayout")?.addEventListener("click", () => {
         const saved = getSavedLayoutForPreset(activePreset);
         const layout = JSON.parse(JSON.stringify(saved));
         sessionDrafts[activePreset] = layout;
