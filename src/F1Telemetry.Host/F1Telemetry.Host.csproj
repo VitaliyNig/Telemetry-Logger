@@ -17,7 +17,13 @@
 
   <ItemGroup>
     <None Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
-    <Content Include="..\..\assets\logo.svg" Link="wwwroot\logo.svg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+
+  <!-- Static files are served from project wwwroot during dotnet run; copy logo from assets before build. -->
+  <Target Name="SyncLogoToWwwroot" BeforeTargets="BeforeBuild">
+    <Copy SourceFiles="$(MSBuildThisFileDirectory)..\..\assets\logo.svg"
+          DestinationFiles="$(MSBuildThisFileDirectory)wwwroot\logo.svg"
+          SkipUnchangedFiles="true" />
+  </Target>
 
 </Project>
