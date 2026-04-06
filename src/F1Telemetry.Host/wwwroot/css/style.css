@@ -977,9 +977,9 @@
 }
 
 .qs-badge.qs-pit {
-    background: rgba(255, 140, 0, 0.12);
-    color: var(--accent-orange);
-    border: 1px solid rgba(255, 140, 0, 0.25);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
 }
 
 .qs-badge.qs-garage {
@@ -1017,6 +1017,30 @@
     color: var(--accent-red);
     font-weight: 700;
     font-size: 12px;
+}
+
+.qs-sector-up {
+    color: var(--accent-green);
+    font-weight: 700;
+}
+
+.qs-sector-down {
+    color: var(--accent-red);
+    font-weight: 600;
+}
+
+.qs-sector-active {
+    color: var(--accent-yellow);
+    animation: sector-pulse 0.8s infinite;
+}
+
+@keyframes sector-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.qs-sector-none {
+    color: var(--text-dim);
 }
 
 /* Gap Board */

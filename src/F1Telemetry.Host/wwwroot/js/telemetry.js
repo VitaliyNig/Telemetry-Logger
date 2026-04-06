@@ -679,6 +679,30 @@ function getBestLapFromHistory(carIdx) {
     return entry?.lapTimeInMs || 0;
 }
 
+function getBestSectorMs(carIdx, sectorNum) {
+    const hist = sessionHistories[carIdx];
+    if (!hist || !hist.lapHistoryDataItems) return 0;
+    const lapNumField = sectorNum === 1 ? "bestSector1LapNum"
+                      : sectorNum === 2 ? "bestSector2LapNum"
+                      : "bestSector3LapNum";
+    const lapNum = hist[lapNumField];
+    if (!lapNum) return 0;
+    const entry = hist.lapHistoryDataItems[lapNum - 1];
+    if (!entry) return 0;
+    if (sectorNum === 1) return entry.sector1TimeMinutesPart * 60000 + entry.sector1TimeMsPart;
+    if (sectorNum === 2) return entry.sector2TimeMinutesPart * 60000 + entry.sector2TimeMsPart;
+    return entry.sector3TimeMinutesPart * 60000 + entry.sector3TimeMsPart;
+}
+
+function sectorCellHtml(currentMs, bestMs, isActive) {
+    if (isActive) return `<span class="qs-sector-active">...</span>`;
+    if (!currentMs) return `<span class="qs-sector-none">--</span>`;
+    const text = formatTime(currentMs);
+    if (bestMs && currentMs <= bestMs) return `<span class="qs-sector-up">${text}</span>`;
+    if (bestMs && currentMs > bestMs) return `<span class="qs-sector-down">${text}</span>`;
+    return `<span>${text}</span>`;
+}
+
 function updateQualiStandings() {
     const tbody = document.getElementById("qualiStandingsBody");
     if (!tbody) return;
@@ -735,9 +759,14 @@ function updateQualiStandings() {
             ? (i === 0 && r.bestLapMs ? "--" : "No Time")
             : "+" + ((r.bestLapMs - bestOverall) / 1000).toFixed(3);
 
-        const s1 = r.currentSector >= 1 && r.s1Ms ? formatTime(r.s1Ms) : (r.currentSector === 0 ? "..." : "--");
-        const s2 = r.currentSector >= 2 && r.s2Ms ? formatTime(r.s2Ms) : (r.currentSector === 1 ? "..." : "--");
-        const s3 = "--";
+        const bestS1 = getBestSectorMs(r.idx, 1);
+        const bestS2 = getBestSectorMs(r.idx, 2);
+        const bestS3 = getBestSectorMs(r.idx, 3);
+
+        const onTrack = r.driverStatus >= 1 && r.driverStatus <= 4 && r.status.cls !== "qs-pit" && r.status.cls !== "qs-garage";
+        const s1Html = onTrack ? sectorCellHtml(r.currentSector >= 1 ? r.s1Ms : 0, bestS1, r.currentSector === 0) : '<span class="qs-sector-none">--</span>';
+        const s2Html = onTrack ? sectorCellHtml(r.currentSector >= 2 ? r.s2Ms : 0, bestS2, r.currentSector === 1) : '<span class="qs-sector-none">--</span>';
+        const s3Html = onTrack ? sectorCellHtml(0, bestS3, r.currentSector === 2) : '<span class="qs-sector-none">--</span>';
 
         const statusBadge = `<span class="qs-badge ${r.status.cls}">${r.status.label}</span>`;
         const invalidMark = r.lapInvalid && r.driverStatus === 1 ? ' <span class="qs-invalid">✗</span>' : "";
@@ -749,9 +778,9 @@ function updateQualiStandings() {
             <td class="qs-gap">${gap}</td>
             <td>${r.status.label === "Flying" ? "L" + (lastLapDataPacket.lapDataItems[r.idx]?.currentLapNum || "") : "--"}</td>
             <td>${statusBadge}${invalidMark}</td>
-            <td class="qs-sector">${s1}</td>
-            <td class="qs-sector">${s2}</td>
-            <td class="qs-sector">${s3}</td>
+            <td class="qs-sector">${s1Html}</td>
+            <td class="qs-sector">${s2Html}</td>
+            <td class="qs-sector">${s3Html}</td>
         </tr>`;
     }).join("");
 }
