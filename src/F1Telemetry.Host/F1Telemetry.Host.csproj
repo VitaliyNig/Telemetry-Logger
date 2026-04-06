@@ -6,6 +6,7 @@
     <Nullable>enable</Nullable>
     <RootNamespace>F1Telemetry</RootNamespace>
     <AssemblyName>Telemetry Logger</AssemblyName>
+    <ApplicationIcon>app.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -16,6 +17,7 @@
 
   <ItemGroup>
     <None Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="..\..\assets\logo.svg" Link="wwwroot\logo.svg" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
 
 </Project>
