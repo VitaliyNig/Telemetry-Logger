@@ -105,6 +105,8 @@ let currentTrackId = -1;
 let pitTimesData = {};
 let lastLapDataPacket = null;
 let lastSessionPacket = null;
+const sessionHistories = {};
+const GAP_BOARD_LAPS = 4;
 
 function el(id) { return document.getElementById(id); }
 
@@ -193,6 +195,8 @@ function updateSession(data) {
     renderTempWithTrend("trackTemp", trackTemp, getTempTrend(trackTemp, trackTempHistory));
     renderTempWithTrend("airTemp", airTemp, getTempTrend(airTemp, airTempHistory));
 
+    updateWeatherForecast(data);
+
     el("safetyCarStatus").textContent = SAFETY_CAR_STATUS[data.safetyCarStatus] || "None";
     el("totalLaps").textContent = data.totalLaps > 0 ? data.totalLaps : "--";
 
@@ -204,6 +208,75 @@ function updateSession(data) {
     } else {
         el("timeLeft").textContent = "--";
     }
+}
+
+const WEATHER_ICONS = {
+    0: "☀️", 1: "🌤️", 2: "☁️", 3: "🌧️", 4: "🌧️", 5: "⛈️"
+};
+const WEATHER_LABELS = {
+    0: "Clear", 1: "Light Cloud", 2: "Overcast", 3: "Light Rain", 4: "Heavy Rain", 5: "Storm"
+};
+const TEMP_CHANGE_ARROW = { 0: "▲", 1: "▼", 2: "" };
+const TEMP_CHANGE_CLS = { 0: "wf-up", 1: "wf-down", 2: "" };
+
+function updateWeatherForecast(data) {
+    const container = document.getElementById("weatherForecastContent");
+    if (!container) return;
+
+    const count = data.numWeatherForecastSamples || 0;
+    const samples = data.weatherForecastSamples;
+    if (!samples || count === 0) {
+        container.innerHTML = '<div class="weather-placeholder">No forecast data available</div>';
+        return;
+    }
+
+    const currentSessionType = data.sessionType;
+    const relevant = [];
+    for (let i = 0; i < count && i < samples.length; i++) {
+        const s = samples[i];
+        if (s.sessionType === currentSessionType || s.sessionType === 0) {
+            relevant.push(s);
+        }
+    }
+
+    if (relevant.length === 0) {
+        container.innerHTML = '<div class="weather-placeholder">No forecast for current session</div>';
+        return;
+    }
+
+    const accuracy = data.forecastAccuracy === 0 ? "Perfect" : "Approximate";
+
+    let html = `<div class="wf-accuracy">Accuracy: <span class="wf-accuracy-val">${accuracy}</span></div>`;
+    html += '<div class="wf-timeline">';
+
+    for (const s of relevant) {
+        const icon = WEATHER_ICONS[s.weather] || "❓";
+        const label = WEATHER_LABELS[s.weather] || "Unknown";
+        const time = s.timeOffset === 0 ? "Now" : `+${s.timeOffset}m`;
+        const rain = s.rainPercentage;
+        const trackT = s.trackTemperature;
+        const airT = s.airTemperature;
+        const trackArr = TEMP_CHANGE_ARROW[s.trackTemperatureChange] || "";
+        const trackCls = TEMP_CHANGE_CLS[s.trackTemperatureChange] || "";
+        const airArr = TEMP_CHANGE_ARROW[s.airTemperatureChange] || "";
+        const airCls = TEMP_CHANGE_CLS[s.airTemperatureChange] || "";
+
+        const rainCls = rain >= 60 ? "wf-rain-high" : rain >= 30 ? "wf-rain-med" : "wf-rain-low";
+
+        html += `<div class="wf-card">
+            <div class="wf-time">${time}</div>
+            <div class="wf-icon">${icon}</div>
+            <div class="wf-label">${label}</div>
+            <div class="wf-rain ${rainCls}">${rain}%</div>
+            <div class="wf-temps">
+                <span class="wf-temp-row">T ${trackT}° <span class="${trackCls}">${trackArr}</span></span>
+                <span class="wf-temp-row">A ${airT}° <span class="${airCls}">${airArr}</span></span>
+            </div>
+        </div>`;
+    }
+
+    html += '</div>';
+    container.innerHTML = html;
 }
 
 function updateCarTelemetry(data) {
@@ -283,7 +356,9 @@ function updateLapData(data) {
     el("sector2").textContent = formatSectorTime(car.sector2TimeMsPart, car.sector2TimeMinutesPart);
 
     updateStandings(data);
+    updateQualiStandings();
     updatePitPredictor();
+    updateGapBoard();
 }
 
 function updateCarDamage(data) {
@@ -651,6 +726,235 @@ async function savePitTime() {
     }
 }
 
+function updateSessionHistory(data) {
+    sessionHistories[data.carIdx] = data;
+    updateGapBoard();
+    updateQualiStandings();
+}
+
+function getQualiDriverStatus(ld) {
+    if (ld.pitStatus === 2) return { label: "In Pit", cls: "qs-pit" };
+    if (ld.pitStatus === 1) return { label: "Pitting", cls: "qs-pit" };
+    if (ld.driverStatus === 0) return { label: "Garage", cls: "qs-garage" };
+    if (ld.driverStatus === 3) return { label: "Out Lap", cls: "qs-outlap" };
+    if (ld.driverStatus === 1) return { label: "Flying", cls: "qs-flying" };
+    if (ld.driverStatus === 2) return { label: "In Lap", cls: "qs-inlap" };
+    return { label: "On Track", cls: "" };
+}
+
+function getBestLapFromHistory(carIdx) {
+    const hist = sessionHistories[carIdx];
+    if (!hist || !hist.lapHistoryDataItems || hist.bestLapTimeLapNum === 0) return 0;
+    const lapIdx = hist.bestLapTimeLapNum - 1;
+    const entry = hist.lapHistoryDataItems[lapIdx];
+    return entry?.lapTimeInMs || 0;
+}
+
+function getBestSectorMs(carIdx, sectorNum) {
+    const hist = sessionHistories[carIdx];
+    if (!hist || !hist.lapHistoryDataItems) return 0;
+    const lapNumField = sectorNum === 1 ? "bestSector1LapNum"
+                      : sectorNum === 2 ? "bestSector2LapNum"
+                      : "bestSector3LapNum";
+    const lapNum = hist[lapNumField];
+    if (!lapNum) return 0;
+    const entry = hist.lapHistoryDataItems[lapNum - 1];
+    if (!entry) return 0;
+    if (sectorNum === 1) return entry.sector1TimeMinutesPart * 60000 + entry.sector1TimeMsPart;
+    if (sectorNum === 2) return entry.sector2TimeMinutesPart * 60000 + entry.sector2TimeMsPart;
+    return entry.sector3TimeMinutesPart * 60000 + entry.sector3TimeMsPart;
+}
+
+function sectorCellHtml(currentMs, bestMs, isActive) {
+    if (isActive) return `<span class="qs-sector-active">...</span>`;
+    if (!currentMs) return `<span class="qs-sector-none">--</span>`;
+    const text = formatTime(currentMs);
+    if (bestMs && currentMs <= bestMs) return `<span class="qs-sector-up">${text}</span>`;
+    if (bestMs && currentMs > bestMs) return `<span class="qs-sector-down">${text}</span>`;
+    return `<span>${text}</span>`;
+}
+
+function updateQualiStandings() {
+    const tbody = document.getElementById("qualiStandingsBody");
+    if (!tbody) return;
+    if (!lastLapDataPacket) return;
+
+    const items = lastLapDataPacket.lapDataItems;
+    if (!items) return;
+
+    const rows = [];
+    for (let i = 0; i < items.length; i++) {
+        const ld = items[i];
+        if (ld.resultStatus < 2) continue;
+
+        const bestLapMs = getBestLapFromHistory(i);
+        const status = getQualiDriverStatus(ld);
+        const currentSector = ld.sector;
+        const s1Ms = ld.sector1TimeMinutesPart * 60000 + ld.sector1TimeMsPart;
+        const s2Ms = ld.sector2TimeMinutesPart * 60000 + ld.sector2TimeMsPart;
+        const lapInvalid = ld.currentLapInvalid === 1;
+
+        rows.push({
+            idx: i,
+            pos: ld.carPosition,
+            name: participantNames[i] || `Car ${i}`,
+            bestLapMs,
+            status,
+            currentSector,
+            s1Ms,
+            s2Ms,
+            lapInvalid,
+            isPlayer: i === playerCarIndex,
+            driverStatus: ld.driverStatus,
+        });
+    }
+
+    rows.sort((a, b) => {
+        if (a.bestLapMs && b.bestLapMs) return a.bestLapMs - b.bestLapMs;
+        if (a.bestLapMs) return -1;
+        if (b.bestLapMs) return 1;
+        return a.pos - b.pos;
+    });
+
+    const bestOverall = rows.length > 0 && rows[0].bestLapMs ? rows[0].bestLapMs : 0;
+
+    tbody.innerHTML = rows.map((r, i) => {
+        const pos = i + 1;
+        const rowCls = [
+            r.isPlayer ? "player-row" : "",
+            r.status.cls ? "qs-row-" + r.status.cls : "",
+        ].filter(Boolean).join(" ");
+
+        const bestLap = r.bestLapMs ? formatTime(r.bestLapMs) : "--";
+        const gap = (i === 0 || !r.bestLapMs || !bestOverall)
+            ? (i === 0 && r.bestLapMs ? "--" : "No Time")
+            : "+" + ((r.bestLapMs - bestOverall) / 1000).toFixed(3);
+
+        const bestS1 = getBestSectorMs(r.idx, 1);
+        const bestS2 = getBestSectorMs(r.idx, 2);
+        const bestS3 = getBestSectorMs(r.idx, 3);
+
+        const onTrack = r.driverStatus >= 1 && r.driverStatus <= 4 && r.status.cls !== "qs-pit" && r.status.cls !== "qs-garage";
+        const s1Html = onTrack ? sectorCellHtml(r.currentSector >= 1 ? r.s1Ms : 0, bestS1, r.currentSector === 0) : '<span class="qs-sector-none">--</span>';
+        const s2Html = onTrack ? sectorCellHtml(r.currentSector >= 2 ? r.s2Ms : 0, bestS2, r.currentSector === 1) : '<span class="qs-sector-none">--</span>';
+        const s3Html = onTrack ? sectorCellHtml(0, bestS3, r.currentSector === 2) : '<span class="qs-sector-none">--</span>';
+
+        const statusBadge = `<span class="qs-badge ${r.status.cls}">${r.status.label}</span>`;
+        const invalidMark = r.lapInvalid && r.driverStatus === 1 ? ' <span class="qs-invalid">✗</span>' : "";
+
+        return `<tr class="${rowCls}">
+            <td>${pos}</td>
+            <td>${r.name}</td>
+            <td>${bestLap}</td>
+            <td class="qs-gap">${gap}</td>
+            <td>${r.status.label === "Flying" ? "L" + (lastLapDataPacket.lapDataItems[r.idx]?.currentLapNum || "") : "--"}</td>
+            <td>${statusBadge}${invalidMark}</td>
+            <td class="qs-sector">${s1Html}</td>
+            <td class="qs-sector">${s2Html}</td>
+            <td class="qs-sector">${s3Html}</td>
+        </tr>`;
+    }).join("");
+}
+
+function updateGapBoard() {
+    const container = el("gapBoardContent");
+    if (!container) return;
+    if (!lastLapDataPacket) return;
+
+    const items = lastLapDataPacket.lapDataItems;
+    if (!items) return;
+
+    const sorted = [];
+    for (let i = 0; i < items.length; i++) {
+        const ld = items[i];
+        if (ld.resultStatus < 2) continue;
+        sorted.push({ idx: i, pos: ld.carPosition, name: participantNames[i] || `Car ${i}`, isPlayer: i === playerCarIndex });
+    }
+    sorted.sort((a, b) => a.pos - b.pos);
+
+    const playerSortIdx = sorted.findIndex(r => r.isPlayer);
+    if (playerSortIdx === -1) return;
+
+    let chosen;
+    if (sorted.length <= 3) {
+        chosen = sorted.slice(0, 3);
+    } else if (playerSortIdx === 0) {
+        chosen = sorted.slice(0, 3);
+    } else if (playerSortIdx === sorted.length - 1) {
+        chosen = sorted.slice(-3);
+    } else {
+        chosen = [sorted[playerSortIdx - 1], sorted[playerSortIdx], sorted[playerSortIdx + 1]];
+    }
+
+    const playerHistory = sessionHistories[playerCarIndex];
+    const playerNumLaps = playerHistory?.numLaps || 0;
+
+    let lapColumns = [];
+    if (playerNumLaps >= 2) {
+        const endLap = playerNumLaps - 1;
+        const startLap = Math.max(0, endLap - GAP_BOARD_LAPS + 1);
+        for (let l = startLap; l <= endLap; l++) lapColumns.push(l);
+    }
+
+    if (lapColumns.length === 0) {
+        container.innerHTML = '<div class="gap-board-placeholder">Waiting for lap history...</div>';
+        return;
+    }
+
+    function getLapTimeMs(carIdx, lapIndex) {
+        const hist = sessionHistories[carIdx];
+        if (!hist || !hist.lapHistoryDataItems) return 0;
+        const entry = hist.lapHistoryDataItems[lapIndex];
+        if (!entry || !entry.lapTimeInMs) return 0;
+        return entry.lapTimeInMs;
+    }
+
+    function formatLapCell(carIdx, lapIndex, isPlayer) {
+        const timeMs = getLapTimeMs(carIdx, lapIndex);
+        const playerTimeMs = getLapTimeMs(playerCarIndex, lapIndex);
+
+        if (!timeMs) return { text: "--", cls: "gap-cell-dim" };
+
+        if (isPlayer) {
+            return { text: formatTime(timeMs), cls: "" };
+        }
+
+        if (playerTimeMs && timeMs) {
+            const deltaMs = timeMs - playerTimeMs;
+            if (deltaMs < 0) {
+                return { text: (deltaMs / 1000).toFixed(3), cls: "gap-cell-faster" };
+            } else if (deltaMs > 0) {
+                return { text: "+" + (deltaMs / 1000).toFixed(3), cls: "gap-cell-slower" };
+            }
+            return { text: formatTime(timeMs), cls: "" };
+        }
+
+        return { text: formatTime(timeMs), cls: "" };
+    }
+
+    let html = '<table class="gap-table">';
+    html += '<thead><tr><th class="gap-hdr-label">LAST ' + lapColumns.length + ' LAPS</th>';
+    for (const lapIdx of lapColumns) {
+        html += `<th>LAP ${lapIdx + 1}</th>`;
+    }
+    html += '</tr></thead><tbody>';
+
+    for (const driver of chosen) {
+        const rowCls = driver.isPlayer ? "gap-row-player" : "";
+        const posColor = driver.isPlayer ? "gap-pos-player" : "";
+        html += `<tr class="${rowCls}">`;
+        html += `<td class="gap-driver-cell"><span class="gap-pos ${posColor}">${driver.pos}</span> <span class="gap-driver-name">${driver.name}</span></td>`;
+        for (const lapIdx of lapColumns) {
+            const cell = formatLapCell(driver.idx, lapIdx, driver.isPlayer);
+            html += `<td class="gap-time-cell ${cell.cls}">${cell.text}</td>`;
+        }
+        html += '</tr>';
+    }
+
+    html += '</tbody></table>';
+    container.innerHTML = html;
+}
+
 const PACKET_HANDLERS = {
     Session: updateSession,
     CarTelemetry: updateCarTelemetry,
@@ -660,6 +964,7 @@ const PACKET_HANDLERS = {
     Participants: updateParticipants,
     Event: updateEvent,
     TyreSets: updateTyreSets,
+    SessionHistory: updateSessionHistory,
 };
 
 function initConnection() {
