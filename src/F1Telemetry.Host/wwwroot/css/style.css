@@ -212,6 +212,19 @@
     color: #fff;
 }
 
+#btnSavePreset.btn-save-preset-dirty {
+    background: var(--accent-yellow);
+    border-color: rgba(255, 215, 0, 0.45);
+    color: #1a1a1a;
+    font-weight: 700;
+}
+
+#btnSavePreset.btn-save-preset-dirty:hover {
+    background: #ffe033;
+    border-color: rgba(255, 215, 0, 0.65);
+    color: #0d0d0d;
+}
+
 .toolbar-toggle {
     display: flex;
     align-items: center;

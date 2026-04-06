@@ -16,55 +16,6 @@ const WIDGET_REGISTRY = {
     qualiStandings:   { title: "Quali Standings",    tpl: "tpl-qualiStandings",  w: 7, h: 6, minW: 4, minH: 3 },
 };
 
-const PRESET_DEFAULTS = {
-    practice: [
-        { id: "session",      x: 0, y: 0, w: 4, h: 2 },
-        { id: "telemetry",    x: 4, y: 0, w: 4, h: 3 },
-        { id: "tyres",        x: 8, y: 0, w: 2, h: 3 },
-        { id: "carStatus",    x: 0, y: 2, w: 4, h: 2 },
-        { id: "damage",       x: 10, y: 0, w: 2, h: 3 },
-        { id: "weather",      x: 0, y: 4, w: 6, h: 3 },
-        { id: "tyreSets",     x: 6, y: 4, w: 6, h: 3 },
-        { id: "lapData",      x: 0, y: 7, w: 3, h: 3 },
-        { id: "events",       x: 3, y: 7, w: 5, h: 3 },
-    ],
-    qualifying: [
-        { id: "session",          x: 0, y: 0, w: 4, h: 2 },
-        { id: "telemetry",        x: 4, y: 0, w: 5, h: 3 },
-        { id: "lapData",          x: 0, y: 2, w: 4, h: 3 },
-        { id: "tyres",            x: 9, y: 0, w: 3, h: 3 },
-        { id: "carStatus",        x: 4, y: 3, w: 3, h: 2 },
-        { id: "events",           x: 0, y: 5, w: 5, h: 3 },
-        { id: "qualiStandings",   x: 5, y: 5, w: 7, h: 6 },
-    ],
-    race: [
-        { id: "session",      x: 0, y: 0, w: 4, h: 2 },
-        { id: "telemetry",    x: 4, y: 0, w: 4, h: 3 },
-        { id: "tyres",        x: 8, y: 0, w: 2, h: 3 },
-        { id: "damage",       x: 10, y: 0, w: 2, h: 3 },
-        { id: "lapData",      x: 0, y: 2, w: 3, h: 3 },
-        { id: "carStatus",    x: 3, y: 2, w: 3, h: 2 },
-        { id: "gapBoard",     x: 6, y: 3, w: 5, h: 3 },
-        { id: "pitPredictor", x: 0, y: 5, w: 4, h: 3 },
-        { id: "weather",      x: 4, y: 5, w: 4, h: 3 },
-        { id: "events",       x: 8, y: 5, w: 4, h: 3 },
-        { id: "tyreSets",     x: 0, y: 8, w: 6, h: 3 },
-        { id: "standings",    x: 6, y: 8, w: 6, h: 5 },
-    ],
-    custom: [
-        { id: "session",      x: 0, y: 0, w: 4, h: 2 },
-        { id: "telemetry",    x: 4, y: 0, w: 4, h: 3 },
-        { id: "tyres",        x: 8, y: 0, w: 2, h: 3 },
-        { id: "lapData",      x: 0, y: 2, w: 3, h: 3 },
-        { id: "carStatus",    x: 3, y: 2, w: 3, h: 2 },
-        { id: "damage",       x: 10, y: 0, w: 2, h: 3 },
-        { id: "pitPredictor", x: 6, y: 3, w: 4, h: 3 },
-        { id: "events",       x: 0, y: 5, w: 4, h: 3 },
-        { id: "tyreSets",     x: 4, y: 6, w: 6, h: 3 },
-        { id: "standings",    x: 0, y: 8, w: 6, h: 5 },
-    ],
-};
-
 const PRESETS_STORAGE_KEY = "f1telemetry_presets_v1";
 const ACTIVE_PRESET_KEY = "f1telemetry_active_preset_v1";
 const AUTO_SWITCH_KEY = "f1telemetry_autoswitch_v1";
@@ -72,6 +23,9 @@ let grid = null;
 let activePreset = "race";
 let autoSwitchEnabled = true;
 let autoSwitchSetting = true;
+
+/** In-memory drafts per preset for this page session (set when leaving a preset). */
+const sessionDrafts = {};
 
 function getWidgetContent(widgetId) {
     const reg = WIDGET_REGISTRY[widgetId];
@@ -106,6 +60,23 @@ function getCurrentLayout() {
     }).filter(i => i.id);
 }
 
+function normalizeLayout(layout) {
+    if (!layout || layout.length === 0) return [];
+    return [...layout].sort((a, b) =>
+        a.id.localeCompare(b.id) || a.x - b.x || a.y - b.y || a.w - b.w || a.h - b.h);
+}
+
+function layoutsEqual(a, b) {
+    const A = normalizeLayout(a);
+    const B = normalizeLayout(b);
+    if (A.length !== B.length) return false;
+    for (let i = 0; i < A.length; i++) {
+        const p = A[i], q = B[i];
+        if (p.id !== q.id || p.x !== q.x || p.y !== q.y || p.w !== q.w || p.h !== q.h) return false;
+    }
+    return true;
+}
+
 function loadAllPresets() {
     try {
         const raw = localStorage.getItem(PRESETS_STORAGE_KEY);
@@ -118,20 +89,37 @@ function saveAllPresets(presets) {
     localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(presets));
 }
 
-function saveLayout() {
-    if (!grid) return;
+/** Last saved layout for this preset from localStorage (empty grid = []). */
+function getSavedLayoutForPreset(presetName) {
+    const presets = loadAllPresets();
+    const v = presets[presetName];
+    return Array.isArray(v) ? v : [];
+}
+
+function isPresetDirty() {
+    const saved = getSavedLayoutForPreset(activePreset);
+    return !layoutsEqual(saved, getCurrentLayout());
+}
+
+function updateSavePresetButtonState() {
+    const btn = document.getElementById("btnSavePreset");
+    if (!btn) return;
+    btn.classList.toggle("btn-save-preset-dirty", isPresetDirty());
+}
+
+function persistCurrentPreset() {
     const layout = getCurrentLayout();
     const presets = loadAllPresets();
     presets[activePreset] = layout;
     saveAllPresets(presets);
+    sessionDrafts[activePreset] = JSON.parse(JSON.stringify(layout));
 }
 
 function loadLayoutForPreset(presetName) {
-    const presets = loadAllPresets();
-    if (presets[presetName] && Array.isArray(presets[presetName]) && presets[presetName].length > 0) {
-        return presets[presetName];
+    if (sessionDrafts[presetName] !== undefined) {
+        return JSON.parse(JSON.stringify(sessionDrafts[presetName]));
     }
-    return PRESET_DEFAULTS[presetName] || PRESET_DEFAULTS.custom;
+    return JSON.parse(JSON.stringify(getSavedLayoutForPreset(presetName)));
 }
 
 function getActiveWidgetIds() {
@@ -163,11 +151,12 @@ function applyLayout(layout) {
     }
     grid.commit();
     updateDropdown();
+    updateSavePresetButtonState();
 }
 
 function switchPreset(presetName) {
     if (presetName === activePreset) return;
-    saveLayout();
+    sessionDrafts[activePreset] = getCurrentLayout();
     activePreset = presetName;
     localStorage.setItem(ACTIVE_PRESET_KEY, presetName);
     const layout = loadLayoutForPreset(presetName);
@@ -198,7 +187,7 @@ function addWidget(widgetId, opts) {
         id: widgetId,
     });
     wireWidgetEvents(widgetId);
-    saveLayout();
+    updateSavePresetButtonState();
     updateDropdown();
 }
 
@@ -211,7 +200,7 @@ function removeWidget(widgetId) {
             break;
         }
     }
-    saveLayout();
+    updateSavePresetButtonState();
     updateDropdown();
 }
 
@@ -293,7 +282,7 @@ function initWidgets() {
     applyLayout(layout);
     updatePresetButtons();
 
-    grid.on("change", saveLayout);
+    grid.on("change", updateSavePresetButtonState);
 
     document.querySelectorAll(".preset-btn").forEach(btn => {
         btn.addEventListener("click", () => {
@@ -313,11 +302,12 @@ function initWidgets() {
     dropdown?.addEventListener("click", (e) => e.stopPropagation());
 
     document.getElementById("btnSavePreset")?.addEventListener("click", () => {
-        saveLayout();
+        persistCurrentPreset();
         const btn = document.getElementById("btnSavePreset");
         const orig = btn.textContent;
         btn.textContent = "Saved!";
         setTimeout(() => { btn.textContent = orig; }, 1500);
+        updateSavePresetButtonState();
     });
 
     const lockToggle = document.getElementById("lockToggle");
@@ -330,12 +320,10 @@ function initWidgets() {
     });
 
     document.getElementById("btnResetLayout")?.addEventListener("click", () => {
-        const presets = loadAllPresets();
-        delete presets[activePreset];
-        saveAllPresets(presets);
-        const layout = PRESET_DEFAULTS[activePreset] || PRESET_DEFAULTS.custom;
+        const saved = getSavedLayoutForPreset(activePreset);
+        const layout = JSON.parse(JSON.stringify(saved));
+        sessionDrafts[activePreset] = layout;
         applyLayout(layout);
-        saveLayout();
     });
 
     updateDropdown();
