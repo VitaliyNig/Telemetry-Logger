@@ -285,6 +285,7 @@ function updateLapData(data) {
     el("sector2").textContent = formatSectorTime(car.sector2TimeMsPart, car.sector2TimeMinutesPart);
 
     updateStandings(data);
+    updateQualiStandings();
     updatePitPredictor();
     updateGapBoard();
 }
@@ -657,6 +658,102 @@ async function savePitTime() {
 function updateSessionHistory(data) {
     sessionHistories[data.carIdx] = data;
     updateGapBoard();
+    updateQualiStandings();
+}
+
+function getQualiDriverStatus(ld) {
+    if (ld.pitStatus === 2) return { label: "In Pit", cls: "qs-pit" };
+    if (ld.pitStatus === 1) return { label: "Pitting", cls: "qs-pit" };
+    if (ld.driverStatus === 0) return { label: "Garage", cls: "qs-garage" };
+    if (ld.driverStatus === 3) return { label: "Out Lap", cls: "qs-outlap" };
+    if (ld.driverStatus === 1) return { label: "Flying", cls: "qs-flying" };
+    if (ld.driverStatus === 2) return { label: "In Lap", cls: "qs-inlap" };
+    return { label: "On Track", cls: "" };
+}
+
+function getBestLapFromHistory(carIdx) {
+    const hist = sessionHistories[carIdx];
+    if (!hist || !hist.lapHistoryDataItems || hist.bestLapTimeLapNum === 0) return 0;
+    const lapIdx = hist.bestLapTimeLapNum - 1;
+    const entry = hist.lapHistoryDataItems[lapIdx];
+    return entry?.lapTimeInMs || 0;
+}
+
+function updateQualiStandings() {
+    const tbody = document.getElementById("qualiStandingsBody");
+    if (!tbody) return;
+    if (!lastLapDataPacket) return;
+
+    const items = lastLapDataPacket.lapDataItems;
+    if (!items) return;
+
+    const rows = [];
+    for (let i = 0; i < items.length; i++) {
+        const ld = items[i];
+        if (ld.resultStatus < 2) continue;
+
+        const bestLapMs = getBestLapFromHistory(i);
+        const status = getQualiDriverStatus(ld);
+        const currentSector = ld.sector;
+        const s1Ms = ld.sector1TimeMinutesPart * 60000 + ld.sector1TimeMsPart;
+        const s2Ms = ld.sector2TimeMinutesPart * 60000 + ld.sector2TimeMsPart;
+        const lapInvalid = ld.currentLapInvalid === 1;
+
+        rows.push({
+            idx: i,
+            pos: ld.carPosition,
+            name: participantNames[i] || `Car ${i}`,
+            bestLapMs,
+            status,
+            currentSector,
+            s1Ms,
+            s2Ms,
+            lapInvalid,
+            isPlayer: i === playerCarIndex,
+            driverStatus: ld.driverStatus,
+        });
+    }
+
+    rows.sort((a, b) => {
+        if (a.bestLapMs && b.bestLapMs) return a.bestLapMs - b.bestLapMs;
+        if (a.bestLapMs) return -1;
+        if (b.bestLapMs) return 1;
+        return a.pos - b.pos;
+    });
+
+    const bestOverall = rows.length > 0 && rows[0].bestLapMs ? rows[0].bestLapMs : 0;
+
+    tbody.innerHTML = rows.map((r, i) => {
+        const pos = i + 1;
+        const rowCls = [
+            r.isPlayer ? "player-row" : "",
+            r.status.cls ? "qs-row-" + r.status.cls : "",
+        ].filter(Boolean).join(" ");
+
+        const bestLap = r.bestLapMs ? formatTime(r.bestLapMs) : "--";
+        const gap = (i === 0 || !r.bestLapMs || !bestOverall)
+            ? (i === 0 && r.bestLapMs ? "--" : "No Time")
+            : "+" + ((r.bestLapMs - bestOverall) / 1000).toFixed(3);
+
+        const s1 = r.currentSector >= 1 && r.s1Ms ? formatTime(r.s1Ms) : (r.currentSector === 0 ? "..." : "--");
+        const s2 = r.currentSector >= 2 && r.s2Ms ? formatTime(r.s2Ms) : (r.currentSector === 1 ? "..." : "--");
+        const s3 = "--";
+
+        const statusBadge = `<span class="qs-badge ${r.status.cls}">${r.status.label}</span>`;
+        const invalidMark = r.lapInvalid && r.driverStatus === 1 ? ' <span class="qs-invalid">✗</span>' : "";
+
+        return `<tr class="${rowCls}">
+            <td>${pos}</td>
+            <td>${r.name}</td>
+            <td>${bestLap}</td>
+            <td class="qs-gap">${gap}</td>
+            <td>${r.status.label === "Flying" ? "L" + (lastLapDataPacket.lapDataItems[r.idx]?.currentLapNum || "") : "--"}</td>
+            <td>${statusBadge}${invalidMark}</td>
+            <td class="qs-sector">${s1}</td>
+            <td class="qs-sector">${s2}</td>
+            <td class="qs-sector">${s3}</td>
+        </tr>`;
+    }).join("");
 }
 
 function updateGapBoard() {

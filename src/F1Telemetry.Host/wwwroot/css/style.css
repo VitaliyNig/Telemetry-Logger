@@ -943,6 +943,82 @@
     color: var(--accent-yellow);
 }
 
+/* Quali Standings */
+.quali-table th {
+    font-size: 9px;
+}
+
+.qs-badge {
+    display: inline-block;
+    padding: 2px 8px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.qs-badge.qs-outlap {
+    background: rgba(0, 166, 255, 0.15);
+    color: #4dc9ff;
+    border: 1px solid rgba(0, 166, 255, 0.3);
+}
+
+.qs-badge.qs-flying {
+    background: rgba(170, 0, 255, 0.15);
+    color: #c96bff;
+    border: 1px solid rgba(170, 0, 255, 0.3);
+}
+
+.qs-badge.qs-inlap {
+    background: rgba(255, 215, 0, 0.12);
+    color: #ffd700;
+    border: 1px solid rgba(255, 215, 0, 0.25);
+}
+
+.qs-badge.qs-pit {
+    background: rgba(255, 140, 0, 0.12);
+    color: var(--accent-orange);
+    border: 1px solid rgba(255, 140, 0, 0.25);
+}
+
+.qs-badge.qs-garage {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+}
+
+.qs-row-qs-outlap td {
+    border-left-color: #4dc9ff;
+}
+
+.qs-row-qs-flying td {
+    border-left-color: #c96bff;
+}
+
+.qs-row-qs-flying {
+    background: rgba(170, 0, 255, 0.06);
+}
+
+.qs-row-qs-inlap {
+    background: rgba(255, 215, 0, 0.04);
+}
+
+.qs-gap {
+    color: var(--accent-yellow);
+}
+
+.qs-sector {
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.qs-invalid {
+    color: var(--accent-red);
+    font-weight: 700;
+    font-size: 12px;
+}
+
 /* Gap Board */
 .gap-board {
     overflow-x: auto;

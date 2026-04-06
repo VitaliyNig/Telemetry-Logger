@@ -11,7 +11,8 @@ const WIDGET_REGISTRY = {
     damage:       { title: "Damage",               tpl: "tpl-damage",       w: 2, h: 3, minW: 2, minH: 2 },
     events:       { title: "Events",               tpl: "tpl-events",       w: 4, h: 3, minW: 2, minH: 2 },
     standings:    { title: "Standings",             tpl: "tpl-standings",    w: 6, h: 5, minW: 3, minH: 3 },
-    gapBoard:     { title: "Gap Board",             tpl: "tpl-gapBoard",    w: 5, h: 3, minW: 3, minH: 2 },
+    gapBoard:         { title: "Gap Board",           tpl: "tpl-gapBoard",        w: 5, h: 3, minW: 3, minH: 2 },
+    qualiStandings:   { title: "Quali Standings",    tpl: "tpl-qualiStandings",  w: 7, h: 6, minW: 4, minH: 3 },
 };
 
 const PRESET_DEFAULTS = {
@@ -26,13 +27,13 @@ const PRESET_DEFAULTS = {
         { id: "events",       x: 0, y: 7, w: 6, h: 3 },
     ],
     qualifying: [
-        { id: "session",      x: 0, y: 0, w: 4, h: 2 },
-        { id: "telemetry",    x: 4, y: 0, w: 5, h: 3 },
-        { id: "lapData",      x: 0, y: 2, w: 4, h: 3 },
-        { id: "tyres",        x: 9, y: 0, w: 3, h: 3 },
-        { id: "carStatus",    x: 4, y: 3, w: 3, h: 2 },
-        { id: "events",       x: 0, y: 5, w: 5, h: 3 },
-        { id: "standings",    x: 5, y: 5, w: 7, h: 5 },
+        { id: "session",          x: 0, y: 0, w: 4, h: 2 },
+        { id: "telemetry",        x: 4, y: 0, w: 5, h: 3 },
+        { id: "lapData",          x: 0, y: 2, w: 4, h: 3 },
+        { id: "tyres",            x: 9, y: 0, w: 3, h: 3 },
+        { id: "carStatus",        x: 4, y: 3, w: 3, h: 2 },
+        { id: "events",           x: 0, y: 5, w: 5, h: 3 },
+        { id: "qualiStandings",   x: 5, y: 5, w: 7, h: 6 },
     ],
     race: [
         { id: "session",      x: 0, y: 0, w: 4, h: 2 },
