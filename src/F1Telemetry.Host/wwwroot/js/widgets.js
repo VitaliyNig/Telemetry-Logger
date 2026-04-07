@@ -238,13 +238,13 @@ function updateDropdown() {
     });
 }
 
+// Maps m_sessionType (F1 25 v3 appendix) → dashboard preset. Must stay in sync with SESSION_TYPES in telemetry.js.
 const SESSION_TYPE_TO_PRESET = {
     1: "practice", 2: "practice", 3: "practice", 4: "practice",
     5: "qualifying", 6: "qualifying", 7: "qualifying", 8: "qualifying", 9: "qualifying",
-    10: "race", 11: "race", 12: "race",
-    13: "practice",
-    14: "qualifying", 15: "qualifying", 16: "qualifying", 17: "qualifying", 18: "qualifying",
-    19: "race",
+    10: "qualifying", 11: "qualifying", 12: "qualifying", 13: "qualifying", 14: "qualifying",
+    15: "race", 16: "race", 17: "race",
+    18: "practice",
 };
 
 function onSessionTypeChanged(sessionType) {
