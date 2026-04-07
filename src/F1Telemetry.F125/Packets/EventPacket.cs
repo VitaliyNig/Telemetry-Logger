@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace F1Telemetry.F125.Packets;
 
 public sealed class EventPacket
@@ -6,6 +8,24 @@ public sealed class EventPacket
     public EventDataDetails? Details { get; set; }
 }
 
+// SignalR / System.Text.Json serializes Details using the declared base type unless polymorphism is declared;
+// without this, PENA payloads arrive as details: {} and the UI cannot map penaltyType / infringementType.
+[JsonPolymorphic(TypeDiscriminatorPropertyName = "$type")]
+[JsonDerivedType(typeof(FastestLapEvent), "fastestLap")]
+[JsonDerivedType(typeof(RetirementEvent), "retirement")]
+[JsonDerivedType(typeof(DrsDisabledEvent), "drsDisabled")]
+[JsonDerivedType(typeof(TeamMateInPitsEvent), "teamMateInPits")]
+[JsonDerivedType(typeof(RaceWinnerEvent), "raceWinner")]
+[JsonDerivedType(typeof(PenaltyEvent), "penalty")]
+[JsonDerivedType(typeof(SpeedTrapEvent), "speedTrap")]
+[JsonDerivedType(typeof(StartLightsEvent), "startLights")]
+[JsonDerivedType(typeof(DriveThroughPenaltyServedEvent), "driveThroughServed")]
+[JsonDerivedType(typeof(StopGoPenaltyServedEvent), "stopGoServed")]
+[JsonDerivedType(typeof(FlashbackEvent), "flashback")]
+[JsonDerivedType(typeof(ButtonsEvent), "buttons")]
+[JsonDerivedType(typeof(OvertakeEvent), "overtake")]
+[JsonDerivedType(typeof(SafetyCarEvent), "safetyCar")]
+[JsonDerivedType(typeof(CollisionEvent), "collision")]
 public class EventDataDetails { }
 
 public sealed class FastestLapEvent : EventDataDetails
