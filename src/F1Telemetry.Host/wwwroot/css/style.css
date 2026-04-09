@@ -427,7 +427,7 @@
     overflow: hidden;
 }
 
-/* Steering-style RPM: green (low) → red (mid) → blue (top / shift), not a smooth gradient */
+/* Steering-style RPM: green 0–75% → red 75–85% → blue 85–100% of max RPM */
 .rpm-bar-ghost,
 .rpm-bar-lit {
     position: absolute;
@@ -438,17 +438,17 @@
 }
 
 .rpm-bar-ghost .rpm-seg-green {
-    flex: 7 1 0;
+    flex: 75 1 0;
     background: rgba(0, 215, 0, 0.14);
 }
 
 .rpm-bar-ghost .rpm-seg-red {
-    flex: 2 1 0;
+    flex: 10 1 0;
     background: rgba(225, 6, 0, 0.12);
 }
 
 .rpm-bar-ghost .rpm-seg-blue {
-    flex: 1 1 0;
+    flex: 15 1 0;
     background: rgba(0, 166, 255, 0.14);
 }
 
@@ -459,19 +459,19 @@
 }
 
 .rpm-bar-lit .rpm-seg-green {
-    flex: 7 1 0;
+    flex: 75 1 0;
     background: var(--accent-green);
     box-shadow: 0 0 6px rgba(0, 215, 0, 0.35);
 }
 
 .rpm-bar-lit .rpm-seg-red {
-    flex: 2 1 0;
+    flex: 10 1 0;
     background: var(--semantic-red);
     box-shadow: 0 0 6px rgba(225, 6, 0, 0.35);
 }
 
 .rpm-bar-lit .rpm-seg-blue {
-    flex: 1 1 0;
+    flex: 15 1 0;
     background: var(--accent-blue);
     box-shadow: 0 0 6px rgba(0, 166, 255, 0.35);
 }
