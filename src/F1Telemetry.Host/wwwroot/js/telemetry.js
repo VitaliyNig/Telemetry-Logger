@@ -6,7 +6,7 @@
 const TRACK_NAMES = {
     0: "Melbourne",
     2: "Shanghai",
-    3: "Sakhir (Bahrain)",
+    3: "Sakhir",
     4: "Catalunya",
     5: "Monaco",
     6: "Montreal",
@@ -21,16 +21,16 @@ const TRACK_NAMES = {
     16: "Brazil",
     17: "Austria",
     19: "Mexico",
-    20: "Baku (Azerbaijan)",
+    20: "Baku",
     26: "Zandvoort",
     27: "Imola",
     29: "Jeddah",
     30: "Miami",
     31: "Las Vegas",
     32: "Losail",
-    39: "Silverstone (Reverse)",
-    40: "Austria (Reverse)",
-    41: "Zandvoort (Reverse)"
+    39: "Silverstone (R)",
+    40: "Austria (R)",
+    41: "Zandvoort (R)"
 };
 
 // Session types — приложение Session Types (m_sessionType)
