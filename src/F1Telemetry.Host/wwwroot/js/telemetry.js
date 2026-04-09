@@ -86,7 +86,7 @@ const EVENT_NAMES = {
     "TMPT": "Teammate In Pits", "CHQF": "Chequered Flag", "RCWN": "Race Winner",
     "PENA": "Penalty", "SPTP": "Speed Trap", "STLG": "Start Lights",
     "LGOT": "Lights Out", "DTSV": "Drive Through Served", "SGSV": "Stop-Go Served",
-    "FLBK": "Flashback", "BUTN": "Button Press", "RDFL": "Red Flag",
+    "FLBK": "Flashback", "RDFL": "Red Flag",
     "OVTK": "Overtake", "SCAR": "Safety Car", "COLL": "Collision"
 };
 
@@ -178,6 +178,8 @@ let participantNames = [];
 let maxEvents = 50;
 let events = [];
 let pinnedPenalties = [];
+/** Last packet header session UID; when it changes, a new in-game session started. */
+let lastTelemetrySessionUid = null;
 let prevTrackTemp = null;
 let prevAirTemp = null;
 let trackTempHistory = [];
@@ -194,7 +196,11 @@ const GAP_BOARD_LAPS = 4;
 const PEDAL_HISTORY_LEN = 72;
 const pedalHistoryT = [];
 const pedalHistoryB = [];
-let lastPedalSessionLinkId = null;
+
+/** m_maxRPM from Car Status (rev limiter); 0 until first Car Status for this session. */
+let playerMaxRpm = 0;
+const RPM_SCALE_FALLBACK = 15000;
+let lastSessionLinkId = null;
 
 function el(id) { return document.getElementById(id); }
 
@@ -254,11 +260,12 @@ function updateSession(data) {
 
     const linkId = data.sessionLinkIdentifier;
     if (linkId !== undefined && linkId !== null) {
-        if (lastPedalSessionLinkId !== null && linkId !== lastPedalSessionLinkId) {
+        if (lastSessionLinkId !== null && linkId !== lastSessionLinkId) {
+            playerMaxRpm = 0;
             pedalHistoryT.length = 0;
             pedalHistoryB.length = 0;
         }
-        lastPedalSessionLinkId = linkId;
+        lastSessionLinkId = linkId;
     }
 
     el("trackName").textContent = TRACK_NAMES[data.trackId] || `Track ${data.trackId}`;
@@ -426,10 +433,10 @@ function updateCarTelemetry(data) {
     const gear = car.gear;
     el("gear").textContent = gear === -1 ? "R" : gear === 0 ? "N" : gear.toString();
 
-    const maxRpm = 15000;
-    const rpmPct = Math.min(100, (car.engineRpm / maxRpm) * 100);
+    const scale = playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK;
+    const rpmPct = Math.min(100, (car.engineRpm / scale) * 100);
     el("rpmBar").style.width = rpmPct + "%";
-    el("rpmValue").textContent = car.engineRpm + " RPM";
+    el("rpmValue").textContent = `${car.engineRpm} / ${scale} RPM`;
 
     const t = Math.max(0, Math.min(1, Number(car.throttle) || 0));
     const b = Math.max(0, Math.min(1, Number(car.brake) || 0));
@@ -477,6 +484,10 @@ function updateCarTelemetry(data) {
 function updateCarStatus(data) {
     const car = data.carStatusDataItems?.[playerCarIndex];
     if (!car) return;
+
+    if (car.maxRpm > 0) {
+        playerMaxRpm = car.maxRpm;
+    }
 
     el("fuelRemaining").textContent = car.fuelInTank.toFixed(1) + " kg";
     el("fuelLaps").textContent = car.fuelRemainingLaps.toFixed(1) + " laps";
@@ -558,6 +569,8 @@ function unpinServedPenalty(vehicleIdx, matchPenaltyType) {
 
 function updateEvent(data, header) {
     const code = data.eventCode;
+    if (code === "BUTN") return;
+
     const name = EVENT_NAMES[code] || code;
     let detail = "";
     const isPenalty = PENALTY_CODES.has(code);
@@ -1125,6 +1138,15 @@ function initConnection() {
 
     connection.on("ReceivePacket", (packetType, header, data) => {
         playerCarIndex = header?.playerCarIndex ?? 0;
+
+        const uid = header?.sessionUid;
+        if (uid != null) {
+            if (lastTelemetrySessionUid != null && uid !== lastTelemetrySessionUid) {
+                pinnedPenalties = [];
+                renderEvents();
+            }
+            lastTelemetrySessionUid = uid;
+        }
 
         const handler = PACKET_HANDLERS[packetType];
         if (handler) {

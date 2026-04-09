@@ -163,6 +163,19 @@
     overflow: auto;
 }
 
+/* Events widget: single scroll inside .events-list (avoid nested scroll with .widget-body / .card). */
+.widget-body-events,
+.widget-body-events > .card {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
+.widget-body-events > .card {
+    flex: 1;
+}
+
 /* Widget toolbar */
 .widget-toolbar {
     display: flex;
@@ -710,7 +723,9 @@
 
 /* Events */
 .events-list {
-    max-height: 300px;
+    flex: 1;
+    min-height: 0;
+    max-height: none;
     overflow-y: auto;
     display: flex;
     flex-direction: column;

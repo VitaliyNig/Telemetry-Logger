@@ -38,13 +38,14 @@ function getWidgetContent(widgetId) {
 function makeWidgetHtml(widgetId) {
     const reg = WIDGET_REGISTRY[widgetId];
     const content = getWidgetContent(widgetId);
+    const bodyClass = widgetId === "events" ? "widget-body widget-body-events" : "widget-body";
     return `<div class="widget-wrapper" data-widget-id="${widgetId}">
         <div class="widget-header">
             <span class="widget-drag-handle">⠿</span>
             <span class="widget-header-title">${reg.title}</span>
             <button class="widget-close-btn" onclick="removeWidget('${widgetId}')" title="Remove widget">✕</button>
         </div>
-        <div class="widget-body">${content}</div>
+        <div class="${bodyClass}">${content}</div>
     </div>`;
 }
 
