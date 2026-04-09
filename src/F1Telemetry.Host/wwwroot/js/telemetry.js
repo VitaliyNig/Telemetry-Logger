@@ -86,7 +86,7 @@ const EVENT_NAMES = {
     "TMPT": "Teammate In Pits", "CHQF": "Chequered Flag", "RCWN": "Race Winner",
     "PENA": "Penalty", "SPTP": "Speed Trap", "STLG": "Start Lights",
     "LGOT": "Lights Out", "DTSV": "Drive Through Served", "SGSV": "Stop-Go Served",
-    "FLBK": "Flashback", "BUTN": "Button Press", "RDFL": "Red Flag",
+    "FLBK": "Flashback", "RDFL": "Red Flag",
     "OVTK": "Overtake", "SCAR": "Safety Car", "COLL": "Collision"
 };
 
@@ -178,6 +178,8 @@ let participantNames = [];
 let maxEvents = 50;
 let events = [];
 let pinnedPenalties = [];
+/** Last packet header session UID; when it changes, a new in-game session started. */
+let lastTelemetrySessionUid = null;
 let prevTrackTemp = null;
 let prevAirTemp = null;
 let trackTempHistory = [];
@@ -493,6 +495,8 @@ function unpinServedPenalty(vehicleIdx, matchPenaltyType) {
 
 function updateEvent(data, header) {
     const code = data.eventCode;
+    if (code === "BUTN") return;
+
     const name = EVENT_NAMES[code] || code;
     let detail = "";
     const isPenalty = PENALTY_CODES.has(code);
@@ -1060,6 +1064,15 @@ function initConnection() {
 
     connection.on("ReceivePacket", (packetType, header, data) => {
         playerCarIndex = header?.playerCarIndex ?? 0;
+
+        const uid = header?.sessionUid;
+        if (uid != null) {
+            if (lastTelemetrySessionUid != null && uid !== lastTelemetrySessionUid) {
+                pinnedPenalties = [];
+                renderEvents();
+            }
+            lastTelemetrySessionUid = uid;
+        }
 
         const handler = PACKET_HANDLERS[packetType];
         if (handler) {
