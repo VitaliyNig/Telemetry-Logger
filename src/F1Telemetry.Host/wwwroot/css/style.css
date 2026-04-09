@@ -422,58 +422,65 @@
 .rpm-bar-bg {
     position: relative;
     height: 10px;
-    background: rgba(255,255,255,0.06);
     border-radius: 999px;
     overflow: hidden;
 }
 
-/* Steering-style RPM: green 0–75% → red 75–85% → blue 85–100% of max RPM */
-.rpm-bar-ghost,
-.rpm-bar-lit {
+/* Default: full grey track; red from 11k, blue from 11.6k, blink from 12k (see JS thresholds vs max RPM) */
+.rpm-bar-track {
     position: absolute;
     inset: 0;
-    display: flex;
-    flex-direction: row;
+    background: rgba(255,255,255,0.12);
     border-radius: inherit;
 }
 
-.rpm-bar-ghost .rpm-seg-green {
-    flex: 75 1 0;
-    background: rgba(0, 215, 0, 0.14);
-}
-
-.rpm-bar-ghost .rpm-seg-red {
-    flex: 10 1 0;
-    background: rgba(225, 6, 0, 0.12);
-}
-
-.rpm-bar-ghost .rpm-seg-blue {
-    flex: 15 1 0;
-    background: rgba(0, 166, 255, 0.14);
-}
-
-.rpm-bar-lit {
+.rpm-bar-lit-clip {
+    position: absolute;
+    inset: 0;
     z-index: 1;
     clip-path: inset(0 calc(100% - var(--rpm-pct, 0%)) 0 0);
     transition: clip-path 0.08s linear;
 }
 
-.rpm-bar-lit .rpm-seg-green {
-    flex: 75 1 0;
-    background: var(--accent-green);
-    box-shadow: 0 0 6px rgba(0, 215, 0, 0.35);
+.rpm-bar-lit {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+}
+
+.rpm-bar-lit .rpm-seg-idle {
+    flex: 1 1 0;
+    min-width: 0;
+    background: transparent;
 }
 
 .rpm-bar-lit .rpm-seg-red {
-    flex: 10 1 0;
+    flex: 1 1 0;
+    min-width: 0;
     background: var(--semantic-red);
     box-shadow: 0 0 6px rgba(225, 6, 0, 0.35);
 }
 
 .rpm-bar-lit .rpm-seg-blue {
-    flex: 15 1 0;
+    flex: 1 1 0;
+    min-width: 0;
     background: var(--accent-blue);
     box-shadow: 0 0 6px rgba(0, 166, 255, 0.35);
+}
+
+.rpm-bar-lit .rpm-seg-blink {
+    flex: 1 1 0;
+    min-width: 0;
+    background: #e8eaed;
+    box-shadow: 0 0 8px rgba(255, 255, 255, 0.45);
+    animation: rpm-blink-pulse 0.35s ease-in-out infinite;
+}
+
+@keyframes rpm-blink-pulse {
+    0%, 100% { opacity: 1; filter: brightness(1.15); }
+    50% { opacity: 0.35; filter: brightness(0.7); }
 }
 
 .rpm-value {
