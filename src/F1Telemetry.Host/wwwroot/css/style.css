@@ -443,7 +443,7 @@
 
 .telemetry-middle {
     display: grid;
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 6px;
     align-items: stretch;
     min-height: 60px;
@@ -511,36 +511,34 @@
     text-align: center;
 }
 
-.telemetry-extras-tile {
-    padding: 6px 6px;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid var(--border);
+/* BB / DIFF: same chrome as speed tile, label over value */
+.telemetry-metric-tile {
     display: flex;
     flex-direction: column;
+    align-items: center;
     justify-content: center;
-    gap: 3px;
+    text-align: center;
+    gap: 5px;
+    padding: 6px 4px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
 }
 
-.telemetry-extra-row {
-    display: flex;
-    align-items: baseline;
-    justify-content: space-between;
-    gap: 6px;
-    white-space: nowrap;
-}
-
-.telemetry-extra-label {
-    font-size: 8px;
+.telemetry-metric-label {
+    font-size: 10px;
     font-weight: 700;
-    letter-spacing: 0.8px;
-    color: var(--text-dim);
+    letter-spacing: 1.2px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    line-height: 1;
 }
 
-.telemetry-extra-value {
-    font-size: 12px;
+.telemetry-metric-value {
+    font-size: clamp(14px, 2.5vw, 17px);
     font-weight: 700;
     font-family: var(--font-mono);
-    color: var(--text-secondary);
+    line-height: 1;
+    color: var(--text-primary);
 }
 
 .speed-tile-value {
