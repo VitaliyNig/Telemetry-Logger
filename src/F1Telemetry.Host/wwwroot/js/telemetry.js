@@ -190,6 +190,12 @@ let lastSessionPacket = null;
 const sessionHistories = {};
 const GAP_BOARD_LAPS = 4;
 
+/** Throttle / brake traces for Car Telemetry pedal chart (0..1 samples, oldest → newest). */
+const PEDAL_HISTORY_LEN = 72;
+const pedalHistoryT = [];
+const pedalHistoryB = [];
+let lastPedalSessionLinkId = null;
+
 function el(id) { return document.getElementById(id); }
 
 function formatTime(ms) {
@@ -245,6 +251,16 @@ function renderTempWithTrend(elemId, temp, trend) {
 
 function updateSession(data) {
     lastSessionPacket = data;
+
+    const linkId = data.sessionLinkIdentifier;
+    if (linkId !== undefined && linkId !== null) {
+        if (lastPedalSessionLinkId !== null && linkId !== lastPedalSessionLinkId) {
+            pedalHistoryT.length = 0;
+            pedalHistoryB.length = 0;
+        }
+        lastPedalSessionLinkId = linkId;
+    }
+
     el("trackName").textContent = TRACK_NAMES[data.trackId] || `Track ${data.trackId}`;
     el("sessionType").textContent = SESSION_TYPES[data.sessionType] || `Type ${data.sessionType}`;
     el("weather").textContent = WEATHER_NAMES[data.weather] || "Unknown";
@@ -361,6 +377,47 @@ function updateWeatherForecast(data) {
     container.innerHTML = html;
 }
 
+function initPedalChartGrid() {
+    const g = el("pedalChartGrid");
+    if (!g || g.dataset.inited) return;
+    g.dataset.inited = "1";
+    const verticals = 5;
+    let inner = "";
+    for (let i = 1; i <= verticals; i++) {
+        const x = (i / (verticals + 1)) * 100;
+        inner += `<line x1="${x}" y1="0" x2="${x}" y2="40" />`;
+    }
+    g.innerHTML = inner;
+}
+
+function pushPedalSample(throttle, brake) {
+    pedalHistoryT.push(throttle);
+    pedalHistoryB.push(brake);
+    if (pedalHistoryT.length > PEDAL_HISTORY_LEN) pedalHistoryT.shift();
+    if (pedalHistoryB.length > PEDAL_HISTORY_LEN) pedalHistoryB.shift();
+}
+
+function buildPedalPolylinePoints(values) {
+    const n = values.length;
+    if (n === 0) return "";
+    const parts = [];
+    for (let i = 0; i < n; i++) {
+        const x = n === 1 ? 100 : (i / (n - 1)) * 100;
+        const y = 40 - values[i] * 40;
+        parts.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+    }
+    return parts.join(" ");
+}
+
+function updatePedalChart() {
+    const lineT = el("pedalLineThrottle");
+    const lineB = el("pedalLineBrake");
+    if (!lineT || !lineB) return;
+    initPedalChartGrid();
+    lineT.setAttribute("points", buildPedalPolylinePoints(pedalHistoryT));
+    lineB.setAttribute("points", buildPedalPolylinePoints(pedalHistoryB));
+}
+
 function updateCarTelemetry(data) {
     const car = data.carTelemetryData?.[playerCarIndex];
     if (!car) return;
@@ -374,21 +431,29 @@ function updateCarTelemetry(data) {
     el("rpmBar").style.width = rpmPct + "%";
     el("rpmValue").textContent = car.engineRpm + " RPM";
 
-    const throttlePct = Math.round(car.throttle * 100);
-    el("throttleBar").style.width = throttlePct + "%";
-    el("throttlePct").textContent = throttlePct + "%";
+    const t = Math.max(0, Math.min(1, Number(car.throttle) || 0));
+    const b = Math.max(0, Math.min(1, Number(car.brake) || 0));
+    const throttlePct = Math.round(t * 100);
+    const brakePct = Math.round(b * 100);
 
-    const brakePct = Math.round(car.brake * 100);
-    el("brakeBar").style.width = brakePct + "%";
-    el("brakePct").textContent = brakePct + "%";
+    const throttleFill = el("throttleBar");
+    const brakeFill = el("brakeBar");
+    if (throttleFill) throttleFill.style.height = throttlePct + "%";
+    if (brakeFill) brakeFill.style.height = brakePct + "%";
+
+    const throttleLbl = el("throttlePct");
+    const brakeLbl = el("brakePct");
+    if (throttleLbl) throttleLbl.textContent = throttlePct + "%";
+    if (brakeLbl) brakeLbl.textContent = brakePct + "%";
+
+    pushPedalSample(t, b);
+    updatePedalChart();
 
     const drsEl = el("drsIndicator");
-    if (car.drs === 1) {
-        drsEl.textContent = "ON";
-        drsEl.classList.add("active");
-    } else {
-        drsEl.textContent = "OFF";
-        drsEl.classList.remove("active");
+    if (drsEl) {
+        drsEl.textContent = "DRS";
+        if (car.drs === 1) drsEl.classList.add("active");
+        else drsEl.classList.remove("active");
     }
 
     // Tyre surface temperatures: order is RL, RR, FL, FR

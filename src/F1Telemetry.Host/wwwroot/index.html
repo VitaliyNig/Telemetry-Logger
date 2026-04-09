@@ -213,15 +213,38 @@
 
     <template id="tpl-telemetry">
         <div class="card"><h2 class="widget-title">Car Telemetry</h2>
-        <div class="telemetry-main">
-            <div class="speed-display"><div class="speed-value" id="speed">0</div><div class="speed-unit">KM/H</div></div>
-            <div class="gear-display"><div class="gear-label">GEAR</div><div class="gear-value" id="gear">N</div></div>
-            <div class="rpm-container"><div class="rpm-bar-bg"><div class="rpm-bar-fill" id="rpmBar"></div></div><div class="rpm-value" id="rpmValue">0 RPM</div></div>
-        </div>
-        <div class="pedals-row">
-            <div class="pedal-group"><span class="pedal-label">Throttle</span><div class="pedal-bar-bg"><div class="pedal-bar-fill throttle-fill" id="throttleBar"></div></div><span class="pedal-pct" id="throttlePct">0%</span></div>
-            <div class="pedal-group"><span class="pedal-label">Brake</span><div class="pedal-bar-bg"><div class="pedal-bar-fill brake-fill" id="brakeBar"></div></div><span class="pedal-pct" id="brakePct">0%</span></div>
-            <div class="pedal-group"><span class="pedal-label">DRS</span><div class="drs-indicator" id="drsIndicator">OFF</div></div>
+        <div class="telemetry-stack">
+            <div class="rpm-strip">
+                <div class="rpm-bar-bg"><div class="rpm-bar-fill" id="rpmBar"></div></div>
+                <div class="rpm-value" id="rpmValue">0 RPM</div>
+            </div>
+            <div class="telemetry-middle">
+                <div class="drs-tile drs-indicator" id="drsIndicator">DRS</div>
+                <div class="gear-hero"><div class="gear-value" id="gear">N</div></div>
+                <div class="speed-tile">
+                    <div class="speed-tile-value" id="speed">0</div>
+                    <div class="speed-tile-unit">KM/H</div>
+                </div>
+            </div>
+            <div class="pedals-panel">
+                <div class="pedal-chart-box">
+                    <svg class="pedal-chart" id="pedalChartSvg" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+                        <g class="pedal-chart-grid" id="pedalChartGrid"></g>
+                        <polyline class="pedal-line pedal-line-brake" id="pedalLineBrake" fill="none" points="" />
+                        <polyline class="pedal-line pedal-line-throttle" id="pedalLineThrottle" fill="none" points="" />
+                    </svg>
+                </div>
+                <div class="pedal-vbars">
+                    <div class="pedal-vbar">
+                        <div class="pedal-vbar-track"><div class="pedal-vbar-fill pedal-vbar-brake" id="brakeBar"></div></div>
+                        <span class="pedal-vbar-label" id="brakePct">0%</span>
+                    </div>
+                    <div class="pedal-vbar">
+                        <div class="pedal-vbar-track"><div class="pedal-vbar-fill pedal-vbar-throttle" id="throttleBar"></div></div>
+                        <span class="pedal-vbar-label" id="throttlePct">0%</span>
+                    </div>
+                </div>
+            </div>
         </div></div>
     </template>
 
