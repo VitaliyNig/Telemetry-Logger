@@ -193,7 +193,7 @@ const sessionHistories = {};
 const GAP_BOARD_LAPS = 4;
 
 /** Throttle / brake traces for Car Telemetry pedal chart (0..1 samples, oldest → newest). */
-const PEDAL_HISTORY_LEN = 72;
+const PEDAL_HISTORY_LEN = 180;
 const pedalHistoryT = [];
 const pedalHistoryB = [];
 
