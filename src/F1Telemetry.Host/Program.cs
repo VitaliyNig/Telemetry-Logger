@@ -8,6 +8,7 @@ using F1Telemetry.Host.Ingress;
 using F1Telemetry.Ingress;
 using F1Telemetry.State;
 using F1Telemetry.Udp;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.Hosting;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -35,7 +36,22 @@ builder.Services.AddSignalR()
 var app = builder.Build();
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    // Browsers aggressively cache /js/*.js and /css/*.css; without this, UI updates look "stuck"
+    // after rebuild until a hard refresh. Local telemetry app does not benefit from long-lived cache.
+    OnPrepareResponse = ctx =>
+    {
+        var ext = Path.GetExtension(ctx.File.Name);
+        if (ext.Equals(".js", StringComparison.OrdinalIgnoreCase) ||
+            ext.Equals(".css", StringComparison.OrdinalIgnoreCase) ||
+            ext.Equals(".html", StringComparison.OrdinalIgnoreCase))
+        {
+            ctx.Context.Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
+            ctx.Context.Response.Headers.Append("Pragma", "no-cache");
+        }
+    }
+});
 
 app.MapHub<TelemetryHub>("/hub/telemetry");
 
