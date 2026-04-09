@@ -1,0 +1,352 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Telemetry Logger</title>
+    <link rel="icon" href="/logo.svg" type="image/svg+xml">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-extra.min.css">
+    <link rel="stylesheet" href="/css/app.css">
+    <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+    <header class="app-header">
+        <div class="header-brand">
+            <img class="brand-logo" src="/logo.svg" width="28" height="28" alt="" aria-hidden="true">
+            <span class="brand-title">Telemetry Logger</span>
+        </div>
+        <div class="header-center">
+            <nav class="tab-nav" id="tabNav">
+                <button class="tab-btn active" data-tab="live">Live</button>
+                <button class="tab-btn" data-tab="history">History</button>
+                <button class="tab-btn" data-tab="settings">Settings</button>
+                <button class="tab-btn tab-debug hidden" data-tab="debug">Debug</button>
+            </nav>
+        </div>
+        <div class="connection-status" id="connectionStatus">
+            <span class="status-dot"></span>
+            <span class="status-text">Connecting...</span>
+        </div>
+    </header>
+
+    <main class="app-main">
+        <!-- Live Tab -->
+        <section class="tab-panel active" id="panel-live">
+            <div class="widget-toolbar">
+                <div class="widget-toolbar-left">
+                    <div class="preset-selector">
+                        <button class="preset-btn active" data-preset="practice">Practice</button>
+                        <button class="preset-btn" data-preset="qualifying">Qualifying</button>
+                        <button class="preset-btn" data-preset="race">Race</button>
+                        <button class="preset-btn" data-preset="custom">Custom</button>
+                    </div>
+                    <button class="btn btn-small btn-primary" id="btnAddWidget">+ Add Widget</button>
+                    <div class="widget-dropdown hidden" id="widgetDropdown"></div>
+                    <span class="preset-save-group">
+                        <button type="button" class="btn btn-small btn-secondary" id="btnSavePreset" title="Save current layout to this preset">Save Preset</button>
+                        <button type="button" class="btn btn-small btn-secondary" id="btnUndoLayout" hidden title="Discard unsaved changes and restore the last saved layout for this preset">Undo</button>
+                    </span>
+                </div>
+                <div class="widget-toolbar-right">
+                    <label class="toolbar-lock-toggle">
+                        <span class="toggle-switch toggle-switch-toolbar">
+                            <input type="checkbox" id="lockToggle">
+                            <span class="toggle-slider"></span>
+                        </span>
+                        <span class="toolbar-lock-label">Lock Layout</span>
+                    </label>
+                </div>
+            </div>
+            <div class="grid-stack" id="dashboardGrid"></div>
+        </section>
+
+        <!-- History Tab -->
+        <section class="tab-panel" id="panel-history">
+            <div class="placeholder-panel">
+                <div class="placeholder-icon">📊</div>
+                <h2>Session History</h2>
+                <p>Past sessions and recorded data will be listed here.</p>
+                <p class="hint">This feature is coming soon.</p>
+            </div>
+        </section>
+
+        <!-- Settings Tab -->
+        <section class="tab-panel settings-tab-panel" id="panel-settings">
+            <div class="settings-scroll">
+            <div class="settings-container">
+                <h2>Settings</h2>
+
+                <div class="settings-group">
+                    <h3>UDP Connection</h3>
+                    <div class="setting-row">
+                        <label for="udpListenIp">UDP Listen IP</label>
+                        <input type="text" id="udpListenIp" value="0.0.0.0" placeholder="0.0.0.0">
+                        <span class="setting-hint">Network interface to listen on. <code>0.0.0.0</code> = all interfaces.</span>
+                    </div>
+                    <div class="setting-row">
+                        <label for="udpListenPort">UDP Listen Port</label>
+                        <input type="number" id="udpListenPort" value="20777" min="1" max="65535">
+                        <span class="setting-hint">Must match the port configured in F1 25 game settings. Default: <code>20777</code></span>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3>F1 25 — telemetry in game</h3>
+                    <p class="game-settings-memo-intro">Recommended values in the game’s telemetry settings so this app receives data correctly.</p>
+                    <div class="game-settings-memo-wrap">
+                        <table class="game-settings-memo" aria-label="Recommended F1 25 telemetry settings">
+                            <thead>
+                                <tr>
+                                    <th scope="col">Setting</th>
+                                    <th scope="col">Recommended value</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <tr><td>UDP Telemetry</td><td>On</td></tr>
+                                <tr><td>UDP Broadcast Mode</td><td>On</td></tr>
+                                <tr><td>UDP IP Address</td><td>—</td></tr>
+                                <tr><td>UDP Port</td><td>20777</td></tr>
+                                <tr><td>UDP Send Rate</td><td>60 Hz</td></tr>
+                                <tr><td>UDP Format</td><td>2025</td></tr>
+                                <tr><td>Your Telemetry</td><td>Public</td></tr>
+                                <tr><td>Show player names</td><td>On</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3>Web Server</h3>
+                    <div class="setting-row">
+                        <label for="webPort">Web Port</label>
+                        <input type="number" id="webPort" value="5000" min="1" max="65535">
+                        <span class="setting-hint">Local web server port. <strong>Requires restart</strong> on change.</span>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3>Dashboard</h3>
+                    <div class="setting-row setting-toggle">
+                        <label for="autoSwitchPreset">Auto-switch Preset</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="autoSwitchPreset" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="setting-hint">Automatically switch layout preset when session type changes (Practice / Qualifying / Race).</span>
+                    </div>
+                </div>
+
+                <div class="settings-group">
+                    <h3>Developer</h3>
+                    <div class="setting-row setting-toggle">
+                        <label for="debugMode">Debug Mode</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="debugMode">
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="setting-hint">Enables the Debug tab with packet inspection and logging.</span>
+                    </div>
+                </div>
+
+            </div>
+            </div>
+            <footer class="settings-footer" id="settingsFooter">
+                <div class="settings-footer-inner">
+                    <button type="button" class="btn btn-primary" id="btnSaveSettings">Save Settings</button>
+                    <span class="save-status" id="saveStatus"></span>
+                </div>
+            </footer>
+        </section>
+
+        <!-- Debug Tab -->
+        <section class="tab-panel" id="panel-debug">
+            <div class="debug-container">
+                <div class="debug-left">
+                    <h3>Packet Counts</h3>
+                    <div class="packet-stats" id="packetStats">
+                        <div class="stat-total">
+                            <span class="stat-label">Total Packets</span>
+                            <span class="stat-value" id="totalPackets">0</span>
+                        </div>
+                        <div class="stat-list" id="packetCountsList">
+                            <p class="muted">No packets received yet.</p>
+                        </div>
+                    </div>
+                    <div class="debug-actions">
+                        <button class="btn btn-secondary" id="btnDownloadLog">Download Log</button>
+                        <button class="btn btn-danger" id="btnResetStats">Reset</button>
+                    </div>
+                </div>
+                <div class="debug-right">
+                    <h3>Packet Console</h3>
+                    <div class="console-toolbar">
+                        <label class="toggle-switch small">
+                            <input type="checkbox" id="autoScroll" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="toolbar-label">Auto-scroll</span>
+                        <button class="btn btn-small btn-secondary" id="btnClearConsole">Clear</button>
+                    </div>
+                    <div class="debug-console" id="debugConsole">
+                        <p class="muted">Waiting for packets...</p>
+                    </div>
+                </div>
+            </div>
+        </section>
+    </main>
+
+    <!-- Widget HTML Templates (hidden, cloned by JS) -->
+    <template id="tpl-session">
+        <div class="card"><h2 class="widget-title">Session</h2>
+        <div class="session-grid">
+            <div class="stat-box"><span class="stat-label">Track</span><span class="stat-value" id="trackName">--</span></div>
+            <div class="stat-box"><span class="stat-label">Session</span><span class="stat-value" id="sessionType">--</span></div>
+            <div class="stat-box"><span class="stat-label">Weather</span><span class="stat-value" id="weather">--</span></div>
+            <div class="stat-box"><span class="stat-label">Track Temp</span><span class="stat-value" id="trackTemp">--</span></div>
+            <div class="stat-box"><span class="stat-label">Air Temp</span><span class="stat-value" id="airTemp">--</span></div>
+            <div class="stat-box"><span class="stat-label">Time Left</span><span class="stat-value" id="timeLeft">--</span></div>
+            <div class="stat-box"><span class="stat-label">Safety Car</span><span class="stat-value" id="safetyCarStatus">--</span></div>
+            <div class="stat-box"><span class="stat-label">Laps</span><span class="stat-value" id="totalLaps">--</span></div>
+        </div></div>
+    </template>
+
+    <template id="tpl-telemetry">
+        <div class="card"><h2 class="widget-title">Car Telemetry</h2>
+        <div class="telemetry-stack">
+            <div class="rpm-strip">
+                <div class="rpm-bar-bg"><div class="rpm-bar-fill" id="rpmBar"></div></div>
+                <div class="rpm-value" id="rpmValue">0 RPM</div>
+            </div>
+            <div class="telemetry-middle">
+                <div class="drs-tile drs-indicator" id="drsIndicator">DRS</div>
+                <div class="gear-hero"><div class="gear-value" id="gear">N</div></div>
+                <div class="speed-tile">
+                    <div class="speed-tile-value" id="speed">0</div>
+                    <div class="speed-tile-unit">KM/H</div>
+                </div>
+            </div>
+            <div class="pedals-panel">
+                <div class="pedal-chart-box">
+                    <svg class="pedal-chart" id="pedalChartSvg" viewBox="0 0 100 40" preserveAspectRatio="none" aria-hidden="true">
+                        <g class="pedal-chart-grid" id="pedalChartGrid"></g>
+                        <polyline class="pedal-line pedal-line-brake" id="pedalLineBrake" fill="none" points="" />
+                        <polyline class="pedal-line pedal-line-throttle" id="pedalLineThrottle" fill="none" points="" />
+                    </svg>
+                </div>
+                <div class="pedal-vbars">
+                    <div class="pedal-vbar">
+                        <div class="pedal-vbar-track"><div class="pedal-vbar-fill pedal-vbar-brake" id="brakeBar"></div></div>
+                        <span class="pedal-vbar-label" id="brakePct">0%</span>
+                    </div>
+                    <div class="pedal-vbar">
+                        <div class="pedal-vbar-track"><div class="pedal-vbar-fill pedal-vbar-throttle" id="throttleBar"></div></div>
+                        <span class="pedal-vbar-label" id="throttlePct">0%</span>
+                    </div>
+                </div>
+            </div>
+        </div></div>
+    </template>
+
+    <template id="tpl-tyres">
+        <div class="card"><h2 class="widget-title">Tyres</h2>
+        <div class="tyres-layout">
+            <div class="tyre-box"><span class="tyre-pos">FL</span><span class="tyre-temp" id="tyreTempFL">--°</span><span class="tyre-wear" id="tyreWearFL">--%</span></div>
+            <div class="tyre-box"><span class="tyre-pos">FR</span><span class="tyre-temp" id="tyreTempFR">--°</span><span class="tyre-wear" id="tyreWearFR">--%</span></div>
+            <div class="tyre-box"><span class="tyre-pos">RL</span><span class="tyre-temp" id="tyreTempRL">--°</span><span class="tyre-wear" id="tyreWearRL">--%</span></div>
+            <div class="tyre-box"><span class="tyre-pos">RR</span><span class="tyre-temp" id="tyreTempRR">--°</span><span class="tyre-wear" id="tyreWearRR">--%</span></div>
+        </div>
+        <div class="compound-info"><span class="compound-label">Compound:</span><span class="compound-value" id="tyreCompound">--</span><span class="compound-label">Age:</span><span class="compound-value" id="tyreAge">-- laps</span></div></div>
+    </template>
+
+    <template id="tpl-tyreSets">
+        <div class="card"><h2 class="widget-title">Available Tyre Sets</h2>
+        <div class="tyreset-fitted"><span class="fitted-label">Fitted:</span><span class="fitted-value" id="fittedCompound">--</span></div>
+        <div class="tyreset-groups" id="tyreSetGroups"><div class="tyreset-placeholder">Waiting for tyre set data...</div></div></div>
+    </template>
+
+    <template id="tpl-pitPredictor">
+        <div class="card"><h2 class="widget-title">Pit Stop Predictor</h2>
+        <div class="pitstop-config"><span class="stat-label">Pit Time (s)</span><input type="number" id="pitTimeInput" class="pit-time-input" step="0.1" min="15" max="40" value="23.0"><button class="btn btn-small btn-primary" id="btnSavePitTime">Save</button><span class="pit-save-status" id="pitSaveStatus"></span></div>
+        <div class="pitstop-prediction">
+            <div class="pit-result"><span class="stat-label">Predicted Position</span><span class="stat-value big" id="pitPredPos">--</span></div>
+            <div class="pit-gaps">
+                <div class="pit-gap-item"><span class="pit-gap-label">Car Ahead</span><span class="pit-gap-driver" id="pitAheadName">--</span><span class="pit-gap-value" id="pitAheadGap">--</span></div>
+                <div class="pit-gap-item"><span class="pit-gap-label">Car Behind</span><span class="pit-gap-driver" id="pitBehindName">--</span><span class="pit-gap-value" id="pitBehindGap">--</span></div>
+            </div>
+        </div></div>
+    </template>
+
+    <template id="tpl-carStatus">
+        <div class="card"><h2 class="widget-title">Car Status</h2>
+        <div class="status-grid">
+            <div class="stat-box"><span class="stat-label">Fuel</span><span class="stat-value" id="fuelRemaining">--</span></div>
+            <div class="stat-box"><span class="stat-label">Fuel Laps</span><span class="stat-value" id="fuelLaps">--</span></div>
+            <div class="stat-box"><span class="stat-label">ERS Deploy</span><span class="stat-value" id="ersMode">--</span></div>
+            <div class="stat-box"><span class="stat-label">ERS Store</span><div class="ers-bar-bg"><div class="ers-bar-fill" id="ersBar"></div></div></div>
+        </div></div>
+    </template>
+
+    <template id="tpl-lapData">
+        <div class="card"><h2 class="widget-title">Lap Data</h2>
+        <div class="lap-grid">
+            <div class="stat-box"><span class="stat-label">Position</span><span class="stat-value big" id="position">--</span></div>
+            <div class="stat-box"><span class="stat-label">Current Lap</span><span class="stat-value" id="currentLap">--</span></div>
+            <div class="stat-box"><span class="stat-label">Current Time</span><span class="stat-value" id="currentLapTime">--</span></div>
+            <div class="stat-box"><span class="stat-label">Last Lap</span><span class="stat-value" id="lastLapTime">--</span></div>
+            <div class="stat-box"><span class="stat-label">Sector 1</span><span class="stat-value" id="sector1">--</span></div>
+            <div class="stat-box"><span class="stat-label">Sector 2</span><span class="stat-value" id="sector2">--</span></div>
+        </div></div>
+    </template>
+
+    <template id="tpl-damage">
+        <div class="card"><h2 class="widget-title">Damage</h2>
+        <div class="damage-grid">
+            <div class="damage-item"><span class="damage-label">FL Wing</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFL"></div></div></div>
+            <div class="damage-item"><span class="damage-label">FR Wing</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFR"></div></div></div>
+            <div class="damage-item"><span class="damage-label">Rear Wing</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgRear"></div></div></div>
+            <div class="damage-item"><span class="damage-label">Floor</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFloor"></div></div></div>
+            <div class="damage-item"><span class="damage-label">Engine</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgEngine"></div></div></div>
+            <div class="damage-item"><span class="damage-label">Gearbox</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgGearbox"></div></div></div>
+        </div></div>
+    </template>
+
+    <template id="tpl-events">
+        <div class="card"><h2 class="widget-title">Events</h2>
+        <div class="events-list" id="eventsList"><div class="event-item placeholder">Waiting for events...</div></div></div>
+    </template>
+
+    <template id="tpl-standings">
+        <div class="card"><h2 class="widget-title">Standings</h2>
+        <div class="standings-table-wrap"><table class="standings-table"><thead><tr><th>Pos</th><th>Driver</th><th>Lap</th><th>Last Lap</th><th>Gap</th><th>Pit</th></tr></thead><tbody id="standingsBody"></tbody></table></div></div>
+    </template>
+
+    <template id="tpl-weather">
+        <div class="card"><h2 class="widget-title">Weather Forecast</h2>
+        <div class="weather-forecast" id="weatherForecastContent">
+            <div class="weather-placeholder">Waiting for session data...</div>
+        </div></div>
+    </template>
+
+    <template id="tpl-gapBoard">
+        <div class="card"><h2 class="widget-title">Gap Board</h2>
+        <div class="gap-board" id="gapBoardContent">
+            <div class="gap-board-placeholder">Waiting for lap data...</div>
+        </div></div>
+    </template>
+
+    <template id="tpl-qualiStandings">
+        <div class="card"><h2 class="widget-title">Quali Standings</h2>
+        <div class="standings-table-wrap"><table class="standings-table quali-table">
+            <thead><tr><th>Pos</th><th>Driver</th><th>Best Lap</th><th>Gap</th><th>Lap</th><th>Status</th><th>S1</th><th>S2</th><th>S3</th></tr></thead>
+            <tbody id="qualiStandingsBody"></tbody>
+        </table></div></div>
+    </template>
+
+    <script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
+    <script src="/js/app.js"></script>
+    <script src="/js/widgets.js"></script>
+    <script src="/js/telemetry.js"></script>
+</body>
+</html>

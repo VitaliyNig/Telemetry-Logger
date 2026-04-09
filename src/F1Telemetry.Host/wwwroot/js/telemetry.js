@@ -1,6 +1,8 @@
 "use strict";
 
-// Track IDs: EA "Data Output from F1 25" v3 PDF appendix (m_trackId, int8, -1 = unknown)
+// Справочники синхронизированы с docs/F1_25_UDP_Spec.md (приложения и комментарии к пакетам).
+
+// Track IDs — приложение Track IDs (m_trackId int8, -1 = неизвестно)
 const TRACK_NAMES = {
     0: "Melbourne",
     2: "Shanghai",
@@ -31,7 +33,7 @@ const TRACK_NAMES = {
     41: "Zandvoort (Reverse)"
 };
 
-// Session types: F1 25 v3 PDF appendix (m_sessionType)
+// Session types — приложение Session Types (m_sessionType)
 const SESSION_TYPES = {
     0: "Unknown",
     1: "Practice 1",
@@ -63,30 +65,46 @@ const SAFETY_CAR_STATUS = {
     0: "None", 1: "Full SC", 2: "VSC", 3: "Formation"
 };
 
+// m_actualTyreCompound — пакет Car Status (разное для F1 Modern / Classic / F2)
 const TYRE_COMPOUNDS = {
     16: "C5", 17: "C4", 18: "C3", 19: "C2", 20: "C1", 21: "C0", 22: "C6",
-    7: "Inter", 8: "Wet"
+    7: "Inter", 8: "Wet",
+    9: "Dry", 10: "Wet",
+    11: "Super Soft", 12: "Soft", 13: "Medium", 14: "Hard", 15: "Wet",
 };
 
+// m_visualTyreCompound — F1: 16–18,7,8; Classic: как F1; F2: 15 wet, 19–22 (см. спецификацию)
 const VISUAL_COMPOUNDS = {
-    16: "Soft", 17: "Medium", 18: "Hard", 7: "Inter", 8: "Wet"
+    16: "Soft", 17: "Medium", 18: "Hard", 7: "Inter", 8: "Wet",
+    9: "Dry", 10: "Wet",
+    15: "Wet", 19: "Super Soft", 20: "Soft", 21: "Medium", 22: "Hard",
 };
 
-/** Optimal surface temperature (°C) by m_visualTyreCompound — F1 25 style tyre chart. */
-const TYRE_OPTIMAL_TEMP_C = {
-    20: { min: 95, max: 115 },
-    19: { min: 85, max: 115 },
-    18: { min: 85, max: 95 },
-    17: { min: 75, max: 95 },
-    16: { min: 75, max: 85 },
-    22: { min: 65, max: 85 },
-    7:  { min: 55, max: 75 },
-    8:  { min: 55, max: 65 },
-    21: { min: 90, max: 115 },
-};
 const TYRE_TEMP_BORDER_DEFAULT = { min: 85, max: 95 };
 
+/** °C по m_visualTyreCompound — ориентир для UI (F1/F2/Classic id из спецификации). */
+const TYRE_OPTIMAL_TEMP_C = {
+    16: { min: 75, max: 85 },
+    17: { min: 75, max: 95 },
+    18: { min: 85, max: 95 },
+    19: { min: 85, max: 115 },
+    20: { min: 95, max: 115 },
+    21: { min: 90, max: 115 },
+    22: { min: 65, max: 85 },
+    7: { min: 55, max: 75 },
+    8: { min: 55, max: 65 },
+    9: { min: 80, max: 110 },
+    10: { min: 55, max: 65 },
+    15: { min: 55, max: 75 },
+};
+
 const ERS_MODES = { 0: "None", 1: "Medium", 2: "Hotlap", 3: "Overtake" };
+
+/** m_fuelMix — Car Status */
+const FUEL_MIX_NAMES = { 0: "Lean", 1: "Standard", 2: "Rich", 3: "Max" };
+
+/** m_tractionControl — Car Status */
+const TRACTION_CONTROL_NAMES = { 0: "Off", 1: "Medium", 2: "Full" };
 
 const PIT_STATUS = { 0: "", 1: "Pitting", 2: "In Pit" };
 
@@ -101,7 +119,8 @@ const EVENT_NAMES = {
     "PENA": "Penalty", "SPTP": "Speed Trap", "STLG": "Start Lights",
     "LGOT": "Lights Out", "DTSV": "Drive Through Served", "SGSV": "Stop-Go Served",
     "FLBK": "Flashback", "RDFL": "Red Flag",
-    "OVTK": "Overtake", "SCAR": "Safety Car", "COLL": "Collision"
+    "OVTK": "Overtake", "SCAR": "Safety Car", "COLL": "Collision",
+    "BUTN": "Button Status"
 };
 
 const PENALTY_CODES = new Set(["PENA", "DTSV", "SGSV"]);
@@ -135,8 +154,8 @@ const INFRINGEMENT_TYPES = {
     2: "Reversing off the start line",
     3: "Big Collision",
     4: "Small Collision",
-    5: "Collision failed to hand back position single",
-    6: "Collision failed to hand back position multiple",
+    5: "Collision failed to hand back position (single)",
+    6: "Collision failed to hand back position (multiple)",
     7: "Corner cutting gained time",
     8: "Corner cutting overtake single",
     9: "Corner cutting overtake multiple",
@@ -185,6 +204,70 @@ const INFRINGEMENT_TYPES = {
     52: "Illegal time gain",
     53: "Mandatory pitstop",
     54: "Attribute assigned"
+};
+
+// --- Доп. приложения из F1_25_UDP_Spec.md (пока не все поля выведены в UI) ---
+
+/** m_resultStatus — Lap Data / Final Classification */
+const RESULT_STATUS_NAMES = {
+    0: "Invalid", 1: "Inactive", 2: "Active", 3: "Finished", 4: "DNF", 5: "DSQ",
+    6: "Not classified", 7: "Retired",
+};
+
+/** m_resultReason — Final Classification */
+const RESULT_REASON_NAMES = {
+    0: "Invalid", 1: "Retired", 2: "Finished", 3: "Terminal damage", 4: "Inactive",
+    5: "Not enough laps", 6: "Black flagged", 7: "Red flagged", 8: "Mechanical failure",
+    9: "Session skipped", 10: "Session simulated",
+};
+
+/** m_surfaceType[4] — Car Telemetry */
+const SURFACE_TYPE_NAMES = {
+    0: "Tarmac", 1: "Rumble strip", 2: "Concrete", 3: "Rock", 4: "Gravel", 5: "Mud",
+    6: "Sand", 7: "Grass", 8: "Water", 9: "Cobblestone", 10: "Metal", 11: "Ridged",
+};
+
+/** m_gameMode — Session */
+const GAME_MODE_NAMES = {
+    4: "Grand Prix '23", 5: "Time Trial", 6: "Splitscreen", 7: "Online Custom",
+    15: "Online Weekly Event", 17: "Story Mode (Braking Point)", 27: "My Team Career '25",
+    28: "Driver Career '25", 29: "Career '25 Online", 30: "Challenge Career '25",
+    75: "Story Mode (APXGP)", 127: "Benchmark",
+};
+
+/** m_ruleSet — Session */
+const RULESET_NAMES = {
+    0: "Practice & Qualifying", 1: "Race", 2: "Time Trial", 12: "Elimination",
+};
+
+/** m_teamId — Participants / Lobby / Time Trial */
+const TEAM_NAMES = {
+    0: "Mercedes", 1: "Ferrari", 2: "Red Bull Racing", 3: "Williams", 4: "Aston Martin",
+    5: "Alpine", 6: "RB", 7: "Haas", 8: "McLaren", 9: "Sauber", 41: "F1 Generic",
+    104: "F1 Custom Team", 129: "Konnersport", 142: "APXGP '24", 154: "APXGP '25",
+    155: "Konnersport '24", 158: "Art GP '24", 159: "Campos '24", 160: "Rodin Motorsport '24",
+    161: "AIX Racing '24", 162: "DAMS '24", 163: "Hitech '24", 164: "MP Motorsport '24",
+    165: "Prema '24", 166: "Trident '24", 167: "Van Amersfoort '24", 168: "Invicta '24",
+    185: "Mercedes '24", 186: "Ferrari '24", 187: "Red Bull Racing '24", 188: "Williams '24",
+    189: "Aston Martin '24", 190: "Alpine '24", 191: "RB '24", 192: "Haas '24",
+    193: "McLaren '24", 194: "Sauber '24",
+};
+
+/** m_platform — Participants / Lobby */
+const PLATFORM_NAMES = {
+    1: "Steam", 3: "PlayStation", 4: "Xbox", 6: "Origin", 255: "Unknown",
+};
+
+/** RTMT event — поле reason */
+const RETIREMENT_REASON_NAMES = {
+    0: "Invalid", 1: "Retired", 2: "Finished", 3: "Terminal damage", 4: "Inactive",
+    5: "Not enough laps", 6: "Black flagged", 7: "Red flagged", 8: "Mechanical failure",
+    9: "Session skipped", 10: "Session simulated",
+};
+
+/** DRSD event — поле reason */
+const DRSD_REASON_NAMES = {
+    0: "Wet track", 1: "Safety car deployed", 2: "Red flag", 3: "Min lap not reached",
 };
 
 let playerCarIndex = 0;
@@ -957,8 +1040,15 @@ function getVisualCompoundInfo(visualId) {
         16: { name: "Soft", css: "compound-soft", dot: "#ff3333" },
         17: { name: "Medium", css: "compound-medium", dot: "#ffd700" },
         18: { name: "Hard", css: "compound-hard", dot: "#e0e0e0" },
-        7:  { name: "Inter", css: "compound-inter", dot: "#00cc00" },
-        8:  { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
+        7: { name: "Inter", css: "compound-inter", dot: "#00cc00" },
+        8: { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
+        9: { name: "Dry", css: "compound-hard", dot: "#c0c0c0" },
+        10: { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
+        15: { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
+        19: { name: "Super Soft", css: "compound-soft", dot: "#ff6633" },
+        20: { name: "Soft", css: "compound-soft", dot: "#ff3333" },
+        21: { name: "Medium", css: "compound-medium", dot: "#ffd700" },
+        22: { name: "Hard", css: "compound-hard", dot: "#e0e0e0" },
     };
     return map[visualId] || { name: `ID:${visualId}`, css: "", dot: "#888" };
 }
@@ -987,7 +1077,7 @@ function updateTyreSets(data) {
     }
 
     const container = el("tyreSetGroups");
-    const order = ["Soft", "Medium", "Hard", "Inter", "Wet"];
+    const order = ["Super Soft", "Soft", "Medium", "Hard", "Dry", "Inter", "Wet"];
     let html = "";
 
     for (const groupName of order) {
@@ -1392,7 +1482,9 @@ function initConnection() {
     connection.on("ReceivePacket", (packetType, header, data) => {
         playerCarIndex = header?.playerCarIndex ?? 0;
 
-        const uid = header?.sessionUid;
+        // Session UID is serialized as a JSON string (full uint64 precision); normalize for comparisons.
+        const uidRaw = header?.sessionUid;
+        const uid = uidRaw !== undefined && uidRaw !== null ? String(uidRaw) : null;
         if (uid != null) {
             if (lastTelemetrySessionUid != null && uid !== lastTelemetrySessionUid) {
                 pinnedPenalties = [];
@@ -1446,7 +1538,12 @@ function requestCurrentState(connection) {
             if (!state) return;
             for (const [packetType, data] of Object.entries(state)) {
                 const handler = PACKET_HANDLERS[packetType];
-                if (handler) handler(data);
+                if (!handler) continue;
+                if (packetType === "Event") {
+                    handler(data, {});
+                } else {
+                    handler(data);
+                }
             }
         })
         .catch(err => console.warn("Failed to get current state:", err));

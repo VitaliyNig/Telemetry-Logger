@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Text.Json;
 using F1Telemetry.Config;
 using F1Telemetry.Debug;
 using F1Telemetry.F125;
@@ -31,10 +32,18 @@ builder.Services.AddSignalR()
     .AddJsonProtocol(options =>
     {
         var json = options.PayloadSerializerOptions;
-        json.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        json.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
         json.Converters.Add(new FiniteSingleJsonConverter());
         json.Converters.Add(new FiniteDoubleJsonConverter());
     });
+
+builder.Services.ConfigureHttpJsonOptions(o =>
+{
+    var json = o.SerializerOptions;
+    json.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+    json.Converters.Add(new FiniteSingleJsonConverter());
+    json.Converters.Add(new FiniteDoubleJsonConverter());
+});
 
 var app = builder.Build();
 

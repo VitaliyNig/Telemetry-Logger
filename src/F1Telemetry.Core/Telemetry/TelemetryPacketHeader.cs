@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace F1Telemetry.Telemetry;
 
 /// <summary>
@@ -10,6 +12,7 @@ public readonly record struct TelemetryPacketHeader(
     byte GameMinorVersion,
     byte PacketVersion,
     byte PacketId,
+    [property: JsonConverter(typeof(ULongJsonStringConverter))]
     ulong SessionUid,
     float SessionTime,
     uint FrameIdentifier,
