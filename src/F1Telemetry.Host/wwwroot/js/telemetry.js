@@ -204,6 +204,63 @@ let lastSessionLinkId = null;
 
 function el(id) { return document.getElementById(id); }
 
+/** Tyres widget uses data-* (no duplicate ids when multiple Tyres widgets on grid). */
+function forEachTyreWidget(callback) {
+    document.querySelectorAll(".tyre-widget").forEach(callback);
+}
+
+function setTyreWidgetTemps(car) {
+    if (!car?.tyresSurfaceTemperature?.length) return;
+    const inner = car.tyresInnerTemperature;
+    const corners = ["RL", "RR", "FL", "FR"];
+    forEachTyreWidget(w => {
+        for (let i = 0; i < 4; i++) {
+            let t = car.tyresSurfaceTemperature[i];
+            if ((t === undefined || t === null || t === 0) && inner?.length > i) {
+                const ti = inner[i];
+                if (ti !== undefined && ti !== null && ti > 0) t = ti;
+            }
+            const corner = corners[i];
+            const node = w.querySelector(`.tyre-temp[data-tyre-corner="${corner}"]`);
+            if (!node || t === undefined || t === null) continue;
+            node.textContent = t + "°";
+            node.className = "tyre-temp " + getTyreTemperatureClass(t);
+        }
+    });
+}
+
+/** m_tyresWear is percentage; some builds send 0–1 float — normalize for display. */
+function formatTyreWearPct(wear) {
+    const w = Number(wear);
+    if (!Number.isFinite(w)) return "--%";
+    const pct = w <= 1 && w >= 0 ? w * 100 : w;
+    return Math.min(100, Math.max(0, pct)).toFixed(0) + "%";
+}
+
+function setTyreWidgetWear(car) {
+    const wear = car?.tyresWear;
+    if (!wear || wear.length < 4) return;
+    const corners = ["RL", "RR", "FL", "FR"];
+    forEachTyreWidget(w => {
+        for (let i = 0; i < 4; i++) {
+            const node = w.querySelector(`.tyre-wear[data-tyre-corner="${corners[i]}"]`);
+            if (node) node.textContent = formatTyreWearPct(wear[i]);
+        }
+    });
+}
+
+function setTyreWidgetCompoundAge(car) {
+    if (!car) return;
+    const compound = VISUAL_COMPOUNDS[car.visualTyreCompound] || `ID:${car.visualTyreCompound}`;
+    const age = car.tyresAgeLaps + " laps";
+    forEachTyreWidget(w => {
+        const c = w.querySelector("[data-tyre-compound]");
+        const a = w.querySelector("[data-tyre-age]");
+        if (c) c.textContent = compound;
+        if (a) a.textContent = age;
+    });
+}
+
 function formatTime(ms) {
     if (!ms || ms === 0) return "--";
     const totalSec = ms / 1000;
@@ -464,22 +521,8 @@ function updateCarTelemetry(data) {
         else drsEl.classList.remove("active");
     }
 
-    // Tyre surface temperatures: order is RL, RR, FL, FR
-    const tempFL = car.tyresSurfaceTemperature[2];
-    const tempFR = car.tyresSurfaceTemperature[3];
-    const tempRL = car.tyresSurfaceTemperature[0];
-    const tempRR = car.tyresSurfaceTemperature[1];
-
-    const setTyreTemp = (elId, temp) => {
-        const e = el(elId);
-        e.textContent = temp + "°";
-        e.className = "tyre-temp " + getTyreTemperatureClass(temp);
-    };
-
-    setTyreTemp("tyreTempFL", tempFL);
-    setTyreTemp("tyreTempFR", tempFR);
-    setTyreTemp("tyreTempRL", tempRL);
-    setTyreTemp("tyreTempRR", tempRR);
+    // Tyre temps: RL, RR, FL, FR (see F1 UDP appendix); inner temp fallback if surface is 0
+    setTyreWidgetTemps(car);
 }
 
 function updateCarStatus(data) {
@@ -512,8 +555,7 @@ function updateCarStatus(data) {
     const ersPct = Math.min(100, (car.ersStoreEnergy / maxErs) * 100);
     el("ersBar").style.width = ersPct + "%";
 
-    el("tyreCompound").textContent = VISUAL_COMPOUNDS[car.visualTyreCompound] || `ID:${car.visualTyreCompound}`;
-    el("tyreAge").textContent = car.tyresAgeLaps + " laps";
+    setTyreWidgetCompoundAge(car);
 }
 
 function updateCarSetups(data) {
@@ -556,11 +598,7 @@ function updateCarDamage(data) {
     setDamageBar("dmgEngine", car.engineDamage);
     setDamageBar("dmgGearbox", car.gearBoxDamage);
 
-    // Tyre wear: order RL, RR, FL, FR
-    el("tyreWearFL").textContent = car.tyresWear[2].toFixed(0) + "%";
-    el("tyreWearFR").textContent = car.tyresWear[3].toFixed(0) + "%";
-    el("tyreWearRL").textContent = car.tyresWear[0].toFixed(0) + "%";
-    el("tyreWearRR").textContent = car.tyresWear[1].toFixed(0) + "%";
+    setTyreWidgetWear(car);
 }
 
 function updateParticipants(data) {
