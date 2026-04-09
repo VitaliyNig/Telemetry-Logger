@@ -752,11 +752,33 @@
     text-shadow: 0 1px 2px rgba(0,0,0,0.65);
 }
 
-.tyre-temp {
-    font-size: 20px;
+.tyre-temp-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    flex-wrap: nowrap;
+    width: 100%;
+}
+
+.tyre-temp-val {
+    font-size: 15px;
     font-weight: 700;
     font-family: var(--font-mono);
     text-shadow: 0 1px 3px rgba(0,0,0,0.75);
+    min-width: 0;
+    flex: 1 1 0;
+    text-align: center;
+}
+
+.tyre-temp-sep {
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    opacity: 0.65;
+    user-select: none;
 }
 
 .tyre-wear {

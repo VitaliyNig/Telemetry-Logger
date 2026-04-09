@@ -265,8 +265,13 @@ function tyreTempBorderStyle(tempC, visualCompoundId) {
     };
 }
 
-/** Pick tyre temp for display: F1 25 — inner (carcass) is primary for stint/grip/wear; surface is fallback. */
-function pickTyreDisplayTemp(innerArr, surfaceArr, index) {
+function formatTyreDegCell(v) {
+    if (v === undefined || v === null || v === 0) return "--";
+    return v + "°";
+}
+
+/** Border vs compound band: prefer inner (carcass) when valid, else surface. */
+function pickTyreBorderTempC(innerArr, surfaceArr, index) {
     const ti = innerArr?.[index];
     const ts = surfaceArr?.[index];
     if (ti !== undefined && ti !== null && ti > 0) return ti;
@@ -283,34 +288,42 @@ function setTyreWidgetTemps(car) {
     const compoundId = playerVisualTyreCompound;
     forEachTyreWidget(w => {
         for (let i = 0; i < 4; i++) {
-            const t = pickTyreDisplayTemp(inner, surf, i);
             const corner = corners[i];
             const box = w.querySelector(`.tyre-box[data-tyre-corner="${corner}"]`);
-            const node = w.querySelector(`.tyre-temp[data-tyre-corner="${corner}"]`);
-            if (!node) continue;
-            if (t === null) {
-                node.textContent = "--°";
-                node.className = "tyre-temp";
-                if (box) {
-                    box.classList.remove("tyre-box-temp", "tyre-box-temp-cold", "tyre-box-temp-ok", "tyre-box-temp-hot");
-                    box.style.borderWidth = "";
-                    box.style.borderColor = "";
-                }
-                continue;
-            }
-            node.textContent = t + "°";
-            node.className = "tyre-temp " + getTyreTemperatureClass(t);
+            const nodeS = w.querySelector(`.tyre-temp-surface[data-tyre-corner="${corner}"]`);
+            const nodeI = w.querySelector(`.tyre-temp-inner[data-tyre-corner="${corner}"]`);
+            if (!nodeS || !nodeI) continue;
+
+            const ts = surf?.[i];
+            const ti = inner?.[i];
+            nodeS.textContent = formatTyreDegCell(ts);
+            nodeS.className =
+                "tyre-temp-val tyre-temp-surface" +
+                (ts !== undefined && ts !== null && ts > 0 ? " " + getTyreTemperatureClass(ts) : "");
+
+            nodeI.textContent = formatTyreDegCell(ti);
+            nodeI.className =
+                "tyre-temp-val tyre-temp-inner" +
+                (ti !== undefined && ti !== null && ti > 0 ? " " + getTyreTemperatureClass(ti) : "");
+
+            const borderT = pickTyreBorderTempC(inner, surf, i);
             if (box) {
-                const st = tyreTempBorderStyle(t, compoundId);
-                box.classList.remove("tyre-box-temp", "tyre-box-temp-cold", "tyre-box-temp-ok", "tyre-box-temp-hot");
-                if (st.boxClass) {
-                    for (const c of st.boxClass.split(" ")) if (c) box.classList.add(c);
-                    box.style.borderColor = st.borderColor;
-                    box.style.borderWidth = st.borderWidth;
-                } else {
+                if (borderT === null) {
                     box.classList.remove("tyre-box-temp", "tyre-box-temp-cold", "tyre-box-temp-ok", "tyre-box-temp-hot");
                     box.style.borderWidth = "";
                     box.style.borderColor = "";
+                } else {
+                    const st = tyreTempBorderStyle(borderT, compoundId);
+                    box.classList.remove("tyre-box-temp", "tyre-box-temp-cold", "tyre-box-temp-ok", "tyre-box-temp-hot");
+                    if (st.boxClass) {
+                        for (const c of st.boxClass.split(" ")) if (c) box.classList.add(c);
+                        box.style.borderColor = st.borderColor;
+                        box.style.borderWidth = st.borderWidth;
+                    } else {
+                        box.classList.remove("tyre-box-temp", "tyre-box-temp-cold", "tyre-box-temp-ok", "tyre-box-temp-hot");
+                        box.style.borderWidth = "";
+                        box.style.borderColor = "";
+                    }
                 }
             }
         }
