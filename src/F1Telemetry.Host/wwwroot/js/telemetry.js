@@ -229,22 +229,78 @@ function setTyreWidgetTemps(car) {
     });
 }
 
-/** m_tyresWear is percentage; some builds send 0–1 float — normalize for display. */
-function formatTyreWearPct(wear) {
+/** m_tyresWear is percentage; some builds send 0–1 float — normalize to 0–100. */
+function tyreWearToPct(wear) {
     const w = Number(wear);
-    if (!Number.isFinite(w)) return "--%";
+    if (!Number.isFinite(w)) return null;
     const pct = w <= 1 && w >= 0 ? w * 100 : w;
-    return Math.min(100, Math.max(0, pct)).toFixed(0) + "%";
+    return Math.min(100, Math.max(0, pct));
+}
+
+function formatTyreWearPct(wear) {
+    const pct = tyreWearToPct(wear);
+    if (pct === null) return "--%";
+    return pct.toFixed(0) + "%";
+}
+
+/** Green (#00d700) → yellow (#ffd700) → red (#e10600) by wear 0–100%. */
+function tyreWearCellColors(pct) {
+    const t = Math.min(1, Math.max(0, pct / 100));
+    let r;
+    let g;
+    let b;
+    if (t <= 0.5) {
+        const u = t * 2;
+        r = Math.round(0 + 255 * u);
+        g = 215;
+        b = 0;
+    } else {
+        const u = (t - 0.5) * 2;
+        r = Math.round(255 + (225 - 255) * u);
+        g = Math.round(215 + (6 - 215) * u);
+        b = 0;
+    }
+    return {
+        r,
+        g,
+        b,
+        background: `linear-gradient(145deg, rgba(${r},${g},${b},0.52), rgba(${r},${g},${b},0.22))`,
+        borderColor: `rgba(${r},${g},${b},0.5)`,
+    };
+}
+
+function resetTyreBoxWearStyling(box) {
+    box.classList.remove("tyre-box-wear");
+    box.style.background = "";
+    box.style.borderColor = "";
 }
 
 function setTyreWidgetWear(car) {
     const wear = car?.tyresWear;
-    if (!wear || wear.length < 4) return;
     const corners = ["RL", "RR", "FL", "FR"];
-    forEachTyreWidget(w => {
+    forEachTyreWidget(widgetRoot => {
         for (let i = 0; i < 4; i++) {
-            const node = w.querySelector(`.tyre-wear[data-tyre-corner="${corners[i]}"]`);
-            if (node) node.textContent = formatTyreWearPct(wear[i]);
+            const corner = corners[i];
+            const box = widgetRoot.querySelector(`.tyre-box[data-tyre-corner="${corner}"]`);
+            const node = widgetRoot.querySelector(`.tyre-wear[data-tyre-corner="${corner}"]`);
+            if (!box || !node) continue;
+
+            if (!wear || wear.length <= i) {
+                node.textContent = "--%";
+                resetTyreBoxWearStyling(box);
+                continue;
+            }
+
+            node.textContent = formatTyreWearPct(wear[i]);
+            const pct = tyreWearToPct(wear[i]);
+            if (pct === null) {
+                resetTyreBoxWearStyling(box);
+                continue;
+            }
+            const col = tyreWearCellColors(pct);
+            box.classList.add("tyre-box-wear");
+            box.style.background = col.background;
+            box.style.borderColor = col.borderColor;
         }
     });
 }
