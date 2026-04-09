@@ -63,12 +63,10 @@ public sealed class CarTelemetryPacketDeserializer : IPacketDeserializer
         if (remainder != 0)
             return null;
 
-        var tyreTempsUInt16 = perCar switch
-        {
-            CarRecordBytesTyreTempUInt8 => false,
-            CarRecordBytesTyreTempUInt16 => true,
-            _ => false,
-        };
+        if (perCar != CarRecordBytesTyreTempUInt8 && perCar != CarRecordBytesTyreTempUInt16)
+            return null;
+
+        var tyreTempsUInt16 = perCar == CarRecordBytesTyreTempUInt16;
 
         var reader = new BinaryReader125(data, F125PacketHeaderReader.HeaderSize);
         var packet = new CarTelemetryPacket
