@@ -420,18 +420,60 @@
 }
 
 .rpm-bar-bg {
+    position: relative;
     height: 10px;
-    background: rgba(255,255,255,0.08);
+    background: rgba(255,255,255,0.06);
     border-radius: 999px;
     overflow: hidden;
 }
 
-.rpm-bar-fill {
-    height: 100%;
-    width: 0%;
-    background: linear-gradient(90deg, var(--accent-green), var(--accent-yellow), var(--semantic-red));
-    border-radius: 999px;
-    transition: width 0.08s linear;
+/* Steering-style RPM: green 0–75% → red 75–85% → blue 85–100% of max RPM */
+.rpm-bar-ghost,
+.rpm-bar-lit {
+    position: absolute;
+    inset: 0;
+    display: flex;
+    flex-direction: row;
+    border-radius: inherit;
+}
+
+.rpm-bar-ghost .rpm-seg-green {
+    flex: 75 1 0;
+    background: rgba(0, 215, 0, 0.14);
+}
+
+.rpm-bar-ghost .rpm-seg-red {
+    flex: 10 1 0;
+    background: rgba(225, 6, 0, 0.12);
+}
+
+.rpm-bar-ghost .rpm-seg-blue {
+    flex: 15 1 0;
+    background: rgba(0, 166, 255, 0.14);
+}
+
+.rpm-bar-lit {
+    z-index: 1;
+    clip-path: inset(0 calc(100% - var(--rpm-pct, 0%)) 0 0);
+    transition: clip-path 0.08s linear;
+}
+
+.rpm-bar-lit .rpm-seg-green {
+    flex: 75 1 0;
+    background: var(--accent-green);
+    box-shadow: 0 0 6px rgba(0, 215, 0, 0.35);
+}
+
+.rpm-bar-lit .rpm-seg-red {
+    flex: 10 1 0;
+    background: var(--semantic-red);
+    box-shadow: 0 0 6px rgba(225, 6, 0, 0.35);
+}
+
+.rpm-bar-lit .rpm-seg-blue {
+    flex: 15 1 0;
+    background: var(--accent-blue);
+    box-shadow: 0 0 6px rgba(0, 166, 255, 0.35);
 }
 
 .rpm-value {
@@ -457,13 +499,16 @@
     border-radius: 12px;
 }
 
-.drs-tile {
+/* DRS + PIT: same off-state chrome; green vs blue only when .active */
+.drs-tile,
+.pit-limiter-tile {
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 800;
     font-size: 11px;
     letter-spacing: 0.5px;
+    text-transform: uppercase;
     background: rgba(255,255,255,0.06);
     color: var(--text-secondary);
     border: 1px solid var(--border);
@@ -473,18 +518,6 @@
     background: rgba(0, 215, 0, 0.12);
     color: var(--accent-green);
     border-color: rgba(0, 215, 0, 0.45);
-}
-
-.pit-limiter-tile {
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-weight: 800;
-    font-size: 11px;
-    letter-spacing: 0.5px;
-    background: rgba(255,255,255,0.04);
-    color: var(--text-dim);
-    border: 1px solid rgba(255,255,255,0.06);
 }
 
 .pit-limiter-tile.active {
@@ -520,36 +553,49 @@
     text-align: center;
 }
 
-.telemetry-extras-tile {
-    padding: 6px 6px;
-    background: rgba(255,255,255,0.05);
-    border: 1px solid var(--border);
+/* Column 5: BB + DIFF as two equal horizontal rows inside one tile */
+.telemetry-metrics-column {
     display: flex;
     flex-direction: column;
-    justify-content: center;
-    gap: 3px;
+    padding: 0;
+    overflow: hidden;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
 }
 
-.telemetry-extra-row {
+.telemetry-metric-row {
+    flex: 1 1 0;
     display: flex;
-    align-items: baseline;
+    flex-direction: row;
+    align-items: center;
     justify-content: space-between;
     gap: 6px;
-    white-space: nowrap;
+    min-height: 0;
+    padding: 4px 8px;
 }
 
-.telemetry-extra-label {
-    font-size: 8px;
+.telemetry-metric-row + .telemetry-metric-row {
+    border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.telemetry-metric-label {
+    flex-shrink: 0;
+    font-size: 10px;
     font-weight: 700;
-    letter-spacing: 0.8px;
-    color: var(--text-dim);
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    line-height: 1;
 }
 
-.telemetry-extra-value {
-    font-size: 12px;
+.telemetry-metric-value {
+    font-size: clamp(13px, 2.2vw, 16px);
     font-weight: 700;
     font-family: var(--font-mono);
-    color: var(--text-secondary);
+    line-height: 1;
+    color: var(--text-primary);
+    text-align: right;
+    min-width: 0;
 }
 
 .speed-tile-value {

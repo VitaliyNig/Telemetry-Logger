@@ -193,7 +193,7 @@ const sessionHistories = {};
 const GAP_BOARD_LAPS = 4;
 
 /** Throttle / brake traces for Car Telemetry pedal chart (0..1 samples, oldest → newest). */
-const PEDAL_HISTORY_LEN = 72;
+const PEDAL_HISTORY_LEN = 180;
 const pedalHistoryT = [];
 const pedalHistoryB = [];
 
@@ -435,7 +435,8 @@ function updateCarTelemetry(data) {
 
     const scale = playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK;
     const rpmPct = Math.min(100, (car.engineRpm / scale) * 100);
-    el("rpmBar").style.width = rpmPct + "%";
+    const rpmLit = el("rpmBarLit");
+    if (rpmLit) rpmLit.style.setProperty("--rpm-pct", `${rpmPct}%`);
     el("rpmValue").textContent = `${car.engineRpm} / ${scale} RPM`;
 
     const t = Math.max(0, Math.min(1, Number(car.throttle) || 0));
