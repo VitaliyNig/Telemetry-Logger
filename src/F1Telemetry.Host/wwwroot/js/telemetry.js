@@ -190,6 +190,11 @@ let lastSessionPacket = null;
 const sessionHistories = {};
 const GAP_BOARD_LAPS = 4;
 
+/** m_maxRPM from Car Status (rev limiter); 0 until first Car Status for this session. */
+let playerMaxRpm = 0;
+const RPM_SCALE_FALLBACK = 15000;
+let lastSessionLinkId = null;
+
 function el(id) { return document.getElementById(id); }
 
 function formatTime(ms) {
@@ -245,6 +250,15 @@ function renderTempWithTrend(elemId, temp, trend) {
 
 function updateSession(data) {
     lastSessionPacket = data;
+
+    const linkId = data.sessionLinkIdentifier;
+    if (linkId !== undefined && linkId !== null) {
+        if (lastSessionLinkId !== null && linkId !== lastSessionLinkId) {
+            playerMaxRpm = 0;
+        }
+        lastSessionLinkId = linkId;
+    }
+
     el("trackName").textContent = TRACK_NAMES[data.trackId] || `Track ${data.trackId}`;
     el("sessionType").textContent = SESSION_TYPES[data.sessionType] || `Type ${data.sessionType}`;
     el("weather").textContent = WEATHER_NAMES[data.weather] || "Unknown";
@@ -369,10 +383,10 @@ function updateCarTelemetry(data) {
     const gear = car.gear;
     el("gear").textContent = gear === -1 ? "R" : gear === 0 ? "N" : gear.toString();
 
-    const maxRpm = 15000;
-    const rpmPct = Math.min(100, (car.engineRpm / maxRpm) * 100);
+    const scale = playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK;
+    const rpmPct = Math.min(100, (car.engineRpm / scale) * 100);
     el("rpmBar").style.width = rpmPct + "%";
-    el("rpmValue").textContent = car.engineRpm + " RPM";
+    el("rpmValue").textContent = `${car.engineRpm} / ${scale} RPM`;
 
     const throttlePct = Math.round(car.throttle * 100);
     el("throttleBar").style.width = throttlePct + "%";
@@ -412,6 +426,10 @@ function updateCarTelemetry(data) {
 function updateCarStatus(data) {
     const car = data.carStatusDataItems?.[playerCarIndex];
     if (!car) return;
+
+    if (car.maxRpm > 0) {
+        playerMaxRpm = car.maxRpm;
+    }
 
     el("fuelRemaining").textContent = car.fuelInTank.toFixed(1) + " kg";
     el("fuelLaps").textContent = car.fuelRemainingLaps.toFixed(1) + " laps";
