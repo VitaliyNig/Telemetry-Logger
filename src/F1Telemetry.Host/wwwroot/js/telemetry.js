@@ -265,23 +265,30 @@ function tyreTempBorderStyle(tempC, visualCompoundId) {
     };
 }
 
+/** Pick tyre temp for display: F1 25 — inner (carcass) is primary for stint/grip/wear; surface is fallback. */
+function pickTyreDisplayTemp(innerArr, surfaceArr, index) {
+    const ti = innerArr?.[index];
+    const ts = surfaceArr?.[index];
+    if (ti !== undefined && ti !== null && ti > 0) return ti;
+    if (ts !== undefined && ts !== null && ts > 0) return ts;
+    return null;
+}
+
 function setTyreWidgetTemps(car) {
-    if (!car?.tyresSurfaceTemperature?.length) return;
     const inner = car.tyresInnerTemperature;
+    const surf = car.tyresSurfaceTemperature;
+    if ((!inner || inner.length < 4) && (!surf || surf.length < 4)) return;
+
     const corners = ["RL", "RR", "FL", "FR"];
     const compoundId = playerVisualTyreCompound;
     forEachTyreWidget(w => {
         for (let i = 0; i < 4; i++) {
-            let t = car.tyresSurfaceTemperature[i];
-            if ((t === undefined || t === null || t === 0) && inner?.length > i) {
-                const ti = inner[i];
-                if (ti !== undefined && ti !== null && ti > 0) t = ti;
-            }
+            const t = pickTyreDisplayTemp(inner, surf, i);
             const corner = corners[i];
             const box = w.querySelector(`.tyre-box[data-tyre-corner="${corner}"]`);
             const node = w.querySelector(`.tyre-temp[data-tyre-corner="${corner}"]`);
             if (!node) continue;
-            if (t === undefined || t === null || (t === 0 && (!inner?.length || !inner[i]))) {
+            if (t === null) {
                 node.textContent = "--°";
                 node.className = "tyre-temp";
                 if (box) {
