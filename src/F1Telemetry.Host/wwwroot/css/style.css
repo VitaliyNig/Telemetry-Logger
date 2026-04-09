@@ -426,7 +426,7 @@
     overflow: hidden;
 }
 
-/* Default: full grey track; red from 11k, blue from 11.6k, blink from 12k (see JS thresholds vs max RPM) */
+/* Grey track; fill: green 0–11k, red 11k–11.6k, blue 11.6k–max (see JS vs max RPM) */
 .rpm-bar-track {
     position: absolute;
     inset: 0;
@@ -450,10 +450,11 @@
     border-radius: inherit;
 }
 
-.rpm-bar-lit .rpm-seg-idle {
+.rpm-bar-lit .rpm-seg-green {
     flex: 1 1 0;
     min-width: 0;
-    background: transparent;
+    background: var(--accent-green);
+    box-shadow: 0 0 6px rgba(0, 215, 0, 0.35);
 }
 
 .rpm-bar-lit .rpm-seg-red {
@@ -468,19 +469,6 @@
     min-width: 0;
     background: var(--accent-blue);
     box-shadow: 0 0 6px rgba(0, 166, 255, 0.35);
-}
-
-.rpm-bar-lit .rpm-seg-blink {
-    flex: 1 1 0;
-    min-width: 0;
-    background: #e8eaed;
-    box-shadow: 0 0 8px rgba(255, 255, 255, 0.45);
-    animation: rpm-blink-pulse 0.35s ease-in-out infinite;
-}
-
-@keyframes rpm-blink-pulse {
-    0%, 100% { opacity: 1; filter: brightness(1.15); }
-    50% { opacity: 0.35; filter: brightness(0.7); }
 }
 
 .rpm-value {
