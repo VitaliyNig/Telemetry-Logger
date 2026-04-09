@@ -200,9 +200,29 @@ const pedalHistoryB = [];
 /** m_maxRPM from Car Status (rev limiter); 0 until first Car Status for this session. */
 let playerMaxRpm = 0;
 const RPM_SCALE_FALLBACK = 15000;
+/** Absolute RPM thresholds for bar colours (vs current max RPM scale). */
+const RPM_BAR_RED_START = 11000;
+const RPM_BAR_BLUE_START = 11600;
 let lastSessionLinkId = null;
 
 function el(id) { return document.getElementById(id); }
+
+/** Grey track; clipped fill is green 0..RED_START, red RED_START..BLUE_START, blue to max. */
+function syncRpmBarSegmentWidths(scale) {
+    const s = scale > 0 ? scale : RPM_SCALE_FALLBACK;
+    const a = Math.min(RPM_BAR_RED_START, s);
+    const b = Math.min(RPM_BAR_BLUE_START, s);
+    const wGreen = a;
+    const wRed = Math.max(0, b - a);
+    const wBlue = Math.max(0, s - b);
+    const setFlex = (id, w) => {
+        const node = el(id);
+        if (node) node.style.flex = `${w} 0 0`;
+    };
+    setFlex("rpmSegGreen", wGreen);
+    setFlex("rpmSegRed", wRed);
+    setFlex("rpmSegBlue", wBlue);
+}
 
 function formatTime(ms) {
     if (!ms || ms === 0) return "--";
@@ -434,9 +454,10 @@ function updateCarTelemetry(data) {
     el("gear").textContent = gear === -1 ? "R" : gear === 0 ? "N" : gear.toString();
 
     const scale = playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK;
+    syncRpmBarSegmentWidths(scale);
     const rpmPct = Math.min(100, (car.engineRpm / scale) * 100);
-    const rpmLit = el("rpmBarLit");
-    if (rpmLit) rpmLit.style.setProperty("--rpm-pct", `${rpmPct}%`);
+    const rpmClip = el("rpmBarClip");
+    if (rpmClip) rpmClip.style.setProperty("--rpm-pct", `${rpmPct}%`);
     el("rpmValue").textContent = `${car.engineRpm} / ${scale} RPM`;
 
     const t = Math.max(0, Math.min(1, Number(car.throttle) || 0));
@@ -489,6 +510,8 @@ function updateCarStatus(data) {
     if (car.maxRpm > 0) {
         playerMaxRpm = car.maxRpm;
     }
+
+    syncRpmBarSegmentWidths(playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK);
 
     const pitTile = el("pitLimiterTile");
     if (pitTile) {
@@ -1228,6 +1251,7 @@ function requestCurrentState(connection) {
 
 document.addEventListener("DOMContentLoaded", async () => {
     if (typeof initWidgets === "function") initWidgets();
+    syncRpmBarSegmentWidths(RPM_SCALE_FALLBACK);
     await loadPitTimes();
     initConnection();
 });
