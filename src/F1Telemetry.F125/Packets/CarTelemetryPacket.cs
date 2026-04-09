@@ -13,8 +13,9 @@ public sealed class CarTelemetryData
     public byte RevLightsPercent { get; set; }
     public ushort RevLightsBitValue { get; set; }
     public ushort[] BrakesTemperature { get; set; } = new ushort[4];
-    public byte[] TyresSurfaceTemperature { get; set; } = new byte[4];
-    public byte[] TyresInnerTemperature { get; set; } = new byte[4];
+    /// <summary>°C per wheel; stored as ushort so JSON is a numeric array (byte[] becomes base64 and breaks the web UI).</summary>
+    public ushort[] TyresSurfaceTemperature { get; set; } = new ushort[4];
+    public ushort[] TyresInnerTemperature { get; set; } = new ushort[4];
     public ushort EngineTemperature { get; set; }
     public float[] TyresPressure { get; set; } = new float[4];
     public byte[] SurfaceType { get; set; } = new byte[4];
