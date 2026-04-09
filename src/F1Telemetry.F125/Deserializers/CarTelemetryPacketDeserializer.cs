@@ -8,6 +8,12 @@ public sealed class CarTelemetryPacketDeserializer : IPacketDeserializer
 {
     public byte PacketId => (byte)F125PacketId.CarTelemetry;
 
+    private static ushort[] ReadTyreTemperatureCelsius(BinaryReader125 reader)
+    {
+        var bytes = reader.ReadByteArray(4);
+        return [bytes[0], bytes[1], bytes[2], bytes[3]];
+    }
+
     public object? Deserialize(ReadOnlySpan<byte> data, TelemetryPacketHeader header)
     {
         var reader = new BinaryReader125(data, F125PacketHeaderReader.HeaderSize);
@@ -31,8 +37,8 @@ public sealed class CarTelemetryPacketDeserializer : IPacketDeserializer
                 RevLightsPercent = reader.ReadByte(),
                 RevLightsBitValue = reader.ReadUInt16(),
                 BrakesTemperature = reader.ReadUInt16Array(4),
-                TyresSurfaceTemperature = reader.ReadByteArray(4),
-                TyresInnerTemperature = reader.ReadByteArray(4),
+                TyresSurfaceTemperature = ReadTyreTemperatureCelsius(reader),
+                TyresInnerTemperature = ReadTyreTemperatureCelsius(reader),
                 EngineTemperature = reader.ReadUInt16(),
                 TyresPressure = reader.ReadFloatArray(4),
                 SurfaceType = reader.ReadByteArray(4),
