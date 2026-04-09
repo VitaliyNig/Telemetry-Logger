@@ -219,11 +219,24 @@
                 <div class="rpm-value" id="rpmValue">0 RPM</div>
             </div>
             <div class="telemetry-middle">
-                <div class="drs-tile drs-indicator" id="drsIndicator">DRS</div>
-                <div class="gear-hero"><div class="gear-value" id="gear">N</div></div>
-                <div class="speed-tile">
+                <div class="telemetry-cell drs-tile drs-indicator" id="drsIndicator">DRS</div>
+                <div class="telemetry-cell pit-limiter-tile" id="pitLimiterTile" title="Pit limiter">PIT</div>
+                <div class="telemetry-cell telemetry-cell-gear">
+                    <div class="gear-value" id="gear">N</div>
+                </div>
+                <div class="telemetry-cell speed-tile">
                     <div class="speed-tile-value" id="speed">0</div>
                     <div class="speed-tile-unit">KM/H</div>
+                </div>
+                <div class="telemetry-cell telemetry-extras-tile">
+                    <div class="telemetry-extra-row" title="Front brake bias (Car Status)">
+                        <span class="telemetry-extra-label">BB</span>
+                        <span class="telemetry-extra-value" id="frontBrakeBiasValue">--</span>
+                    </div>
+                    <div class="telemetry-extra-row" title="Differential on throttle (Car Setups)">
+                        <span class="telemetry-extra-label">DIFF</span>
+                        <span class="telemetry-extra-value" id="diffOnThrottleValue">--</span>
+                    </div>
                 </div>
             </div>
             <div class="pedals-panel">

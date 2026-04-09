@@ -442,23 +442,27 @@
 }
 
 .telemetry-middle {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    min-height: 72px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
+    align-items: stretch;
+    min-height: 60px;
+}
+
+.telemetry-cell {
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 56px;
+    height: 100%;
+    border-radius: 12px;
 }
 
 .drs-tile {
-    flex: 0 0 auto;
-    min-width: 56px;
-    min-height: 56px;
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 12px;
     font-weight: 800;
-    font-size: 12px;
+    font-size: 11px;
     letter-spacing: 0.5px;
     background: rgba(255,255,255,0.06);
     color: var(--text-secondary);
@@ -471,16 +475,34 @@
     border-color: rgba(0, 215, 0, 0.45);
 }
 
-.gear-hero {
-    flex: 1;
+.pit-limiter-tile {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 0;
+    font-weight: 800;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-dim);
+    border: 1px solid rgba(255,255,255,0.06);
+}
+
+.pit-limiter-tile.active {
+    background: rgba(0, 166, 255, 0.12);
+    color: var(--accent-blue);
+    border-color: rgba(0, 166, 255, 0.45);
+}
+
+.telemetry-cell-gear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
 }
 
 .gear-value {
-    font-size: 64px;
+    font-size: clamp(28px, 5.5vw, 52px);
     font-weight: 900;
     font-family: var(--font-mono);
     line-height: 1;
@@ -488,11 +510,7 @@
 }
 
 .speed-tile {
-    flex: 0 0 auto;
-    min-width: 72px;
-    min-height: 56px;
-    padding: 8px 12px;
-    border-radius: 12px;
+    padding: 6px 4px;
     background: rgba(255,255,255,0.06);
     border: 1px solid var(--border);
     display: flex;
@@ -502,8 +520,40 @@
     text-align: center;
 }
 
+.telemetry-extras-tile {
+    padding: 6px 6px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 3px;
+}
+
+.telemetry-extra-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.telemetry-extra-label {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: var(--text-dim);
+}
+
+.telemetry-extra-value {
+    font-size: 12px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+}
+
 .speed-tile-value {
-    font-size: 26px;
+    font-size: clamp(18px, 3.5vw, 24px);
     font-weight: 800;
     font-family: var(--font-mono);
     line-height: 1;
@@ -511,7 +561,7 @@
 }
 
 .speed-tile-unit {
-    font-size: 9px;
+    font-size: 8px;
     letter-spacing: 1.5px;
     color: var(--text-dim);
     margin-top: 4px;

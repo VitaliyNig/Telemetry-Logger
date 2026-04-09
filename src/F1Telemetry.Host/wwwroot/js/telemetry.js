@@ -489,6 +489,20 @@ function updateCarStatus(data) {
         playerMaxRpm = car.maxRpm;
     }
 
+    const pitTile = el("pitLimiterTile");
+    if (pitTile) {
+        if (car.pitLimiterStatus === 1) pitTile.classList.add("active");
+        else pitTile.classList.remove("active");
+    }
+
+    const bbEl = el("frontBrakeBiasValue");
+    if (bbEl) {
+        bbEl.textContent =
+            car.frontBrakeBias !== undefined && car.frontBrakeBias !== null
+                ? `${car.frontBrakeBias}%`
+                : "--";
+    }
+
     el("fuelRemaining").textContent = car.fuelInTank.toFixed(1) + " kg";
     el("fuelLaps").textContent = car.fuelRemainingLaps.toFixed(1) + " laps";
     el("ersMode").textContent = ERS_MODES[car.ersDeployMode] || "--";
@@ -499,6 +513,17 @@ function updateCarStatus(data) {
 
     el("tyreCompound").textContent = VISUAL_COMPOUNDS[car.visualTyreCompound] || `ID:${car.visualTyreCompound}`;
     el("tyreAge").textContent = car.tyresAgeLaps + " laps";
+}
+
+function updateCarSetups(data) {
+    const setup = data.carSetupData?.[playerCarIndex];
+    const diffEl = el("diffOnThrottleValue");
+    if (!diffEl) return;
+    if (!setup || setup.onThrottle === undefined || setup.onThrottle === null) {
+        diffEl.textContent = "--";
+        return;
+    }
+    diffEl.textContent = `${setup.onThrottle}%`;
 }
 
 function updateLapData(data) {
@@ -1119,6 +1144,7 @@ const PACKET_HANDLERS = {
     Session: updateSession,
     CarTelemetry: updateCarTelemetry,
     CarStatus: updateCarStatus,
+    CarSetups: updateCarSetups,
     LapData: updateLapData,
     CarDamage: updateCarDamage,
     Participants: updateParticipants,
