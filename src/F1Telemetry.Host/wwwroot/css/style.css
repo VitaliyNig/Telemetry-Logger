@@ -445,13 +445,20 @@
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: 10px;
+    gap: 8px;
     min-height: 72px;
+}
+
+.telemetry-drs-group {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: center;
+    gap: 6px;
 }
 
 .drs-tile {
     flex: 0 0 auto;
-    min-width: 56px;
+    min-width: 52px;
     min-height: 56px;
     display: flex;
     align-items: center;
@@ -471,6 +478,28 @@
     border-color: rgba(0, 215, 0, 0.45);
 }
 
+.pit-limiter-tile {
+    flex: 0 0 auto;
+    min-width: 40px;
+    min-height: 56px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 12px;
+    font-weight: 800;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-dim);
+    border: 1px solid rgba(255,255,255,0.06);
+}
+
+.pit-limiter-tile.active {
+    background: rgba(255, 193, 7, 0.14);
+    color: #ffc107;
+    border-color: rgba(255, 193, 7, 0.45);
+}
+
 .gear-hero {
     flex: 1;
     display: flex;
@@ -487,11 +516,18 @@
     color: var(--text-primary);
 }
 
+.telemetry-speed-group {
+    flex: 0 0 auto;
+    display: flex;
+    align-items: stretch;
+    gap: 6px;
+}
+
 .speed-tile {
     flex: 0 0 auto;
-    min-width: 72px;
+    min-width: 68px;
     min-height: 56px;
-    padding: 8px 12px;
+    padding: 8px 10px;
     border-radius: 12px;
     background: rgba(255,255,255,0.06);
     border: 1px solid var(--border);
@@ -500,6 +536,42 @@
     align-items: center;
     justify-content: center;
     text-align: center;
+}
+
+.telemetry-extras-tile {
+    flex: 0 0 auto;
+    min-width: 0;
+    min-height: 56px;
+    padding: 6px 8px;
+    border-radius: 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: 4px;
+}
+
+.telemetry-extra-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.telemetry-extra-label {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 0.8px;
+    color: var(--text-dim);
+}
+
+.telemetry-extra-value {
+    font-size: 12px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
 }
 
 .speed-tile-value {
