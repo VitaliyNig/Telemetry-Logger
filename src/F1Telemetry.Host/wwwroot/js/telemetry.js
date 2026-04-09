@@ -72,6 +72,20 @@ const VISUAL_COMPOUNDS = {
     16: "Soft", 17: "Medium", 18: "Hard", 7: "Inter", 8: "Wet"
 };
 
+/** Optimal surface temperature (°C) by m_visualTyreCompound — F1 25 style tyre chart. */
+const TYRE_OPTIMAL_TEMP_C = {
+    20: { min: 95, max: 115 },
+    19: { min: 85, max: 115 },
+    18: { min: 85, max: 95 },
+    17: { min: 75, max: 95 },
+    16: { min: 75, max: 85 },
+    22: { min: 65, max: 85 },
+    7:  { min: 55, max: 75 },
+    8:  { min: 55, max: 65 },
+    21: { min: 90, max: 115 },
+};
+const TYRE_TEMP_BORDER_DEFAULT = { min: 85, max: 95 };
+
 const ERS_MODES = { 0: "None", 1: "Medium", 2: "Hotlap", 3: "Overtake" };
 
 const PIT_STATUS = { 0: "", 1: "Pitting", 2: "In Pit" };
@@ -201,6 +215,10 @@ const pedalHistoryB = [];
 let playerMaxRpm = 0;
 const RPM_SCALE_FALLBACK = 15000;
 let lastSessionLinkId = null;
+/** m_visualTyreCompound from Car Status — used for Tyres widget optimal temp ranges. */
+let playerVisualTyreCompound = -1;
+/** Last player CarTelemetry row — re-apply tyre borders when compound updates. */
+let lastPlayerCarTelemetry = null;
 
 function el(id) { return document.getElementById(id); }
 
@@ -209,10 +227,49 @@ function forEachTyreWidget(callback) {
     document.querySelectorAll(".tyre-widget").forEach(callback);
 }
 
+function getTyreOptimalRange(visualCompoundId) {
+    if (visualCompoundId === undefined || visualCompoundId === null || visualCompoundId < 0) {
+        return TYRE_TEMP_BORDER_DEFAULT;
+    }
+    return TYRE_OPTIMAL_TEMP_C[visualCompoundId] || TYRE_TEMP_BORDER_DEFAULT;
+}
+
+/** Border by temp vs compound range: blue under, green in range, red over. */
+function tyreTempBorderStyle(tempC, visualCompoundId) {
+    if (tempC === undefined || tempC === null) {
+        return { borderColor: "", borderWidth: "", boxClass: "" };
+    }
+    const { min, max } = getTyreOptimalRange(visualCompoundId);
+    const t = Number(tempC);
+    if (!Number.isFinite(t)) {
+        return { borderColor: "", borderWidth: "", boxClass: "" };
+    }
+    if (t < min) {
+        return {
+            borderColor: "rgba(0, 166, 255, 0.9)",
+            borderWidth: "2px",
+            boxClass: "tyre-box-temp tyre-box-temp-cold",
+        };
+    }
+    if (t > max) {
+        return {
+            borderColor: "rgba(225, 6, 0, 0.95)",
+            borderWidth: "2px",
+            boxClass: "tyre-box-temp tyre-box-temp-hot",
+        };
+    }
+    return {
+        borderColor: "rgba(0, 215, 0, 0.85)",
+        borderWidth: "2px",
+        boxClass: "tyre-box-temp tyre-box-temp-ok",
+    };
+}
+
 function setTyreWidgetTemps(car) {
     if (!car?.tyresSurfaceTemperature?.length) return;
     const inner = car.tyresInnerTemperature;
     const corners = ["RL", "RR", "FL", "FR"];
+    const compoundId = playerVisualTyreCompound;
     forEachTyreWidget(w => {
         for (let i = 0; i < 4; i++) {
             let t = car.tyresSurfaceTemperature[i];
@@ -221,10 +278,34 @@ function setTyreWidgetTemps(car) {
                 if (ti !== undefined && ti !== null && ti > 0) t = ti;
             }
             const corner = corners[i];
+            const box = w.querySelector(`.tyre-box[data-tyre-corner="${corner}"]`);
             const node = w.querySelector(`.tyre-temp[data-tyre-corner="${corner}"]`);
-            if (!node || t === undefined || t === null) continue;
+            if (!node) continue;
+            if (t === undefined || t === null || (t === 0 && (!inner?.length || !inner[i]))) {
+                node.textContent = "--°";
+                node.className = "tyre-temp";
+                if (box) {
+                    box.classList.remove("tyre-box-temp", "tyre-box-temp-cold", "tyre-box-temp-ok", "tyre-box-temp-hot");
+                    box.style.borderWidth = "";
+                    box.style.borderColor = "";
+                }
+                continue;
+            }
             node.textContent = t + "°";
             node.className = "tyre-temp " + getTyreTemperatureClass(t);
+            if (box) {
+                const st = tyreTempBorderStyle(t, compoundId);
+                box.classList.remove("tyre-box-temp", "tyre-box-temp-cold", "tyre-box-temp-ok", "tyre-box-temp-hot");
+                if (st.boxClass) {
+                    for (const c of st.boxClass.split(" ")) if (c) box.classList.add(c);
+                    box.style.borderColor = st.borderColor;
+                    box.style.borderWidth = st.borderWidth;
+                } else {
+                    box.classList.remove("tyre-box-temp", "tyre-box-temp-cold", "tyre-box-temp-ok", "tyre-box-temp-hot");
+                    box.style.borderWidth = "";
+                    box.style.borderColor = "";
+                }
+            }
         }
     });
 }
@@ -265,14 +346,12 @@ function tyreWearCellColors(pct) {
         g,
         b,
         background: `linear-gradient(145deg, rgba(${r},${g},${b},0.52), rgba(${r},${g},${b},0.22))`,
-        borderColor: `rgba(${r},${g},${b},0.5)`,
     };
 }
 
 function resetTyreBoxWearStyling(box) {
     box.classList.remove("tyre-box-wear");
     box.style.background = "";
-    box.style.borderColor = "";
 }
 
 function setTyreWidgetWear(car) {
@@ -300,7 +379,6 @@ function setTyreWidgetWear(car) {
             const col = tyreWearCellColors(pct);
             box.classList.add("tyre-box-wear");
             box.style.background = col.background;
-            box.style.borderColor = col.borderColor;
         }
     });
 }
@@ -375,6 +453,8 @@ function updateSession(data) {
     if (linkId !== undefined && linkId !== null) {
         if (lastSessionLinkId !== null && linkId !== lastSessionLinkId) {
             playerMaxRpm = 0;
+            playerVisualTyreCompound = -1;
+            lastPlayerCarTelemetry = null;
             pedalHistoryT.length = 0;
             pedalHistoryB.length = 0;
         }
@@ -577,6 +657,7 @@ function updateCarTelemetry(data) {
         else drsEl.classList.remove("active");
     }
 
+    lastPlayerCarTelemetry = car;
     // Tyre temps: RL, RR, FL, FR (see F1 UDP appendix); inner temp fallback if surface is 0
     setTyreWidgetTemps(car);
 }
@@ -587,6 +668,14 @@ function updateCarStatus(data) {
 
     if (car.maxRpm > 0) {
         playerMaxRpm = car.maxRpm;
+    }
+
+    const prevCompound = playerVisualTyreCompound;
+    if (car.visualTyreCompound !== undefined && car.visualTyreCompound !== null) {
+        playerVisualTyreCompound = car.visualTyreCompound;
+    }
+    if (prevCompound !== playerVisualTyreCompound && lastPlayerCarTelemetry) {
+        setTyreWidgetTemps(lastPlayerCarTelemetry);
     }
 
     const pitTile = el("pitLimiterTile");
