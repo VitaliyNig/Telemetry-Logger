@@ -215,7 +215,18 @@
         <div class="card"><h2 class="widget-title">Car Telemetry</h2>
         <div class="telemetry-stack">
             <div class="rpm-strip">
-                <div class="rpm-bar-bg"><div class="rpm-bar-fill" id="rpmBar"></div></div>
+                <div class="rpm-bar-bg">
+                    <div class="rpm-bar-ghost" aria-hidden="true">
+                        <span class="rpm-seg rpm-seg-green"></span>
+                        <span class="rpm-seg rpm-seg-red"></span>
+                        <span class="rpm-seg rpm-seg-blue"></span>
+                    </div>
+                    <div class="rpm-bar-lit" id="rpmBarLit" style="--rpm-pct: 0%">
+                        <span class="rpm-seg rpm-seg-green"></span>
+                        <span class="rpm-seg rpm-seg-red"></span>
+                        <span class="rpm-seg rpm-seg-blue"></span>
+                    </div>
+                </div>
                 <div class="rpm-value" id="rpmValue">0 RPM</div>
             </div>
             <div class="telemetry-middle">
