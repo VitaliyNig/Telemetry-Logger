@@ -5,6 +5,7 @@ using F1Telemetry.F125;
 using F1Telemetry.F125.Protocol;
 using F1Telemetry.Host.Hubs;
 using F1Telemetry.Host.Ingress;
+using F1Telemetry.Host.Serialization;
 using F1Telemetry.Ingress;
 using F1Telemetry.State;
 using F1Telemetry.Udp;
@@ -29,8 +30,10 @@ builder.Services.AddTelemetryUdpListener();
 builder.Services.AddSignalR()
     .AddJsonProtocol(options =>
     {
-        options.PayloadSerializerOptions.PropertyNamingPolicy =
-            System.Text.Json.JsonNamingPolicy.CamelCase;
+        var json = options.PayloadSerializerOptions;
+        json.PropertyNamingPolicy = System.Text.Json.JsonNamingPolicy.CamelCase;
+        json.Converters.Add(new FiniteSingleJsonConverter());
+        json.Converters.Add(new FiniteDoubleJsonConverter());
     });
 
 var app = builder.Build();
