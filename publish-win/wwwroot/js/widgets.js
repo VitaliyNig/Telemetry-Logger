@@ -239,7 +239,7 @@ function updateDropdown() {
     });
 }
 
-// Maps m_sessionType (F1 25 v3 appendix) → dashboard preset. Must stay in sync with SESSION_TYPES in telemetry.js.
+// Maps m_sessionType (docs/F1_25_UDP_Spec.md Session Types) → preset. Sync with SESSION_TYPES in telemetry.js.
 const SESSION_TYPE_TO_PRESET = {
     1: "practice", 2: "practice", 3: "practice", 4: "practice",
     5: "qualifying", 6: "qualifying", 7: "qualifying", 8: "qualifying", 9: "qualifying",

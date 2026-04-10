@@ -426,7 +426,7 @@
     overflow: hidden;
 }
 
-/* Grey track; fill: green 0–11k, red 11k–11.6k, blue 11.6k–max (see JS vs max RPM) */
+/* Grey track; fill: green 0–11k, gradient 11k–12k, red 12k–max (see JS vs max RPM) */
 .rpm-bar-track {
     position: absolute;
     inset: 0;
@@ -457,18 +457,18 @@
     box-shadow: 0 0 6px rgba(0, 215, 0, 0.35);
 }
 
+.rpm-bar-lit .rpm-seg-gradient {
+    flex: 1 1 0;
+    min-width: 0;
+    background: linear-gradient(to right, var(--accent-green), var(--semantic-red));
+    box-shadow: 0 0 6px rgba(120, 110, 0, 0.28);
+}
+
 .rpm-bar-lit .rpm-seg-red {
     flex: 1 1 0;
     min-width: 0;
     background: var(--semantic-red);
     box-shadow: 0 0 6px rgba(225, 6, 0, 0.35);
-}
-
-.rpm-bar-lit .rpm-seg-blue {
-    flex: 1 1 0;
-    min-width: 0;
-    background: var(--accent-blue);
-    box-shadow: 0 0 6px rgba(0, 166, 255, 0.35);
 }
 
 .rpm-value {
@@ -701,6 +701,124 @@
     font-family: var(--font-mono);
     color: var(--text-dim);
     line-height: 1;
+}
+
+/* Car Telemetry: sizes follow widget cell (GridStack resize) via container queries */
+.card.telemetry-widget {
+    container-type: size;
+    container-name: telemetry;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    padding: clamp(8px, 2.5cqi, 14px) clamp(10px, 3cqi, 18px);
+}
+
+.card.telemetry-widget .telemetry-stack {
+    flex: 1 1 0;
+    min-height: 0;
+    gap: clamp(6px, 2cqb, 14px);
+}
+
+.card.telemetry-widget .rpm-strip {
+    gap: clamp(2px, 0.6cqb, 6px);
+}
+
+.card.telemetry-widget .rpm-bar-bg {
+    height: clamp(6px, 2.2cqb, 12px);
+}
+
+.card.telemetry-widget .rpm-value {
+    font-size: clamp(8px, 2.4cqi, 11px);
+}
+
+.card.telemetry-widget .telemetry-middle {
+    gap: clamp(4px, 1.2cqi, 8px);
+    align-items: start;
+    grid-auto-rows: auto;
+    /* row height = side of square (column width); avoids stretch breaking 1:1 */
+}
+
+.card.telemetry-widget .telemetry-cell {
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    min-height: 0;
+    height: auto;
+    border-radius: clamp(8px, 2.2cqi, 14px);
+}
+
+.card.telemetry-widget .drs-tile,
+.card.telemetry-widget .pit-limiter-tile {
+    font-size: clamp(9px, 2.5cqi, 12px);
+}
+
+.card.telemetry-widget .gear-value {
+    font-size: clamp(20px, 11cqi, 54px);
+}
+
+.card.telemetry-widget .speed-tile {
+    padding: clamp(4px, 1cqi, 8px) clamp(2px, 0.8cqi, 6px);
+}
+
+.card.telemetry-widget .speed-tile-value {
+    font-size: clamp(14px, 5.5cqi, 26px);
+}
+
+.card.telemetry-widget .speed-tile-unit {
+    font-size: clamp(7px, 1.8cqi, 9px);
+    margin-top: clamp(2px, 0.6cqb, 5px);
+}
+
+.card.telemetry-widget .telemetry-metric-row {
+    gap: clamp(4px, 1cqi, 8px);
+    padding: clamp(3px, 1cqb, 6px) clamp(5px, 1.8cqi, 10px);
+}
+
+.card.telemetry-widget .telemetry-metric-label {
+    font-size: clamp(8px, 2.2cqi, 11px);
+}
+
+.card.telemetry-widget .telemetry-metric-value {
+    font-size: clamp(11px, 3.8cqi, 17px);
+}
+
+.card.telemetry-widget .pedals-panel {
+    flex: 1 1 0;
+    min-height: 0;
+    gap: clamp(6px, 2cqi, 12px);
+}
+
+.card.telemetry-widget .pedal-chart-box {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: clamp(8px, 2cqi, 12px);
+    padding: clamp(2px, 0.7cqi, 6px) clamp(4px, 1.1cqi, 8px);
+}
+
+.card.telemetry-widget .pedal-chart {
+    flex: 1 1 0;
+    width: 100%;
+    min-height: clamp(32px, 12cqb, 96px);
+    height: auto;
+}
+
+.card.telemetry-widget .pedal-vbars {
+    gap: clamp(5px, 1.5cqi, 10px);
+}
+
+.card.telemetry-widget .pedal-vbar {
+    width: clamp(18px, 5cqi, 26px);
+    gap: clamp(2px, 0.6cqb, 5px);
+}
+
+.card.telemetry-widget .pedal-vbar-track {
+    min-height: clamp(40px, 18cqb, 72px);
+}
+
+.card.telemetry-widget .pedal-vbar-label {
+    font-size: clamp(7px, 2cqi, 10px);
 }
 
 /* Tyres */

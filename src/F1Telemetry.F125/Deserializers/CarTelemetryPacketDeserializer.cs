@@ -29,7 +29,7 @@ public sealed class CarTelemetryPacketDeserializer : IPacketDeserializer
         };
 
         for (var i = 0; i < F125Constants.MaxCarsInUdpData; i++)
-            packet.CarTelemetryData[i] = ReadOneCar(reader);
+            packet.CarTelemetryData[i] = ReadOneCar(ref reader);
 
         packet.MfdPanelIndex = reader.ReadByte();
         packet.MfdPanelIndexSecondaryPlayer = reader.ReadByte();
@@ -38,13 +38,13 @@ public sealed class CarTelemetryPacketDeserializer : IPacketDeserializer
         return packet;
     }
 
-    private static ushort[] ReadTyreTemperaturesAsUInt8(BinaryReader125 reader)
+    private static ushort[] ReadTyreTemperaturesAsUInt8(ref BinaryReader125 reader)
     {
         var bytes = reader.ReadByteArray(4);
         return [bytes[0], bytes[1], bytes[2], bytes[3]];
     }
 
-    private static CarTelemetryData ReadOneCar(BinaryReader125 reader)
+    private static CarTelemetryData ReadOneCar(ref BinaryReader125 reader)
     {
         return new CarTelemetryData
         {
@@ -59,11 +59,11 @@ public sealed class CarTelemetryPacketDeserializer : IPacketDeserializer
             RevLightsPercent = reader.ReadByte(),
             RevLightsBitValue = reader.ReadUInt16(),
             BrakesTemperature = reader.ReadUInt16Array(4),
-            TyresSurfaceTemperature = ReadTyreTemperaturesAsUInt8(reader),
-            TyresInnerTemperature = ReadTyreTemperaturesAsUInt8(reader),
+            TyresSurfaceTemperature = ReadTyreTemperaturesAsUInt8(ref reader),
+            TyresInnerTemperature = ReadTyreTemperaturesAsUInt8(ref reader),
             EngineTemperature = reader.ReadUInt16(),
             TyresPressure = reader.ReadFloatArray(4),
-            SurfaceType = reader.ReadByteArray(4),
+            SurfaceType = reader.ReadByteValuesAsIntArray(4),
         };
     }
 }

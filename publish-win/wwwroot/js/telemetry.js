@@ -1,10 +1,12 @@
 "use strict";
 
-// Track IDs: EA "Data Output from F1 25" v3 PDF appendix (m_trackId, int8, -1 = unknown)
+// Справочники синхронизированы с docs/F1_25_UDP_Spec.md (приложения и комментарии к пакетам).
+
+// Track IDs — приложение Track IDs (m_trackId int8, -1 = неизвестно)
 const TRACK_NAMES = {
     0: "Melbourne",
     2: "Shanghai",
-    3: "Sakhir (Bahrain)",
+    3: "Sakhir",
     4: "Catalunya",
     5: "Monaco",
     6: "Montreal",
@@ -19,19 +21,19 @@ const TRACK_NAMES = {
     16: "Brazil",
     17: "Austria",
     19: "Mexico",
-    20: "Baku (Azerbaijan)",
+    20: "Baku",
     26: "Zandvoort",
     27: "Imola",
     29: "Jeddah",
     30: "Miami",
     31: "Las Vegas",
     32: "Losail",
-    39: "Silverstone (Reverse)",
-    40: "Austria (Reverse)",
-    41: "Zandvoort (Reverse)"
+    39: "Silverstone (R)",
+    40: "Austria (R)",
+    41: "Zandvoort (R)"
 };
 
-// Session types: F1 25 v3 PDF appendix (m_sessionType)
+// Session types — приложение Session Types (m_sessionType)
 const SESSION_TYPES = {
     0: "Unknown",
     1: "Practice 1",
@@ -63,16 +65,46 @@ const SAFETY_CAR_STATUS = {
     0: "None", 1: "Full SC", 2: "VSC", 3: "Formation"
 };
 
+// m_actualTyreCompound — пакет Car Status (разное для F1 Modern / Classic / F2)
 const TYRE_COMPOUNDS = {
     16: "C5", 17: "C4", 18: "C3", 19: "C2", 20: "C1", 21: "C0", 22: "C6",
-    7: "Inter", 8: "Wet"
+    7: "Inter", 8: "Wet",
+    9: "Dry", 10: "Wet",
+    11: "Super Soft", 12: "Soft", 13: "Medium", 14: "Hard", 15: "Wet",
 };
 
+// m_visualTyreCompound — F1: 16–18,7,8; Classic: как F1; F2: 15 wet, 19–22 (см. спецификацию)
 const VISUAL_COMPOUNDS = {
-    16: "Soft", 17: "Medium", 18: "Hard", 7: "Inter", 8: "Wet"
+    16: "Soft", 17: "Medium", 18: "Hard", 7: "Inter", 8: "Wet",
+    9: "Dry", 10: "Wet",
+    15: "Wet", 19: "Super Soft", 20: "Soft", 21: "Medium", 22: "Hard",
+};
+
+const TYRE_TEMP_BORDER_DEFAULT = { min: 85, max: 95 };
+
+/** °C по m_visualTyreCompound — ориентир для UI (F1/F2/Classic id из спецификации). */
+const TYRE_OPTIMAL_TEMP_C = {
+    16: { min: 75, max: 85 },
+    17: { min: 75, max: 95 },
+    18: { min: 85, max: 95 },
+    19: { min: 85, max: 115 },
+    20: { min: 95, max: 115 },
+    21: { min: 90, max: 115 },
+    22: { min: 65, max: 85 },
+    7: { min: 55, max: 75 },
+    8: { min: 55, max: 65 },
+    9: { min: 80, max: 110 },
+    10: { min: 55, max: 65 },
+    15: { min: 55, max: 75 },
 };
 
 const ERS_MODES = { 0: "None", 1: "Medium", 2: "Hotlap", 3: "Overtake" };
+
+/** m_fuelMix — Car Status */
+const FUEL_MIX_NAMES = { 0: "Lean", 1: "Standard", 2: "Rich", 3: "Max" };
+
+/** m_tractionControl — Car Status */
+const TRACTION_CONTROL_NAMES = { 0: "Off", 1: "Medium", 2: "Full" };
 
 const PIT_STATUS = { 0: "", 1: "Pitting", 2: "In Pit" };
 
@@ -87,7 +119,8 @@ const EVENT_NAMES = {
     "PENA": "Penalty", "SPTP": "Speed Trap", "STLG": "Start Lights",
     "LGOT": "Lights Out", "DTSV": "Drive Through Served", "SGSV": "Stop-Go Served",
     "FLBK": "Flashback", "RDFL": "Red Flag",
-    "OVTK": "Overtake", "SCAR": "Safety Car", "COLL": "Collision"
+    "OVTK": "Overtake", "SCAR": "Safety Car", "COLL": "Collision",
+    "BUTN": "Button Status"
 };
 
 const PENALTY_CODES = new Set(["PENA", "DTSV", "SGSV"]);
@@ -121,8 +154,8 @@ const INFRINGEMENT_TYPES = {
     2: "Reversing off the start line",
     3: "Big Collision",
     4: "Small Collision",
-    5: "Collision failed to hand back position single",
-    6: "Collision failed to hand back position multiple",
+    5: "Collision failed to hand back position (single)",
+    6: "Collision failed to hand back position (multiple)",
     7: "Corner cutting gained time",
     8: "Corner cutting overtake single",
     9: "Corner cutting overtake multiple",
@@ -173,6 +206,70 @@ const INFRINGEMENT_TYPES = {
     54: "Attribute assigned"
 };
 
+// --- Доп. приложения из F1_25_UDP_Spec.md (пока не все поля выведены в UI) ---
+
+/** m_resultStatus — Lap Data / Final Classification */
+const RESULT_STATUS_NAMES = {
+    0: "Invalid", 1: "Inactive", 2: "Active", 3: "Finished", 4: "DNF", 5: "DSQ",
+    6: "Not classified", 7: "Retired",
+};
+
+/** m_resultReason — Final Classification */
+const RESULT_REASON_NAMES = {
+    0: "Invalid", 1: "Retired", 2: "Finished", 3: "Terminal damage", 4: "Inactive",
+    5: "Not enough laps", 6: "Black flagged", 7: "Red flagged", 8: "Mechanical failure",
+    9: "Session skipped", 10: "Session simulated",
+};
+
+/** m_surfaceType[4] — Car Telemetry */
+const SURFACE_TYPE_NAMES = {
+    0: "Tarmac", 1: "Rumble strip", 2: "Concrete", 3: "Rock", 4: "Gravel", 5: "Mud",
+    6: "Sand", 7: "Grass", 8: "Water", 9: "Cobblestone", 10: "Metal", 11: "Ridged",
+};
+
+/** m_gameMode — Session */
+const GAME_MODE_NAMES = {
+    4: "Grand Prix '23", 5: "Time Trial", 6: "Splitscreen", 7: "Online Custom",
+    15: "Online Weekly Event", 17: "Story Mode (Braking Point)", 27: "My Team Career '25",
+    28: "Driver Career '25", 29: "Career '25 Online", 30: "Challenge Career '25",
+    75: "Story Mode (APXGP)", 127: "Benchmark",
+};
+
+/** m_ruleSet — Session */
+const RULESET_NAMES = {
+    0: "Practice & Qualifying", 1: "Race", 2: "Time Trial", 12: "Elimination",
+};
+
+/** m_teamId — Participants / Lobby / Time Trial */
+const TEAM_NAMES = {
+    0: "Mercedes", 1: "Ferrari", 2: "Red Bull Racing", 3: "Williams", 4: "Aston Martin",
+    5: "Alpine", 6: "RB", 7: "Haas", 8: "McLaren", 9: "Sauber", 41: "F1 Generic",
+    104: "F1 Custom Team", 129: "Konnersport", 142: "APXGP '24", 154: "APXGP '25",
+    155: "Konnersport '24", 158: "Art GP '24", 159: "Campos '24", 160: "Rodin Motorsport '24",
+    161: "AIX Racing '24", 162: "DAMS '24", 163: "Hitech '24", 164: "MP Motorsport '24",
+    165: "Prema '24", 166: "Trident '24", 167: "Van Amersfoort '24", 168: "Invicta '24",
+    185: "Mercedes '24", 186: "Ferrari '24", 187: "Red Bull Racing '24", 188: "Williams '24",
+    189: "Aston Martin '24", 190: "Alpine '24", 191: "RB '24", 192: "Haas '24",
+    193: "McLaren '24", 194: "Sauber '24",
+};
+
+/** m_platform — Participants / Lobby */
+const PLATFORM_NAMES = {
+    1: "Steam", 3: "PlayStation", 4: "Xbox", 6: "Origin", 255: "Unknown",
+};
+
+/** RTMT event — поле reason */
+const RETIREMENT_REASON_NAMES = {
+    0: "Invalid", 1: "Retired", 2: "Finished", 3: "Terminal damage", 4: "Inactive",
+    5: "Not enough laps", 6: "Black flagged", 7: "Red flagged", 8: "Mechanical failure",
+    9: "Session skipped", 10: "Session simulated",
+};
+
+/** DRSD event — поле reason */
+const DRSD_REASON_NAMES = {
+    0: "Wet track", 1: "Safety car deployed", 2: "Red flag", 3: "Min lap not reached",
+};
+
 let playerCarIndex = 0;
 let participantNames = [];
 let maxEvents = 50;
@@ -193,16 +290,233 @@ const sessionHistories = {};
 const GAP_BOARD_LAPS = 4;
 
 /** Throttle / brake traces for Car Telemetry pedal chart (0..1 samples, oldest → newest). */
-const PEDAL_HISTORY_LEN = 72;
+const PEDAL_HISTORY_LEN = 180;
 const pedalHistoryT = [];
 const pedalHistoryB = [];
 
 /** m_maxRPM from Car Status (rev limiter); 0 until first Car Status for this session. */
 let playerMaxRpm = 0;
 const RPM_SCALE_FALLBACK = 15000;
+/** Absolute RPM thresholds for bar colours (vs current max RPM scale). */
+const RPM_BAR_GREEN_END = 11000;
+const RPM_BAR_GRADIENT_END = 12000;
 let lastSessionLinkId = null;
+/** m_visualTyreCompound from Car Status — used for Tyres widget optimal temp ranges. */
+let playerVisualTyreCompound = -1;
+/** Last player CarTelemetry row — re-apply tyre borders when compound updates. */
+let lastPlayerCarTelemetry = null;
 
 function el(id) { return document.getElementById(id); }
+
+/** Tyres widget uses data-* (no duplicate ids when multiple Tyres widgets on grid). */
+function forEachTyreWidget(callback) {
+    document.querySelectorAll(".tyre-widget").forEach(callback);
+}
+
+function getTyreOptimalRange(visualCompoundId) {
+    if (visualCompoundId === undefined || visualCompoundId === null || visualCompoundId < 0) {
+        return TYRE_TEMP_BORDER_DEFAULT;
+    }
+    return TYRE_OPTIMAL_TEMP_C[visualCompoundId] || TYRE_TEMP_BORDER_DEFAULT;
+}
+
+/** Border by temp vs compound range: blue under, green in range, red over. */
+function tyreTempBorderStyle(tempC, visualCompoundId) {
+    if (tempC === undefined || tempC === null) {
+        return { borderColor: "", borderWidth: "", boxClass: "" };
+    }
+    const { min, max } = getTyreOptimalRange(visualCompoundId);
+    const t = Number(tempC);
+    if (!Number.isFinite(t)) {
+        return { borderColor: "", borderWidth: "", boxClass: "" };
+    }
+    if (t < min) {
+        return {
+            borderColor: "rgba(0, 166, 255, 0.9)",
+            borderWidth: "2px",
+            boxClass: "tyre-box-temp tyre-box-temp-cold",
+        };
+    }
+    if (t > max) {
+        return {
+            borderColor: "rgba(225, 6, 0, 0.95)",
+            borderWidth: "2px",
+            boxClass: "tyre-box-temp tyre-box-temp-hot",
+        };
+    }
+    return {
+        borderColor: "rgba(0, 215, 0, 0.85)",
+        borderWidth: "2px",
+        boxClass: "tyre-box-temp tyre-box-temp-ok",
+    };
+}
+
+function formatTyreDegCell(v) {
+    if (v === undefined || v === null || v === 0) return "--";
+    return v + "°";
+}
+
+/** Border vs compound band: prefer inner (carcass) when valid, else surface. */
+function pickTyreBorderTempC(innerArr, surfaceArr, index) {
+    const ti = innerArr?.[index];
+    const ts = surfaceArr?.[index];
+    if (ti !== undefined && ti !== null && ti > 0) return ti;
+    if (ts !== undefined && ts !== null && ts > 0) return ts;
+    return null;
+}
+
+function setTyreWidgetTemps(car) {
+    const inner = car.tyresInnerTemperature;
+    const surf = car.tyresSurfaceTemperature;
+    if ((!inner || inner.length < 4) && (!surf || surf.length < 4)) return;
+
+    const corners = ["RL", "RR", "FL", "FR"];
+    const compoundId = playerVisualTyreCompound;
+    forEachTyreWidget(w => {
+        for (let i = 0; i < 4; i++) {
+            const corner = corners[i];
+            const box = w.querySelector(`.tyre-box[data-tyre-corner="${corner}"]`);
+            const nodeS = w.querySelector(`.tyre-temp-surface[data-tyre-corner="${corner}"]`);
+            const nodeI = w.querySelector(`.tyre-temp-inner[data-tyre-corner="${corner}"]`);
+            if (!nodeS || !nodeI) continue;
+
+            const ts = surf?.[i];
+            const ti = inner?.[i];
+            nodeS.textContent = formatTyreDegCell(ts);
+            nodeS.className =
+                "tyre-temp-val tyre-temp-surface" +
+                (ts !== undefined && ts !== null && ts > 0 ? " " + getTyreTemperatureClass(ts) : "");
+
+            nodeI.textContent = formatTyreDegCell(ti);
+            nodeI.className =
+                "tyre-temp-val tyre-temp-inner" +
+                (ti !== undefined && ti !== null && ti > 0 ? " " + getTyreTemperatureClass(ti) : "");
+
+            const borderT = pickTyreBorderTempC(inner, surf, i);
+            if (box) {
+                if (borderT === null) {
+                    box.classList.remove("tyre-box-temp", "tyre-box-temp-cold", "tyre-box-temp-ok", "tyre-box-temp-hot");
+                    box.style.borderWidth = "";
+                    box.style.borderColor = "";
+                } else {
+                    const st = tyreTempBorderStyle(borderT, compoundId);
+                    box.classList.remove("tyre-box-temp", "tyre-box-temp-cold", "tyre-box-temp-ok", "tyre-box-temp-hot");
+                    if (st.boxClass) {
+                        for (const c of st.boxClass.split(" ")) if (c) box.classList.add(c);
+                        box.style.borderColor = st.borderColor;
+                        box.style.borderWidth = st.borderWidth;
+                    } else {
+                        box.classList.remove("tyre-box-temp", "tyre-box-temp-cold", "tyre-box-temp-ok", "tyre-box-temp-hot");
+                        box.style.borderWidth = "";
+                        box.style.borderColor = "";
+                    }
+                }
+            }
+        }
+    });
+}
+
+/** m_tyresWear is percentage; some builds send 0–1 float — normalize to 0–100. */
+function tyreWearToPct(wear) {
+    const w = Number(wear);
+    if (!Number.isFinite(w)) return null;
+    const pct = w <= 1 && w >= 0 ? w * 100 : w;
+    return Math.min(100, Math.max(0, pct));
+}
+
+function formatTyreWearPct(wear) {
+    const pct = tyreWearToPct(wear);
+    if (pct === null) return "--%";
+    return pct.toFixed(0) + "%";
+}
+
+/** Green (#00d700) → yellow (#ffd700) → red (#e10600) by wear 0–100%. */
+function tyreWearCellColors(pct) {
+    const t = Math.min(1, Math.max(0, pct / 100));
+    let r;
+    let g;
+    let b;
+    if (t <= 0.5) {
+        const u = t * 2;
+        r = Math.round(0 + 255 * u);
+        g = 215;
+        b = 0;
+    } else {
+        const u = (t - 0.5) * 2;
+        r = Math.round(255 + (225 - 255) * u);
+        g = Math.round(215 + (6 - 215) * u);
+        b = 0;
+    }
+    return {
+        r,
+        g,
+        b,
+        background: `linear-gradient(145deg, rgba(${r},${g},${b},0.52), rgba(${r},${g},${b},0.22))`,
+    };
+}
+
+function resetTyreBoxWearStyling(box) {
+    box.classList.remove("tyre-box-wear");
+    box.style.background = "";
+}
+
+function setTyreWidgetWear(car) {
+    const wear = car?.tyresWear;
+    const corners = ["RL", "RR", "FL", "FR"];
+    forEachTyreWidget(widgetRoot => {
+        for (let i = 0; i < 4; i++) {
+            const corner = corners[i];
+            const box = widgetRoot.querySelector(`.tyre-box[data-tyre-corner="${corner}"]`);
+            const node = widgetRoot.querySelector(`.tyre-wear[data-tyre-corner="${corner}"]`);
+            if (!box || !node) continue;
+
+            if (!wear || wear.length <= i) {
+                node.textContent = "--%";
+                resetTyreBoxWearStyling(box);
+                continue;
+            }
+
+            node.textContent = formatTyreWearPct(wear[i]);
+            const pct = tyreWearToPct(wear[i]);
+            if (pct === null) {
+                resetTyreBoxWearStyling(box);
+                continue;
+            }
+            const col = tyreWearCellColors(pct);
+            box.classList.add("tyre-box-wear");
+            box.style.background = col.background;
+        }
+    });
+}
+
+function setTyreWidgetCompoundAge(car) {
+    if (!car) return;
+    const compound = VISUAL_COMPOUNDS[car.visualTyreCompound] || `ID:${car.visualTyreCompound}`;
+    const age = car.tyresAgeLaps + " laps";
+    forEachTyreWidget(w => {
+        const c = w.querySelector("[data-tyre-compound]");
+        const a = w.querySelector("[data-tyre-age]");
+        if (c) c.textContent = compound;
+        if (a) a.textContent = age;
+    });
+}
+
+/** Grey track; clipped fill: green 0..11k, gradient 11k..12k, solid red 12k..max. */
+function syncRpmBarSegmentWidths(scale) {
+    const s = scale > 0 ? scale : RPM_SCALE_FALLBACK;
+    const greenEnd = Math.min(RPM_BAR_GREEN_END, s);
+    const gradEnd = Math.min(RPM_BAR_GRADIENT_END, s);
+    const wGreen = greenEnd;
+    const wGradient = Math.max(0, gradEnd - greenEnd);
+    const wRed = Math.max(0, s - Math.min(RPM_BAR_GRADIENT_END, s));
+    const setFlex = (id, w) => {
+        const node = el(id);
+        if (node) node.style.flex = `${w} 0 0`;
+    };
+    setFlex("rpmSegGreen", wGreen);
+    setFlex("rpmSegGradient", wGradient);
+    setFlex("rpmSegRed", wRed);
+}
 
 function formatTime(ms) {
     if (!ms || ms === 0) return "--";
@@ -262,6 +576,8 @@ function updateSession(data) {
     if (linkId !== undefined && linkId !== null) {
         if (lastSessionLinkId !== null && linkId !== lastSessionLinkId) {
             playerMaxRpm = 0;
+            playerVisualTyreCompound = -1;
+            lastPlayerCarTelemetry = null;
             pedalHistoryT.length = 0;
             pedalHistoryB.length = 0;
         }
@@ -434,8 +750,10 @@ function updateCarTelemetry(data) {
     el("gear").textContent = gear === -1 ? "R" : gear === 0 ? "N" : gear.toString();
 
     const scale = playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK;
+    syncRpmBarSegmentWidths(scale);
     const rpmPct = Math.min(100, (car.engineRpm / scale) * 100);
-    el("rpmBar").style.width = rpmPct + "%";
+    const rpmClip = el("rpmBarClip");
+    if (rpmClip) rpmClip.style.setProperty("--rpm-pct", `${rpmPct}%`);
     el("rpmValue").textContent = `${car.engineRpm} / ${scale} RPM`;
 
     const t = Math.max(0, Math.min(1, Number(car.throttle) || 0));
@@ -463,22 +781,9 @@ function updateCarTelemetry(data) {
         else drsEl.classList.remove("active");
     }
 
-    // Tyre surface temperatures: order is RL, RR, FL, FR
-    const tempFL = car.tyresSurfaceTemperature[2];
-    const tempFR = car.tyresSurfaceTemperature[3];
-    const tempRL = car.tyresSurfaceTemperature[0];
-    const tempRR = car.tyresSurfaceTemperature[1];
-
-    const setTyreTemp = (elId, temp) => {
-        const e = el(elId);
-        e.textContent = temp + "°";
-        e.className = "tyre-temp " + getTyreTemperatureClass(temp);
-    };
-
-    setTyreTemp("tyreTempFL", tempFL);
-    setTyreTemp("tyreTempFR", tempFR);
-    setTyreTemp("tyreTempRL", tempRL);
-    setTyreTemp("tyreTempRR", tempRR);
+    lastPlayerCarTelemetry = car;
+    // Tyre temps: RL, RR, FL, FR (see F1 UDP appendix); inner temp fallback if surface is 0
+    setTyreWidgetTemps(car);
 }
 
 function updateCarStatus(data) {
@@ -489,6 +794,30 @@ function updateCarStatus(data) {
         playerMaxRpm = car.maxRpm;
     }
 
+    syncRpmBarSegmentWidths(playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK);
+
+    const prevCompound = playerVisualTyreCompound;
+    if (car.visualTyreCompound !== undefined && car.visualTyreCompound !== null) {
+        playerVisualTyreCompound = car.visualTyreCompound;
+    }
+    if (prevCompound !== playerVisualTyreCompound && lastPlayerCarTelemetry) {
+        setTyreWidgetTemps(lastPlayerCarTelemetry);
+    }
+
+    const pitTile = el("pitLimiterTile");
+    if (pitTile) {
+        if (car.pitLimiterStatus === 1) pitTile.classList.add("active");
+        else pitTile.classList.remove("active");
+    }
+
+    const bbEl = el("frontBrakeBiasValue");
+    if (bbEl) {
+        bbEl.textContent =
+            car.frontBrakeBias !== undefined && car.frontBrakeBias !== null
+                ? `${car.frontBrakeBias}%`
+                : "--";
+    }
+
     el("fuelRemaining").textContent = car.fuelInTank.toFixed(1) + " kg";
     el("fuelLaps").textContent = car.fuelRemainingLaps.toFixed(1) + " laps";
     el("ersMode").textContent = ERS_MODES[car.ersDeployMode] || "--";
@@ -497,8 +826,18 @@ function updateCarStatus(data) {
     const ersPct = Math.min(100, (car.ersStoreEnergy / maxErs) * 100);
     el("ersBar").style.width = ersPct + "%";
 
-    el("tyreCompound").textContent = VISUAL_COMPOUNDS[car.visualTyreCompound] || `ID:${car.visualTyreCompound}`;
-    el("tyreAge").textContent = car.tyresAgeLaps + " laps";
+    setTyreWidgetCompoundAge(car);
+}
+
+function updateCarSetups(data) {
+    const setup = data.carSetupData?.[playerCarIndex];
+    const diffEl = el("diffOnThrottleValue");
+    if (!diffEl) return;
+    if (!setup || setup.onThrottle === undefined || setup.onThrottle === null) {
+        diffEl.textContent = "--";
+        return;
+    }
+    diffEl.textContent = `${setup.onThrottle}%`;
 }
 
 function updateLapData(data) {
@@ -530,11 +869,7 @@ function updateCarDamage(data) {
     setDamageBar("dmgEngine", car.engineDamage);
     setDamageBar("dmgGearbox", car.gearBoxDamage);
 
-    // Tyre wear: order RL, RR, FL, FR
-    el("tyreWearFL").textContent = car.tyresWear[2].toFixed(0) + "%";
-    el("tyreWearFR").textContent = car.tyresWear[3].toFixed(0) + "%";
-    el("tyreWearRL").textContent = car.tyresWear[0].toFixed(0) + "%";
-    el("tyreWearRR").textContent = car.tyresWear[1].toFixed(0) + "%";
+    setTyreWidgetWear(car);
 }
 
 function updateParticipants(data) {
@@ -705,8 +1040,15 @@ function getVisualCompoundInfo(visualId) {
         16: { name: "Soft", css: "compound-soft", dot: "#ff3333" },
         17: { name: "Medium", css: "compound-medium", dot: "#ffd700" },
         18: { name: "Hard", css: "compound-hard", dot: "#e0e0e0" },
-        7:  { name: "Inter", css: "compound-inter", dot: "#00cc00" },
-        8:  { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
+        7: { name: "Inter", css: "compound-inter", dot: "#00cc00" },
+        8: { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
+        9: { name: "Dry", css: "compound-hard", dot: "#c0c0c0" },
+        10: { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
+        15: { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
+        19: { name: "Super Soft", css: "compound-soft", dot: "#ff6633" },
+        20: { name: "Soft", css: "compound-soft", dot: "#ff3333" },
+        21: { name: "Medium", css: "compound-medium", dot: "#ffd700" },
+        22: { name: "Hard", css: "compound-hard", dot: "#e0e0e0" },
     };
     return map[visualId] || { name: `ID:${visualId}`, css: "", dot: "#888" };
 }
@@ -735,7 +1077,7 @@ function updateTyreSets(data) {
     }
 
     const container = el("tyreSetGroups");
-    const order = ["Soft", "Medium", "Hard", "Inter", "Wet"];
+    const order = ["Super Soft", "Soft", "Medium", "Hard", "Dry", "Inter", "Wet"];
     let html = "";
 
     for (const groupName of order) {
@@ -1119,6 +1461,7 @@ const PACKET_HANDLERS = {
     Session: updateSession,
     CarTelemetry: updateCarTelemetry,
     CarStatus: updateCarStatus,
+    CarSetups: updateCarSetups,
     LapData: updateLapData,
     CarDamage: updateCarDamage,
     Participants: updateParticipants,
@@ -1139,7 +1482,9 @@ function initConnection() {
     connection.on("ReceivePacket", (packetType, header, data) => {
         playerCarIndex = header?.playerCarIndex ?? 0;
 
-        const uid = header?.sessionUid;
+        // Session UID is serialized as a JSON string (full uint64 precision); normalize for comparisons.
+        const uidRaw = header?.sessionUid;
+        const uid = uidRaw !== undefined && uidRaw !== null ? String(uidRaw) : null;
         if (uid != null) {
             if (lastTelemetrySessionUid != null && uid !== lastTelemetrySessionUid) {
                 pinnedPenalties = [];
@@ -1193,7 +1538,12 @@ function requestCurrentState(connection) {
             if (!state) return;
             for (const [packetType, data] of Object.entries(state)) {
                 const handler = PACKET_HANDLERS[packetType];
-                if (handler) handler(data);
+                if (!handler) continue;
+                if (packetType === "Event") {
+                    handler(data, {});
+                } else {
+                    handler(data);
+                }
             }
         })
         .catch(err => console.warn("Failed to get current state:", err));
@@ -1201,6 +1551,7 @@ function requestCurrentState(connection) {
 
 document.addEventListener("DOMContentLoaded", async () => {
     if (typeof initWidgets === "function") initWidgets();
+    syncRpmBarSegmentWidths(RPM_SCALE_FALLBACK);
     await loadPitTimes();
     initConnection();
 });

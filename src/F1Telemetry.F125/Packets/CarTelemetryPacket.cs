@@ -18,7 +18,7 @@ public sealed class CarTelemetryData
     public ushort[] TyresInnerTemperature { get; set; } = new ushort[4];
     public ushort EngineTemperature { get; set; }
     public float[] TyresPressure { get; set; } = new float[4];
-    public byte[] SurfaceType { get; set; } = new byte[4];
+    public int[] SurfaceType { get; set; } = new int[4];
 }
 
 public sealed class CarTelemetryPacket

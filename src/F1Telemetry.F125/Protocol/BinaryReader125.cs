@@ -101,5 +101,18 @@ internal ref struct BinaryReader125
         return arr;
     }
 
+    /// <summary>
+    /// Reads <paramref name="count"/> uint8 values and returns them widened to int[].
+    /// System.Text.Json serializes byte[] as Base64 instead of a numeric JSON array;
+    /// using int[] ensures the browser receives [1,2,3] rather than "AQID".
+    /// </summary>
+    public int[] ReadByteValuesAsIntArray(int count)
+    {
+        var arr = new int[count];
+        for (var i = 0; i < count; i++)
+            arr[i] = _data[_offset++];
+        return arr;
+    }
+
     public void Skip(int bytes) => _offset += bytes;
 }

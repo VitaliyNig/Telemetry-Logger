@@ -35,9 +35,9 @@ public sealed class FinalClassificationPacketDeserializer : IPacketDeserializer
                 PenaltiesTime = reader.ReadByte(),
                 NumPenalties = reader.ReadByte(),
                 NumTyreStints = reader.ReadByte(),
-                TyreStintsActual = reader.ReadByteArray(MaxTyreStints),
-                TyreStintsVisual = reader.ReadByteArray(MaxTyreStints),
-                TyreStintsEndLaps = reader.ReadByteArray(MaxTyreStints),
+                TyreStintsActual = reader.ReadByteValuesAsIntArray(MaxTyreStints),
+                TyreStintsVisual = reader.ReadByteValuesAsIntArray(MaxTyreStints),
+                TyreStintsEndLaps = reader.ReadByteValuesAsIntArray(MaxTyreStints),
             };
         }
 

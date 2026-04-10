@@ -14,9 +14,9 @@ public sealed class FinalClassificationData
     public byte PenaltiesTime { get; set; }
     public byte NumPenalties { get; set; }
     public byte NumTyreStints { get; set; }
-    public byte[] TyreStintsActual { get; set; } = new byte[8];
-    public byte[] TyreStintsVisual { get; set; } = new byte[8];
-    public byte[] TyreStintsEndLaps { get; set; } = new byte[8];
+    public int[] TyreStintsActual { get; set; } = new int[8];
+    public int[] TyreStintsVisual { get; set; } = new int[8];
+    public int[] TyreStintsEndLaps { get; set; } = new int[8];
 }
 
 public sealed class FinalClassificationPacket

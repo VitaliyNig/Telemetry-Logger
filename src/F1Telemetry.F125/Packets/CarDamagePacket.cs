@@ -3,9 +3,9 @@ namespace F1Telemetry.F125.Packets;
 public sealed class CarDamageData
 {
     public float[] TyresWear { get; set; } = new float[4];
-    public byte[] TyresDamage { get; set; } = new byte[4];
-    public byte[] BrakesDamage { get; set; } = new byte[4];
-    public byte[] TyreBlisters { get; set; } = new byte[4];
+    public int[] TyresDamage { get; set; } = new int[4];
+    public int[] BrakesDamage { get; set; } = new int[4];
+    public int[] TyreBlisters { get; set; } = new int[4];
     public byte FrontLeftWingDamage { get; set; }
     public byte FrontRightWingDamage { get; set; }
     public byte RearWingDamage { get; set; }

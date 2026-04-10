@@ -21,9 +21,9 @@ public sealed class CarDamagePacketDeserializer : IPacketDeserializer
             packet.CarDamageDataItems[i] = new CarDamageData
             {
                 TyresWear = reader.ReadFloatArray(4),
-                TyresDamage = reader.ReadByteArray(4),
-                BrakesDamage = reader.ReadByteArray(4),
-                TyreBlisters = reader.ReadByteArray(4),
+                TyresDamage = reader.ReadByteValuesAsIntArray(4),
+                BrakesDamage = reader.ReadByteValuesAsIntArray(4),
+                TyreBlisters = reader.ReadByteValuesAsIntArray(4),
                 FrontLeftWingDamage = reader.ReadByte(),
                 FrontRightWingDamage = reader.ReadByte(),
                 RearWingDamage = reader.ReadByte(),

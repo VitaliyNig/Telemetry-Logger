@@ -17,11 +17,11 @@ public sealed class LapPositionsPacketDeserializer : IPacketDeserializer
         {
             NumLaps = reader.ReadByte(),
             LapStart = reader.ReadByte(),
-            PositionForVehicleIdx = new byte[MaxLaps][]
+            PositionForVehicleIdx = new int[MaxLaps][]
         };
 
         for (var i = 0; i < MaxLaps; i++)
-            packet.PositionForVehicleIdx[i] = reader.ReadByteArray(F125Constants.MaxCarsInUdpData);
+            packet.PositionForVehicleIdx[i] = reader.ReadByteValuesAsIntArray(F125Constants.MaxCarsInUdpData);
 
         return packet;
     }

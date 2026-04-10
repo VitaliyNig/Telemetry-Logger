@@ -94,7 +94,7 @@ public sealed class SessionPacket
     public byte AffectsLicenceLevelSolo { get; set; }
     public byte AffectsLicenceLevelMp { get; set; }
     public byte NumSessionsInWeekend { get; set; }
-    public byte[] WeekendStructure { get; set; } = [];
+    public int[] WeekendStructure { get; set; } = [];
     public float Sector2LapDistanceStart { get; set; }
     public float Sector3LapDistanceStart { get; set; }
 }

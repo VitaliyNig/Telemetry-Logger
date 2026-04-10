@@ -118,7 +118,7 @@ public sealed class SessionPacketDeserializer : IPacketDeserializer
         packet.AffectsLicenceLevelSolo = reader.ReadByte();
         packet.AffectsLicenceLevelMp = reader.ReadByte();
         packet.NumSessionsInWeekend = reader.ReadByte();
-        packet.WeekendStructure = reader.ReadByteArray(MaxSessionsInWeekend);
+        packet.WeekendStructure = reader.ReadByteValuesAsIntArray(MaxSessionsInWeekend);
         packet.Sector2LapDistanceStart = reader.ReadFloat();
         packet.Sector3LapDistanceStart = reader.ReadFloat();
 

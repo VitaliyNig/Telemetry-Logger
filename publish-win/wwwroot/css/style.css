@@ -420,18 +420,55 @@
 }
 
 .rpm-bar-bg {
+    position: relative;
     height: 10px;
-    background: rgba(255,255,255,0.08);
     border-radius: 999px;
     overflow: hidden;
 }
 
-.rpm-bar-fill {
+/* Grey track; fill: green 0–11k, gradient 11k–12k, red 12k–max (see JS vs max RPM) */
+.rpm-bar-track {
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.12);
+    border-radius: inherit;
+}
+
+.rpm-bar-lit-clip {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    clip-path: inset(0 calc(100% - var(--rpm-pct, 0%)) 0 0);
+    transition: clip-path 0.08s linear;
+}
+
+.rpm-bar-lit {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
     height: 100%;
-    width: 0%;
-    background: linear-gradient(90deg, var(--accent-green), var(--accent-yellow), var(--semantic-red));
-    border-radius: 999px;
-    transition: width 0.08s linear;
+    border-radius: inherit;
+}
+
+.rpm-bar-lit .rpm-seg-green {
+    flex: 1 1 0;
+    min-width: 0;
+    background: var(--accent-green);
+    box-shadow: 0 0 6px rgba(0, 215, 0, 0.35);
+}
+
+.rpm-bar-lit .rpm-seg-gradient {
+    flex: 1 1 0;
+    min-width: 0;
+    background: linear-gradient(to right, var(--accent-green), var(--semantic-red));
+    box-shadow: 0 0 6px rgba(120, 110, 0, 0.28);
+}
+
+.rpm-bar-lit .rpm-seg-red {
+    flex: 1 1 0;
+    min-width: 0;
+    background: var(--semantic-red);
+    box-shadow: 0 0 6px rgba(225, 6, 0, 0.35);
 }
 
 .rpm-value {
@@ -442,24 +479,31 @@
 }
 
 .telemetry-middle {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    min-height: 72px;
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 6px;
+    align-items: stretch;
+    min-height: 60px;
 }
 
-.drs-tile {
-    flex: 0 0 auto;
-    min-width: 56px;
+.telemetry-cell {
+    box-sizing: border-box;
+    min-width: 0;
     min-height: 56px;
+    height: 100%;
+    border-radius: 12px;
+}
+
+/* DRS + PIT: same off-state chrome; green vs blue only when .active */
+.drs-tile,
+.pit-limiter-tile {
     display: flex;
     align-items: center;
     justify-content: center;
-    border-radius: 12px;
     font-weight: 800;
-    font-size: 12px;
+    font-size: 11px;
     letter-spacing: 0.5px;
+    text-transform: uppercase;
     background: rgba(255,255,255,0.06);
     color: var(--text-secondary);
     border: 1px solid var(--border);
@@ -471,16 +515,22 @@
     border-color: rgba(0, 215, 0, 0.45);
 }
 
-.gear-hero {
-    flex: 1;
+.pit-limiter-tile.active {
+    background: rgba(0, 166, 255, 0.12);
+    color: var(--accent-blue);
+    border-color: rgba(0, 166, 255, 0.45);
+}
+
+.telemetry-cell-gear {
     display: flex;
     align-items: center;
     justify-content: center;
-    min-width: 0;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--border);
 }
 
 .gear-value {
-    font-size: 64px;
+    font-size: clamp(28px, 5.5vw, 52px);
     font-weight: 900;
     font-family: var(--font-mono);
     line-height: 1;
@@ -488,11 +538,7 @@
 }
 
 .speed-tile {
-    flex: 0 0 auto;
-    min-width: 72px;
-    min-height: 56px;
-    padding: 8px 12px;
-    border-radius: 12px;
+    padding: 6px 4px;
     background: rgba(255,255,255,0.06);
     border: 1px solid var(--border);
     display: flex;
@@ -502,8 +548,53 @@
     text-align: center;
 }
 
+/* Column 5: BB + DIFF as two equal horizontal rows inside one tile */
+.telemetry-metrics-column {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--border);
+}
+
+.telemetry-metric-row {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 6px;
+    min-height: 0;
+    padding: 4px 8px;
+}
+
+.telemetry-metric-row + .telemetry-metric-row {
+    border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.telemetry-metric-label {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+    text-transform: uppercase;
+    line-height: 1;
+}
+
+.telemetry-metric-value {
+    font-size: clamp(13px, 2.2vw, 16px);
+    font-weight: 700;
+    font-family: var(--font-mono);
+    line-height: 1;
+    color: var(--text-primary);
+    text-align: right;
+    min-width: 0;
+}
+
 .speed-tile-value {
-    font-size: 26px;
+    font-size: clamp(18px, 3.5vw, 24px);
     font-weight: 800;
     font-family: var(--font-mono);
     line-height: 1;
@@ -511,7 +602,7 @@
 }
 
 .speed-tile-unit {
-    font-size: 9px;
+    font-size: 8px;
     letter-spacing: 1.5px;
     color: var(--text-dim);
     margin-top: 4px;
@@ -612,6 +703,124 @@
     line-height: 1;
 }
 
+/* Car Telemetry: sizes follow widget cell (GridStack resize) via container queries */
+.card.telemetry-widget {
+    container-type: size;
+    container-name: telemetry;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+    padding: clamp(8px, 2.5cqi, 14px) clamp(10px, 3cqi, 18px);
+}
+
+.card.telemetry-widget .telemetry-stack {
+    flex: 1 1 0;
+    min-height: 0;
+    gap: clamp(6px, 2cqb, 14px);
+}
+
+.card.telemetry-widget .rpm-strip {
+    gap: clamp(2px, 0.6cqb, 6px);
+}
+
+.card.telemetry-widget .rpm-bar-bg {
+    height: clamp(6px, 2.2cqb, 12px);
+}
+
+.card.telemetry-widget .rpm-value {
+    font-size: clamp(8px, 2.4cqi, 11px);
+}
+
+.card.telemetry-widget .telemetry-middle {
+    gap: clamp(4px, 1.2cqi, 8px);
+    align-items: start;
+    grid-auto-rows: auto;
+    /* row height = side of square (column width); avoids stretch breaking 1:1 */
+}
+
+.card.telemetry-widget .telemetry-cell {
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    min-height: 0;
+    height: auto;
+    border-radius: clamp(8px, 2.2cqi, 14px);
+}
+
+.card.telemetry-widget .drs-tile,
+.card.telemetry-widget .pit-limiter-tile {
+    font-size: clamp(9px, 2.5cqi, 12px);
+}
+
+.card.telemetry-widget .gear-value {
+    font-size: clamp(20px, 11cqi, 54px);
+}
+
+.card.telemetry-widget .speed-tile {
+    padding: clamp(4px, 1cqi, 8px) clamp(2px, 0.8cqi, 6px);
+}
+
+.card.telemetry-widget .speed-tile-value {
+    font-size: clamp(14px, 5.5cqi, 26px);
+}
+
+.card.telemetry-widget .speed-tile-unit {
+    font-size: clamp(7px, 1.8cqi, 9px);
+    margin-top: clamp(2px, 0.6cqb, 5px);
+}
+
+.card.telemetry-widget .telemetry-metric-row {
+    gap: clamp(4px, 1cqi, 8px);
+    padding: clamp(3px, 1cqb, 6px) clamp(5px, 1.8cqi, 10px);
+}
+
+.card.telemetry-widget .telemetry-metric-label {
+    font-size: clamp(8px, 2.2cqi, 11px);
+}
+
+.card.telemetry-widget .telemetry-metric-value {
+    font-size: clamp(11px, 3.8cqi, 17px);
+}
+
+.card.telemetry-widget .pedals-panel {
+    flex: 1 1 0;
+    min-height: 0;
+    gap: clamp(6px, 2cqi, 12px);
+}
+
+.card.telemetry-widget .pedal-chart-box {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: clamp(8px, 2cqi, 12px);
+    padding: clamp(2px, 0.7cqi, 6px) clamp(4px, 1.1cqi, 8px);
+}
+
+.card.telemetry-widget .pedal-chart {
+    flex: 1 1 0;
+    width: 100%;
+    min-height: clamp(32px, 12cqb, 96px);
+    height: auto;
+}
+
+.card.telemetry-widget .pedal-vbars {
+    gap: clamp(5px, 1.5cqi, 10px);
+}
+
+.card.telemetry-widget .pedal-vbar {
+    width: clamp(18px, 5cqi, 26px);
+    gap: clamp(2px, 0.6cqb, 5px);
+}
+
+.card.telemetry-widget .pedal-vbar-track {
+    min-height: clamp(40px, 18cqb, 72px);
+}
+
+.card.telemetry-widget .pedal-vbar-label {
+    font-size: clamp(7px, 2cqi, 10px);
+}
+
 /* Tyres */
 .tyres-layout {
     display: grid;
@@ -629,25 +838,67 @@
     background: rgba(255,255,255,0.03);
     border-radius: 6px;
     border: 1px solid var(--border);
+    transition: background 0.2s ease, border-color 0.2s ease, box-shadow 0.2s ease;
+}
+
+.tyre-box.tyre-box-wear {
+    box-shadow: inset 0 0 0 1px rgba(0,0,0,0.15);
+}
+
+.tyre-box.tyre-box-temp-cold {
+    box-shadow: 0 0 8px rgba(0, 166, 255, 0.25);
+}
+
+.tyre-box.tyre-box-temp-ok {
+    box-shadow: 0 0 8px rgba(0, 215, 0, 0.22);
+}
+
+.tyre-box.tyre-box-temp-hot {
+    box-shadow: 0 0 8px rgba(225, 6, 0, 0.28);
 }
 
 .tyre-pos {
     font-size: 11px;
     font-weight: 700;
     letter-spacing: 1px;
-    color: var(--text-dim);
+    color: #fff;
+    text-shadow: 0 1px 2px rgba(0,0,0,0.65);
 }
 
-.tyre-temp {
-    font-size: 20px;
+.tyre-temp-row {
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    flex-wrap: nowrap;
+    width: 100%;
+}
+
+.tyre-temp-val {
+    font-size: 15px;
     font-weight: 700;
     font-family: var(--font-mono);
+    text-shadow: 0 1px 3px rgba(0,0,0,0.75);
+    min-width: 0;
+    flex: 1 1 0;
+    text-align: center;
+}
+
+.tyre-temp-sep {
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-dim);
+    opacity: 0.65;
+    user-select: none;
 }
 
 .tyre-wear {
     font-size: 12px;
     font-family: var(--font-mono);
-    color: var(--text-secondary);
+    color: rgba(255,255,255,0.92);
+    text-shadow: 0 1px 2px rgba(0,0,0,0.8);
 }
 
 .compound-info {
