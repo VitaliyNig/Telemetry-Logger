@@ -1,4 +1,6 @@
 using System.Diagnostics;
+using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.Json;
 using F1Telemetry.Config;
 using F1Telemetry.Debug;
@@ -233,12 +235,19 @@ app.MapPost("/api/debug/reset", (DebugPacketTracker tracker) =>
     return Results.Ok(new { reset = true });
 });
 
+var hostLifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+var configuration = app.Configuration;
+
+hostLifetime.ApplicationStarted.Register(() =>
+{
+    PrintStartupBanner(configuration, appSettings.WebPort);
+});
+
 if (appSettings.LaunchBrowserOnStart)
 {
-    var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
     var log = app.Logger;
     var port = appSettings.WebPort;
-    lifetime.ApplicationStarted.Register(() =>
+    hostLifetime.ApplicationStarted.Register(() =>
     {
         var url = $"http://localhost:{port}/";
         try
@@ -257,6 +266,81 @@ if (appSettings.LaunchBrowserOnStart)
 }
 
 app.Run();
+
+static void PrintStartupBanner(IConfiguration config, int webPort)
+{
+    var udp = config.GetSection("TelemetryUdp");
+    var listen = udp.GetValue<string>("ListenAddress") ?? "0.0.0.0";
+    var udpPort = udp.GetValue<int?>("Port") ?? 20777;
+    var httpUrl = $"http://localhost:{webPort}";
+
+    WindowsConsole.TryEnableVirtualTerminalProcessing();
+    try
+    {
+        Console.OutputEncoding = Encoding.UTF8;
+    }
+    catch
+    {
+        // ignore if console reconfig is not allowed
+    }
+
+    const string sep = "─────────────────────────────";
+    const string reset = "\u001b[0m";
+    const string title = "\u001b[97m";
+    const string dim = "\u001b[90m";
+    const string green = "\u001b[92m";
+    const string valueGray = "\u001b[37m";
+    const string keyBold = "\u001b[1;97m";
+
+    Console.WriteLine();
+    Console.WriteLine($"{title}Telemetry Logger{reset}");
+    Console.WriteLine($"{dim}{sep}{reset}");
+    Console.Write($"{green}●{reset}{dim} UDP {reset}{valueGray}{listen}:{udpPort}{reset}");
+    Console.WriteLine();
+    Console.Write($"{green}●{reset}{dim} HTTP {reset}{valueGray}");
+    WriteConsoleHyperlink(httpUrl, httpUrl);
+    Console.WriteLine(reset);
+    Console.WriteLine($"{dim}{sep}{reset}");
+    Console.Write($"{green}Ready.{reset}{dim} Press {reset}{keyBold}Ctrl+C{reset}{dim} to stop.{reset}");
+    Console.WriteLine();
+    Console.WriteLine();
+}
+
+static void WriteConsoleHyperlink(string url, string visible)
+{
+    const char esc = '\u001b';
+    Console.Write($"{esc}]8;;{url}{esc}\\{visible}{esc}]8;;{esc}\\");
+}
+
+internal static class WindowsConsole
+{
+    private const int StdOutputHandle = -11;
+    private const uint EnableVirtualTerminalProcessing = 0x0004;
+
+    [DllImport("kernel32.dll", SetLastError = true)]
+    private static extern nint GetStdHandle(int nStdHandle);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool GetConsoleMode(nint hConsoleHandle, out uint lpMode);
+
+    [DllImport("kernel32.dll")]
+    private static extern bool SetConsoleMode(nint hConsoleHandle, uint dwMode);
+
+    internal static void TryEnableVirtualTerminalProcessing()
+    {
+        if (!OperatingSystem.IsWindows())
+            return;
+
+        var handle = GetStdHandle(StdOutputHandle);
+        if (handle == 0 || handle == -1)
+            return;
+
+        if (!GetConsoleMode(handle, out var mode))
+            return;
+
+        SetConsoleMode(handle, mode | EnableVirtualTerminalProcessing);
+    }
+}
 
 record SettingsUpdateRequest(
     string UdpListenIp,

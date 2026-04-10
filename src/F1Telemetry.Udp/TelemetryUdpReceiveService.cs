@@ -34,7 +34,7 @@ public sealed class TelemetryUdpReceiveService : BackgroundService
         }
 
         using var client = new UdpClient(new IPEndPoint(address, opt.Port));
-        _logger.LogInformation("UDP telemetry listening on {Endpoint}", client.Client.LocalEndPoint);
+        _logger.LogTrace("UDP telemetry listening on {Endpoint}", client.Client.LocalEndPoint);
 
         while (!stoppingToken.IsCancellationRequested)
         {

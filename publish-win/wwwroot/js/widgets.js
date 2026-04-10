@@ -1,15 +1,15 @@
 "use strict";
 
 const WIDGET_REGISTRY = {
-    session:      { title: "Session",              tpl: "tpl-session",      w: 4, h: 2, minW: 2, minH: 2 },
-    telemetry:    { title: "Car Telemetry",        tpl: "tpl-telemetry",    w: 4, h: 3, minW: 3, minH: 2 },
-    tyres:        { title: "Tyres",                tpl: "tpl-tyres",        w: 2, h: 3, minW: 2, minH: 2 },
+    session:      { title: "Session",              tpl: "tpl-session",      w: 2, h: 5, minW: 1, minH: 2 },
+    telemetry:    { title: "Car Telemetry",        tpl: "tpl-telemetry",    w: 3, h: 5, minW: 2, minH: 4 },
+    tyres:        { title: "Tyres",                tpl: "tpl-tyres",        w: 2, h: 5, minW: 2, minH: 2 },
     tyreSets:     { title: "Available Tyre Sets",  tpl: "tpl-tyreSets",     w: 6, h: 3, minW: 3, minH: 2 },
     pitPredictor: { title: "Pit Stop Predictor",   tpl: "tpl-pitPredictor", w: 4, h: 3, minW: 2, minH: 2 },
-    carStatus:    { title: "Car Status",           tpl: "tpl-carStatus",    w: 3, h: 2, minW: 2, minH: 2 },
-    lapData:      { title: "Lap Data",             tpl: "tpl-lapData",      w: 3, h: 3, minW: 2, minH: 2 },
-    damage:       { title: "Damage",               tpl: "tpl-damage",       w: 2, h: 3, minW: 2, minH: 2 },
-    events:       { title: "Events",               tpl: "tpl-events",       w: 4, h: 3, minW: 2, minH: 2 },
+    carStatus:    { title: "Car Status",           tpl: "tpl-carStatus",    w: 3, h: 2, minW: 1, minH: 3 },
+    lapData:      { title: "Lap Data",             tpl: "tpl-lapData",      w: 3, h: 3, minW: 1, minH: 2 },
+    damage:       { title: "Damage",               tpl: "tpl-damage",       w: 2, h: 3, minW: 1, minH: 2 },
+    events:       { title: "Events",               tpl: "tpl-events",       w: 4, h: 3, minW: 3, minH: 2 },
     standings:    { title: "Standings",             tpl: "tpl-standings",    w: 6, h: 5, minW: 3, minH: 3 },
     weather:          { title: "Weather Forecast",     tpl: "tpl-weather",         w: 6, h: 3, minW: 3, minH: 2 },
     gapBoard:         { title: "Gap Board",           tpl: "tpl-gapBoard",        w: 5, h: 3, minW: 3, minH: 2 },

@@ -416,12 +416,10 @@ function setTyreWidgetTemps(car) {
     });
 }
 
-/** m_tyresWear is percentage; some builds send 0–1 float — normalize to 0–100. */
 function tyreWearToPct(wear) {
     const w = Number(wear);
     if (!Number.isFinite(w)) return null;
-    const pct = w <= 1 && w >= 0 ? w * 100 : w;
-    return Math.min(100, Math.max(0, pct));
+    return Math.min(100, Math.max(0, w));
 }
 
 function formatTyreWearPct(wear) {
@@ -430,29 +428,22 @@ function formatTyreWearPct(wear) {
     return pct.toFixed(0) + "%";
 }
 
-/** Green (#00d700) → yellow (#ffd700) → red (#e10600) by wear 0–100%. */
-function tyreWearCellColors(pct) {
-    const t = Math.min(1, Math.max(0, pct / 100));
-    let r;
-    let g;
-    let b;
-    if (t <= 0.5) {
-        const u = t * 2;
-        r = Math.round(0 + 255 * u);
-        g = 215;
-        b = 0;
-    } else {
-        const u = (t - 0.5) * 2;
-        r = Math.round(255 + (225 - 255) * u);
-        g = Math.round(215 + (6 - 215) * u);
-        b = 0;
-    }
-    return {
-        r,
-        g,
-        b,
-        background: `linear-gradient(145deg, rgba(${r},${g},${b},0.52), rgba(${r},${g},${b},0.22))`,
-    };
+const WEAR_STEP_COLORS = [
+    "rgba(16, 185, 129, 0.38)",   // 0–9%
+    "rgba(34, 197, 94, 0.38)",    // 10–19%
+    "rgba(132, 204, 22, 0.38)",   // 20–29%
+    "rgba(234, 179, 8, 0.38)",    // 30–39%
+    "rgba(245, 158, 11, 0.38)",   // 40–49%
+    "rgba(249, 115, 22, 0.40)",   // 50–59%
+    "rgba(239, 68, 68, 0.40)",    // 60–69%
+    "rgba(220, 38, 38, 0.42)",    // 70–79%
+    "rgba(185, 28, 28, 0.45)",    // 80–89%
+    "rgba(153, 27, 27, 0.50)",    // 90–100%
+];
+
+function tyreWearBackground(pct) {
+    const idx = Math.min(WEAR_STEP_COLORS.length - 1, Math.max(0, Math.floor(pct / 10)));
+    return WEAR_STEP_COLORS[idx];
 }
 
 function resetTyreBoxWearStyling(box) {
@@ -461,7 +452,7 @@ function resetTyreBoxWearStyling(box) {
 }
 
 function setTyreWidgetWear(car) {
-    const wear = car?.tyresWear;
+    const wear = car?.tyresDamage;
     const corners = ["RL", "RR", "FL", "FR"];
     forEachTyreWidget(widgetRoot => {
         for (let i = 0; i < 4; i++) {
@@ -482,9 +473,8 @@ function setTyreWidgetWear(car) {
                 resetTyreBoxWearStyling(box);
                 continue;
             }
-            const col = tyreWearCellColors(pct);
             box.classList.add("tyre-box-wear");
-            box.style.background = col.background;
+            box.style.background = tyreWearBackground(pct);
         }
     });
 }
@@ -818,13 +808,19 @@ function updateCarStatus(data) {
                 : "--";
     }
 
-    el("fuelRemaining").textContent = car.fuelInTank.toFixed(1) + " kg";
-    el("fuelLaps").textContent = car.fuelRemainingLaps.toFixed(1) + " laps";
-    el("ersMode").textContent = ERS_MODES[car.ersDeployMode] || "--";
+    const fuelRem = el("fuelRemaining");
+    if (fuelRem) fuelRem.textContent = car.fuelInTank.toFixed(1) + " kg";
+    const fuelLaps = el("fuelLaps");
+    if (fuelLaps) fuelLaps.textContent = car.fuelRemainingLaps.toFixed(1) + " laps";
+    const ersMode = el("ersMode");
+    if (ersMode) ersMode.textContent = ERS_MODES[car.ersDeployMode] || "--";
 
-    const maxErs = 4000000;
-    const ersPct = Math.min(100, (car.ersStoreEnergy / maxErs) * 100);
-    el("ersBar").style.width = ersPct + "%";
+    const ersBar = el("ersBar");
+    if (ersBar) {
+        const maxErs = 4000000;
+        const ersPct = Math.min(100, (car.ersStoreEnergy / maxErs) * 100);
+        ersBar.style.width = ersPct + "%";
+    }
 
     setTyreWidgetCompoundAge(car);
 }
