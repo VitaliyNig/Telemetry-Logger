@@ -275,6 +275,81 @@ let participantNames = [];
 let maxEvents = 50;
 let events = [];
 let pinnedPenalties = [];
+
+const EVENT_FILTER_KEY = "f1telemetry_event_filter_v1";
+const PINNABLE_PENALTY_TYPES = new Set([0, 1, 4]);
+let eventFilter = loadEventFilter();
+
+function loadEventFilter() {
+    try {
+        const raw = localStorage.getItem(EVENT_FILTER_KEY);
+        if (raw) {
+            const saved = JSON.parse(raw);
+            const filter = {};
+            for (const code of Object.keys(EVENT_NAMES)) {
+                filter[code] = saved[code] !== undefined ? saved[code] : (code !== "BUTN");
+            }
+            return filter;
+        }
+    } catch (_) { /* ignore */ }
+    const filter = {};
+    for (const code of Object.keys(EVENT_NAMES)) {
+        filter[code] = code !== "BUTN";
+    }
+    return filter;
+}
+
+function saveEventFilter() {
+    localStorage.setItem(EVENT_FILTER_KEY, JSON.stringify(eventFilter));
+}
+
+function initEventFilter() {
+    const btn = document.getElementById("btnEventFilter");
+    const panel = document.getElementById("eventFilterPanel");
+    if (!btn || !panel) return;
+
+    let html = '<div class="event-filter-actions">'
+        + '<button class="event-filter-action-btn" id="efSelectAll">All</button>'
+        + '<button class="event-filter-action-btn" id="efSelectNone">None</button></div>';
+    for (const [code, name] of Object.entries(EVENT_NAMES)) {
+        const checked = eventFilter[code] !== false ? "checked" : "";
+        html += `<label class="event-filter-item"><input type="checkbox" data-event-code="${code}" ${checked}><span class="event-filter-code">${code}</span>${name}</label>`;
+    }
+    panel.innerHTML = html;
+
+    btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        panel.classList.toggle("hidden");
+    });
+
+    document.addEventListener("click", (e) => {
+        if (!panel.contains(e.target) && !btn.contains(e.target)) {
+            panel.classList.add("hidden");
+        }
+    });
+    panel.addEventListener("click", (e) => e.stopPropagation());
+
+    panel.querySelectorAll("input[data-event-code]").forEach(cb => {
+        cb.addEventListener("change", () => {
+            eventFilter[cb.dataset.eventCode] = cb.checked;
+            saveEventFilter();
+            renderEvents();
+        });
+    });
+
+    document.getElementById("efSelectAll")?.addEventListener("click", () => {
+        for (const code of Object.keys(EVENT_NAMES)) eventFilter[code] = true;
+        panel.querySelectorAll("input[data-event-code]").forEach(cb => { cb.checked = true; });
+        saveEventFilter();
+        renderEvents();
+    });
+    document.getElementById("efSelectNone")?.addEventListener("click", () => {
+        for (const code of Object.keys(EVENT_NAMES)) eventFilter[code] = false;
+        panel.querySelectorAll("input[data-event-code]").forEach(cb => { cb.checked = false; });
+        saveEventFilter();
+        renderEvents();
+    });
+}
 /** Last packet header session UID; when it changes, a new in-game session started. */
 let lastTelemetrySessionUid = null;
 let prevTrackTemp = null;
@@ -900,7 +975,6 @@ function unpinServedPenalty(vehicleIdx, matchPenaltyType) {
 
 function updateEvent(data, header) {
     const code = data.eventCode;
-    if (code === "BUTN") return;
 
     const name = EVENT_NAMES[code] || code;
     let detail = "";
@@ -925,6 +999,10 @@ function updateEvent(data, header) {
             const driver = participantNames[d.vehicleIdx] || `Car ${d.vehicleIdx}`;
             detail = `${driver}: Stop-Go served (${d.stopTime?.toFixed(1) || 0}s)`;
             unpinServedPenalty(vehicleIdx, 1);
+        } else if (code === "BUTN") {
+            if (d.buttonStatus !== undefined) {
+                detail = `0x${d.buttonStatus.toString(16).toUpperCase().padStart(8, "0")}`;
+            }
         } else {
             if (d.vehicleIdx !== undefined) {
                 detail = participantNames[d.vehicleIdx] || `Car ${d.vehicleIdx}`;
@@ -947,7 +1025,7 @@ function updateEvent(data, header) {
     const time = header?.sessionTime?.toFixed(1) || "--";
     const entry = { code, name, detail, time, isPenalty, vehicleIdx, penaltyType };
 
-    if (code === "PENA") {
+    if (code === "PENA" && PINNABLE_PENALTY_TYPES.has(penaltyType)) {
         pinnedPenalties.unshift(entry);
     }
 
@@ -975,6 +1053,8 @@ function renderEventItem(e, pinned) {
 
 function renderEvents() {
     const list = el("eventsList");
+    if (!list) return;
+
     if (events.length === 0 && pinnedPenalties.length === 0) {
         list.innerHTML = '<div class="event-item placeholder">Waiting for events...</div>';
         return;
@@ -990,7 +1070,12 @@ function renderEvents() {
         html += '</div>';
     }
 
-    html += events.map(e => renderEventItem(e, false)).join("");
+    const filtered = events.filter(e => eventFilter[e.code] !== false);
+    html += filtered.map(e => renderEventItem(e, false)).join("");
+
+    if (!html) {
+        html = '<div class="event-item placeholder">No events matching filter</div>';
+    }
 
     list.innerHTML = html;
 }

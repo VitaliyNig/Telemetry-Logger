@@ -334,7 +334,8 @@
     </template>
 
     <template id="tpl-events">
-        <div class="card"><h2 class="widget-title">Events</h2>
+        <div class="card events-card"><div class="events-header"><h2 class="widget-title">Events</h2><button class="event-filter-toggle" id="btnEventFilter" title="Filter events"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button></div>
+        <div class="event-filter-panel hidden" id="eventFilterPanel"></div>
         <div class="events-list" id="eventsList"><div class="event-item placeholder">Waiting for events...</div></div></div>
     </template>
 

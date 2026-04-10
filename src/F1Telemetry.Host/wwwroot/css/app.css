@@ -440,6 +440,10 @@ html, body {
     white-space: nowrap;
 }
 
+.btn.hidden {
+    display: none;
+}
+
 .btn-primary {
     background: var(--accent);
     color: #fff;

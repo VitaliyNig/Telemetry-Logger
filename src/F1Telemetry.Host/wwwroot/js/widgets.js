@@ -39,10 +39,14 @@ function makeWidgetHtml(widgetId) {
     const reg = WIDGET_REGISTRY[widgetId];
     const content = getWidgetContent(widgetId);
     const bodyClass = widgetId === "events" ? "widget-body widget-body-events" : "widget-body";
+    const filterBtn = widgetId === "events"
+        ? `<button class="event-filter-toggle" id="btnEventFilter" title="Filter events"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button>`
+        : "";
     return `<div class="widget-wrapper" data-widget-id="${widgetId}">
         <div class="widget-header">
             <span class="widget-drag-handle">⠿</span>
             <span class="widget-header-title">${reg.title}</span>
+            ${filterBtn}
             <button class="widget-close-btn" onclick="removeWidget('${widgetId}')" title="Remove widget">✕</button>
         </div>
         <div class="${bodyClass}">${content}</div>
@@ -106,8 +110,13 @@ function updateSavePresetButtonState() {
     const btn = document.getElementById("btnSavePreset");
     const undo = document.getElementById("btnUndoLayout");
     const dirty = isPresetDirty();
-    if (btn) btn.classList.toggle("btn-save-preset-dirty", dirty);
-    if (undo) undo.hidden = !dirty;
+    if (btn) {
+        btn.classList.toggle("btn-save-preset-dirty", dirty);
+        if (dirty) btn.classList.remove("btn-save-preset-saved");
+        const showSavedFeedback = btn.classList.contains("btn-save-preset-saved");
+        btn.classList.toggle("hidden", !dirty && !showSavedFeedback);
+    }
+    if (undo) undo.classList.toggle("hidden", !dirty);
 }
 
 function persistCurrentPreset() {
@@ -214,6 +223,9 @@ function wireWidgetEvents(widgetId) {
         if (btn && typeof savePitTime === "function") btn.addEventListener("click", savePitTime);
         if (input && typeof updatePitPredictor === "function") input.addEventListener("change", updatePitPredictor);
     }
+    if (widgetId === "events" && typeof initEventFilter === "function") {
+        initEventFilter();
+    }
 }
 
 function updateDropdown() {
@@ -317,12 +329,18 @@ function initWidgets() {
     dropdown?.addEventListener("click", (e) => e.stopPropagation());
 
     document.getElementById("btnSavePreset")?.addEventListener("click", () => {
-        persistCurrentPreset();
         const btn = document.getElementById("btnSavePreset");
+        if (!btn) return;
         const orig = btn.textContent;
-        btn.textContent = "Saved!";
-        setTimeout(() => { btn.textContent = orig; }, 1500);
+        persistCurrentPreset();
+        btn.textContent = "Saved";
+        btn.classList.add("btn-save-preset-saved");
         updateSavePresetButtonState();
+        setTimeout(() => {
+            btn.textContent = orig;
+            btn.classList.remove("btn-save-preset-saved");
+            updateSavePresetButtonState();
+        }, 1500);
     });
 
     const lockToggle = document.getElementById("lockToggle");

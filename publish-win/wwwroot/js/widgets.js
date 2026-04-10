@@ -214,6 +214,9 @@ function wireWidgetEvents(widgetId) {
         if (btn && typeof savePitTime === "function") btn.addEventListener("click", savePitTime);
         if (input && typeof updatePitPredictor === "function") input.addEventListener("change", updatePitPredictor);
     }
+    if (widgetId === "events" && typeof initEventFilter === "function") {
+        initEventFilter();
+    }
 }
 
 function updateDropdown() {
