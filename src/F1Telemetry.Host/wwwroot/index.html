@@ -357,6 +357,34 @@
         </div></div>
     </template>
 
+    <template id="tpl-topSpeed">
+        <div class="card ts-widget-card"><h2 class="widget-title">Top Speed</h2>
+        <div class="ts-widget-layout" id="topSpeedLeaderboardLayout" data-ts-widget="leaderboard">
+            <div class="ts-lb-head"><span class="ts-lb-rank">#</span><span class="ts-lb-name">Driver</span><span class="ts-lb-speed">km/h</span></div>
+            <div class="ts-lb-rows" id="topSpeedLeaderboardBody"></div>
+        </div></div>
+    </template>
+
+    <template id="tpl-topSpeedCompare">
+        <div class="card ts-widget-card"><h2 class="widget-title">Your Top Speed</h2>
+        <div class="ts-widget-layout ts-compare-layout" id="topSpeedCompareLayout" data-ts-widget="compare">
+            <div class="ts-compare-grid">
+                <div class="ts-compare-block">
+                    <div class="ts-compare-label">Session best</div>
+                    <div class="ts-compare-value" id="topSpeedSessionBest">--</div>
+                    <div class="ts-compare-sub">Best among your team this session</div>
+                </div>
+                <div class="ts-compare-divider" aria-hidden="true"></div>
+                <div class="ts-compare-block ts-compare-block-current">
+                    <div class="ts-compare-label">This lap</div>
+                    <div class="ts-compare-value" id="topSpeedLapPeak">--</div>
+                    <div class="ts-compare-sub">Your best this lap</div>
+                </div>
+            </div>
+            <div class="ts-compare-delta" id="topSpeedCompareDelta">--</div>
+        </div></div>
+    </template>
+
     <template id="tpl-qualiStandings">
         <div class="card"><h2 class="widget-title">Quali Standings</h2>
         <div class="standings-table-wrap"><table class="standings-table quali-table">

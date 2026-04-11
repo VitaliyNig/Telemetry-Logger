@@ -125,6 +125,16 @@ const EVENT_NAMES = {
 
 const PENALTY_CODES = new Set(["PENA", "DTSV", "SGSV"]);
 
+const EVENT_CODE_COLORS = {
+    "SSTA": "#22c55e", "SEND": "#22c55e", "LGOT": "#22c55e", "CHQF": "#22c55e",
+    "FTLP": "#a855f7", "RCWN": "#c084fc",
+    "PENA": "#ef4444", "DTSV": "#ef4444", "SGSV": "#ef4444", "RDFL": "#ef4444",
+    "SCAR": "#eab308", "COLL": "#f59e0b", "FLBK": "#f59e0b",
+    "DRSE": "#38bdf8", "DRSD": "#38bdf8", "SPTP": "#38bdf8", "STLG": "#38bdf8",
+    "OVTK": "#fb923c", "RTMT": "#fb923c", "TMPT": "#fb923c",
+    "BUTN": "#6b7280",
+};
+
 // Penalty types: F1 25 v3 PDF appendix (event PENA)
 const PENALTY_TYPES = {
     0: "Drive through",
@@ -272,6 +282,8 @@ const DRSD_REASON_NAMES = {
 
 let playerCarIndex = 0;
 let participantNames = [];
+/** m_teamId per car index (Participants); -1 until loaded. */
+let participantTeamIds = [];
 let maxEvents = 50;
 let events = [];
 let pinnedPenalties = [];
@@ -303,51 +315,71 @@ function saveEventFilter() {
     localStorage.setItem(EVENT_FILTER_KEY, JSON.stringify(eventFilter));
 }
 
+let _eventFilterPanel = null;
+
+function closeEventFilterPanel() {
+    if (_eventFilterPanel) {
+        _eventFilterPanel.remove();
+        _eventFilterPanel = null;
+    }
+}
+
 function initEventFilter() {
     const btn = document.getElementById("btnEventFilter");
-    const panel = document.getElementById("eventFilterPanel");
-    if (!btn || !panel) return;
-
-    let html = '<div class="event-filter-actions">'
-        + '<button class="event-filter-action-btn" id="efSelectAll">All</button>'
-        + '<button class="event-filter-action-btn" id="efSelectNone">None</button></div>';
-    for (const [code, name] of Object.entries(EVENT_NAMES)) {
-        const checked = eventFilter[code] !== false ? "checked" : "";
-        html += `<label class="event-filter-item"><input type="checkbox" data-event-code="${code}" ${checked}><span class="event-filter-code">${code}</span>${name}</label>`;
-    }
-    panel.innerHTML = html;
+    if (!btn) return;
 
     btn.addEventListener("click", (e) => {
         e.stopPropagation();
-        panel.classList.toggle("hidden");
-    });
+        if (_eventFilterPanel) { closeEventFilterPanel(); return; }
 
-    document.addEventListener("click", (e) => {
-        if (!panel.contains(e.target) && !btn.contains(e.target)) {
-            panel.classList.add("hidden");
+        const panel = document.createElement("div");
+        panel.className = "event-filter-panel";
+        _eventFilterPanel = panel;
+
+        let html = '<div class="event-filter-actions">'
+            + '<button class="event-filter-action-btn" data-ef-action="all">All</button>'
+            + '<button class="event-filter-action-btn" data-ef-action="none">None</button></div>';
+        for (const [code, name] of Object.entries(EVENT_NAMES)) {
+            const checked = eventFilter[code] !== false ? "checked" : "";
+            const codeCol = EVENT_CODE_COLORS[code] || "var(--accent-blue)";
+            html += `<label class="event-filter-item"><input type="checkbox" data-event-code="${code}" ${checked}><span class="event-filter-code" style="color:${codeCol}">${code}</span>${name}</label>`;
         }
-    });
-    panel.addEventListener("click", (e) => e.stopPropagation());
+        panel.innerHTML = html;
 
-    panel.querySelectorAll("input[data-event-code]").forEach(cb => {
-        cb.addEventListener("change", () => {
-            eventFilter[cb.dataset.eventCode] = cb.checked;
+        const rect = btn.getBoundingClientRect();
+        panel.style.top = (rect.bottom + 4) + "px";
+        panel.style.left = Math.max(4, rect.right - 260) + "px";
+
+        document.body.appendChild(panel);
+
+        panel.addEventListener("click", (ev) => ev.stopPropagation());
+
+        panel.querySelectorAll("input[data-event-code]").forEach(cb => {
+            cb.addEventListener("change", () => {
+                eventFilter[cb.dataset.eventCode] = cb.checked;
+                saveEventFilter();
+                renderEvents();
+            });
+        });
+
+        panel.querySelector('[data-ef-action="all"]')?.addEventListener("click", () => {
+            for (const code of Object.keys(EVENT_NAMES)) eventFilter[code] = true;
+            panel.querySelectorAll("input[data-event-code]").forEach(cb => { cb.checked = true; });
+            saveEventFilter();
+            renderEvents();
+        });
+        panel.querySelector('[data-ef-action="none"]')?.addEventListener("click", () => {
+            for (const code of Object.keys(EVENT_NAMES)) eventFilter[code] = false;
+            panel.querySelectorAll("input[data-event-code]").forEach(cb => { cb.checked = false; });
             saveEventFilter();
             renderEvents();
         });
     });
 
-    document.getElementById("efSelectAll")?.addEventListener("click", () => {
-        for (const code of Object.keys(EVENT_NAMES)) eventFilter[code] = true;
-        panel.querySelectorAll("input[data-event-code]").forEach(cb => { cb.checked = true; });
-        saveEventFilter();
-        renderEvents();
-    });
-    document.getElementById("efSelectNone")?.addEventListener("click", () => {
-        for (const code of Object.keys(EVENT_NAMES)) eventFilter[code] = false;
-        panel.querySelectorAll("input[data-event-code]").forEach(cb => { cb.checked = false; });
-        saveEventFilter();
-        renderEvents();
+    document.addEventListener("click", (e) => {
+        if (_eventFilterPanel && !_eventFilterPanel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+            closeEventFilterPanel();
+        }
     });
 }
 /** Last packet header session UID; when it changes, a new in-game session started. */
@@ -363,6 +395,14 @@ let lastLapDataPacket = null;
 let lastSessionPacket = null;
 const sessionHistories = {};
 const GAP_BOARD_LAPS = 4;
+
+/** Max speed (km/h) seen this session per car index (Car Telemetry). */
+const sessionTopSpeedByCar = new Array(22).fill(0);
+/** Player peak speed on the current lap number (reset when lap advances). */
+let playerLapPeakSpeed = 0;
+let playerLapPeakForLapNum = 0;
+let _topSpeedLayoutObserver = null;
+const _topSpeedObservedRoots = new WeakSet();
 
 /** Throttle / brake traces for Car Telemetry pedal chart (0..1 samples, oldest → newest). */
 const PEDAL_HISTORY_LEN = 180;
@@ -634,6 +674,13 @@ function renderTempWithTrend(elemId, temp, trend) {
     e.innerHTML = `${temp}°C <span class="temp-trend ${trend.cls}">${trend.arrow}${deltaText}</span>`;
 }
 
+function resetTopSpeedSessionState() {
+    sessionTopSpeedByCar.fill(0);
+    playerLapPeakSpeed = 0;
+    playerLapPeakForLapNum = 0;
+    updateTopSpeedWidgets();
+}
+
 function updateSession(data) {
     lastSessionPacket = data;
 
@@ -807,6 +854,26 @@ function updatePedalChart() {
 }
 
 function updateCarTelemetry(data) {
+    const cars = data.carTelemetryData;
+    if (cars && cars.length) {
+        for (let i = 0; i < cars.length && i < sessionTopSpeedByCar.length; i++) {
+            const sp = Number(cars[i]?.speed) || 0;
+            if (sp > sessionTopSpeedByCar[i]) sessionTopSpeedByCar[i] = sp;
+        }
+        const playerCar = cars[playerCarIndex];
+        if (playerCar) {
+            const lapNum = lastLapDataPacket?.lapDataItems?.[playerCarIndex]?.currentLapNum;
+            const ln = lapNum !== undefined && lapNum !== null ? lapNum : 0;
+            if (ln !== playerLapPeakForLapNum) {
+                playerLapPeakForLapNum = ln;
+                playerLapPeakSpeed = 0;
+            }
+            const psp = Number(playerCar.speed) || 0;
+            if (psp > playerLapPeakSpeed) playerLapPeakSpeed = psp;
+        }
+        updateTopSpeedWidgets();
+    }
+
     const car = data.carTelemetryData?.[playerCarIndex];
     if (!car) return;
 
@@ -916,6 +983,13 @@ function updateLapData(data) {
     const car = data.lapDataItems?.[playerCarIndex];
     if (!car) return;
 
+    const ln = car.currentLapNum;
+    if (ln !== undefined && ln !== null && ln !== playerLapPeakForLapNum) {
+        playerLapPeakForLapNum = ln;
+        playerLapPeakSpeed = 0;
+        updateTopSpeedWidgets();
+    }
+
     el("position").textContent = car.carPosition || "--";
     el("currentLap").textContent = car.currentLapNum || "--";
     el("currentLapTime").textContent = formatTime(car.currentLapTimeInMs);
@@ -945,11 +1019,142 @@ function updateCarDamage(data) {
 
 function updateParticipants(data) {
     participantNames = [];
+    participantTeamIds = [];
     if (data.participants) {
         for (let i = 0; i < data.participants.length; i++) {
-            participantNames[i] = data.participants[i]?.name || `Car ${i}`;
+            const p = data.participants[i];
+            participantNames[i] = p?.name || `Car ${i}`;
+            const tid = p?.teamId;
+            participantTeamIds[i] = tid !== undefined && tid !== null ? tid : -1;
         }
     }
+    updateTopSpeedWidgets();
+}
+
+function formatSpeedKmh(v) {
+    if (!v || v <= 0) return "--";
+    return Math.round(v).toString();
+}
+
+function getPlayerTeamId() {
+    const t = participantTeamIds[playerCarIndex];
+    return t !== undefined && t !== null && t >= 0 ? t : -1;
+}
+
+function getSessionBestAmongTeammates() {
+    const teamId = getPlayerTeamId();
+    if (teamId < 0) return 0;
+    let best = 0;
+    for (let i = 0; i < sessionTopSpeedByCar.length; i++) {
+        if (participantTeamIds[i] !== teamId) continue;
+        const s = sessionTopSpeedByCar[i];
+        if (s > best) best = s;
+    }
+    return best;
+}
+
+function applyTopSpeedLayoutMode(root, compact) {
+    if (!root) return;
+    root.classList.toggle("ts-compact", compact);
+}
+
+function refreshTopSpeedLayoutModes() {
+    document.querySelectorAll("[data-ts-widget]").forEach(root => {
+        const w = root.clientWidth;
+        applyTopSpeedLayoutMode(root, w > 0 && w < 280);
+    });
+}
+
+function ensureTopSpeedLayoutObserver() {
+    if (typeof ResizeObserver === "undefined") return;
+    if (!_topSpeedLayoutObserver) {
+        _topSpeedLayoutObserver = new ResizeObserver(() => refreshTopSpeedLayoutModes());
+    }
+    document.querySelectorAll("[data-ts-widget]").forEach(root => {
+        if (_topSpeedObservedRoots.has(root)) return;
+        _topSpeedObservedRoots.add(root);
+        _topSpeedLayoutObserver.observe(root);
+    });
+    refreshTopSpeedLayoutModes();
+}
+
+window.ensureTopSpeedLayoutObserver = ensureTopSpeedLayoutObserver;
+
+function updateTopSpeedLeaderboard() {
+    const body = el("topSpeedLeaderboardBody");
+    if (!body) return;
+    if (!lastLapDataPacket?.lapDataItems) {
+        body.innerHTML = '<div class="ts-lb-placeholder">Waiting for lap data...</div>';
+        return;
+    }
+
+    const items = lastLapDataPacket.lapDataItems;
+    const rows = [];
+    for (let i = 0; i < items.length && i < sessionTopSpeedByCar.length; i++) {
+        const ld = items[i];
+        if (ld.resultStatus < 2) continue;
+        const spd = sessionTopSpeedByCar[i];
+        if (!spd) continue;
+        rows.push({
+            idx: i,
+            pos: ld.carPosition,
+            name: participantNames[i] || `Car ${i}`,
+            speed: spd,
+            isPlayer: i === playerCarIndex,
+        });
+    }
+
+    if (rows.length === 0) {
+        body.innerHTML = '<div class="ts-lb-placeholder">Waiting for telemetry...</div>';
+        return;
+    }
+
+    rows.sort((a, b) => b.speed - a.speed || a.pos - b.pos);
+
+    body.innerHTML = rows.map((r, i) => {
+        const rowCls = r.isPlayer ? "ts-lb-row player-row" : "ts-lb-row";
+        return `<div class="${rowCls}">
+            <span class="ts-lb-rank">${i + 1}</span>
+            <span class="ts-lb-name" title="${r.name}">${r.name}</span>
+            <span class="ts-lb-speed">${formatSpeedKmh(r.speed)}</span>
+        </div>`;
+    }).join("");
+}
+
+function updateTopSpeedCompareWidget() {
+    const sessionEl = el("topSpeedSessionBest");
+    const lapEl = el("topSpeedLapPeak");
+    const deltaEl = el("topSpeedCompareDelta");
+    if (!sessionEl || !lapEl || !deltaEl) return;
+
+    const teamBest = getSessionBestAmongTeammates();
+    sessionEl.textContent = teamBest > 0 ? formatSpeedKmh(teamBest) : "--";
+
+    const lapPeak = playerLapPeakSpeed;
+    lapEl.textContent = lapPeak > 0 ? formatSpeedKmh(lapPeak) : "--";
+
+    if (teamBest <= 0 || lapPeak <= 0) {
+        deltaEl.textContent = "--";
+        deltaEl.className = "ts-compare-delta";
+        return;
+    }
+    const d = lapPeak - teamBest;
+    const abs = Math.abs(Math.round(d));
+    if (d > 0) {
+        deltaEl.textContent = `+${abs} vs team session best`;
+        deltaEl.className = "ts-compare-delta ts-delta-up";
+    } else if (d < 0) {
+        deltaEl.textContent = `−${abs} vs team session best`;
+        deltaEl.className = "ts-compare-delta ts-delta-down";
+    } else {
+        deltaEl.textContent = "Matches team session best";
+        deltaEl.className = "ts-compare-delta ts-delta-even";
+    }
+}
+
+function updateTopSpeedWidgets() {
+    updateTopSpeedLeaderboard();
+    updateTopSpeedCompareWidget();
 }
 
 function buildPenaltyDetail(d) {
@@ -1039,13 +1244,17 @@ function updateEvent(data, header) {
 }
 
 function renderEventItem(e, pinned) {
-    const cls = pinned ? "event-item penalty pinned" :
-                e.isPenalty ? "event-item penalty" : "event-item";
-    const codeClass = e.isPenalty ? "event-code penalty-code" : "event-code";
+    const isSeriousPenalty = e.code === "PENA" && PINNABLE_PENALTY_TYPES.has(e.penaltyType);
+
+    let cls = "event-item";
+    if (pinned) cls += " penalty-serious pinned";
+    else if (isSeriousPenalty) cls += " penalty-serious";
+
+    const codeColor = EVENT_CODE_COLORS[e.code] || "var(--accent-blue)";
     const icon = pinned ? '<span class="pin-icon">&#128204;</span> ' : "";
     const servedBadge = e.served ? ' <span class="served-badge">SERVED</span>' : "";
     return `<div class="${cls}">
-        <span class="${codeClass}">${icon}${e.code}</span>
+        <span class="event-code" style="color:${codeColor}">${icon}${e.code}</span>
         <span class="event-detail">${e.name}${e.detail ? " — " + e.detail : ""}${servedBadge}</span>
         <span class="event-time">${e.time}s</span>
     </div>`;
@@ -1570,6 +1779,7 @@ function initConnection() {
             if (lastTelemetrySessionUid != null && uid !== lastTelemetrySessionUid) {
                 pinnedPenalties = [];
                 renderEvents();
+                resetTopSpeedSessionState();
             }
             lastTelemetrySessionUid = uid;
         }
@@ -1632,6 +1842,7 @@ function requestCurrentState(connection) {
 
 document.addEventListener("DOMContentLoaded", async () => {
     if (typeof initWidgets === "function") initWidgets();
+    ensureTopSpeedLayoutObserver();
     syncRpmBarSegmentWidths(RPM_SCALE_FALLBACK);
     await loadPitTimes();
     initConnection();
