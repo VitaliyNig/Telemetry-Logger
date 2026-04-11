@@ -44,8 +44,8 @@
                     <button class="btn btn-small btn-primary" id="btnAddWidget">+ Add Widget</button>
                     <div class="widget-dropdown hidden" id="widgetDropdown"></div>
                     <span class="preset-save-group">
-                        <button type="button" class="btn btn-small btn-secondary" id="btnSavePreset" title="Save current layout to this preset">Save Preset</button>
-                        <button type="button" class="btn btn-small btn-secondary" id="btnUndoLayout" hidden title="Discard unsaved changes and restore the last saved layout for this preset">Undo</button>
+                        <button type="button" class="btn btn-small btn-secondary hidden" id="btnSavePreset" title="Save current layout to this preset">Save Preset</button>
+                        <button type="button" class="btn btn-small btn-secondary hidden" id="btnUndoLayout" title="Discard unsaved changes and restore the last saved layout for this preset">Undo</button>
                     </span>
                 </div>
                 <div class="widget-toolbar-right">
@@ -334,8 +334,7 @@
     </template>
 
     <template id="tpl-events">
-        <div class="card events-card"><div class="events-header"><h2 class="widget-title">Events</h2><button class="event-filter-toggle" id="btnEventFilter" title="Filter events"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button></div>
-        <div class="event-filter-panel hidden" id="eventFilterPanel"></div>
+        <div class="card"><h2 class="widget-title">Events</h2>
         <div class="events-list" id="eventsList"><div class="event-item placeholder">Waiting for events...</div></div></div>
     </template>
 
@@ -355,6 +354,34 @@
         <div class="card"><h2 class="widget-title">Gap Board</h2>
         <div class="gap-board" id="gapBoardContent">
             <div class="gap-board-placeholder">Waiting for lap data...</div>
+        </div></div>
+    </template>
+
+    <template id="tpl-topSpeed">
+        <div class="card ts-widget-card"><h2 class="widget-title">Session Top Speeds</h2>
+        <div class="ts-widget-layout" id="topSpeedLeaderboardLayout" data-ts-widget="leaderboard">
+            <div class="ts-lb-head"><span class="ts-lb-rank">#</span><span class="ts-lb-name">Driver</span><span class="ts-lb-speed">km/h</span></div>
+            <div class="ts-lb-rows" id="topSpeedLeaderboardBody"></div>
+        </div></div>
+    </template>
+
+    <template id="tpl-topSpeedCompare">
+        <div class="card ts-widget-card"><h2 class="widget-title">Top Speed Comparison</h2>
+        <div class="ts-widget-layout ts-compare-layout" id="topSpeedCompareLayout" data-ts-widget="compare">
+            <div class="ts-compare-grid">
+                <div class="ts-compare-block">
+                    <div class="ts-compare-label">Your session best</div>
+                    <div class="ts-compare-value" id="topSpeedSessionBest">--</div>
+                    <div class="ts-compare-sub">Your peak this session</div>
+                </div>
+                <div class="ts-compare-divider" aria-hidden="true"></div>
+                <div class="ts-compare-block ts-compare-block-current">
+                    <div class="ts-compare-label">This lap</div>
+                    <div class="ts-compare-value" id="topSpeedLapPeak">--</div>
+                    <div class="ts-compare-sub">Your best this lap</div>
+                </div>
+            </div>
+            <div class="ts-compare-delta" id="topSpeedCompareDelta">--</div>
         </div></div>
     </template>
 

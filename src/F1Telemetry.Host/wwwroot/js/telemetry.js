@@ -394,6 +394,14 @@ let lastSessionPacket = null;
 const sessionHistories = {};
 const GAP_BOARD_LAPS = 4;
 
+/** Max speed (km/h) seen this session per car index (Car Telemetry). */
+const sessionTopSpeedByCar = new Array(22).fill(0);
+/** Player peak speed on the current lap number (reset when lap advances). */
+let playerLapPeakSpeed = 0;
+let playerLapPeakForLapNum = 0;
+let _topSpeedLayoutObserver = null;
+const _topSpeedObservedRoots = new WeakSet();
+
 /** Throttle / brake traces for Car Telemetry pedal chart (0..1 samples, oldest → newest). */
 const PEDAL_HISTORY_LEN = 180;
 const pedalHistoryT = [];
@@ -664,6 +672,13 @@ function renderTempWithTrend(elemId, temp, trend) {
     e.innerHTML = `${temp}°C <span class="temp-trend ${trend.cls}">${trend.arrow}${deltaText}</span>`;
 }
 
+function resetTopSpeedSessionState() {
+    sessionTopSpeedByCar.fill(0);
+    playerLapPeakSpeed = 0;
+    playerLapPeakForLapNum = 0;
+    updateTopSpeedWidgets();
+}
+
 function updateSession(data) {
     lastSessionPacket = data;
 
@@ -837,6 +852,26 @@ function updatePedalChart() {
 }
 
 function updateCarTelemetry(data) {
+    const cars = data.carTelemetryData;
+    if (cars && cars.length) {
+        for (let i = 0; i < cars.length && i < sessionTopSpeedByCar.length; i++) {
+            const sp = Number(cars[i]?.speed) || 0;
+            if (sp > sessionTopSpeedByCar[i]) sessionTopSpeedByCar[i] = sp;
+        }
+        const playerCar = cars[playerCarIndex];
+        if (playerCar) {
+            const lapNum = lastLapDataPacket?.lapDataItems?.[playerCarIndex]?.currentLapNum;
+            const ln = lapNum !== undefined && lapNum !== null ? lapNum : 0;
+            if (ln !== playerLapPeakForLapNum) {
+                playerLapPeakForLapNum = ln;
+                playerLapPeakSpeed = 0;
+            }
+            const psp = Number(playerCar.speed) || 0;
+            if (psp > playerLapPeakSpeed) playerLapPeakSpeed = psp;
+        }
+        updateTopSpeedWidgets();
+    }
+
     const car = data.carTelemetryData?.[playerCarIndex];
     if (!car) return;
 
@@ -946,6 +981,13 @@ function updateLapData(data) {
     const car = data.lapDataItems?.[playerCarIndex];
     if (!car) return;
 
+    const ln = car.currentLapNum;
+    if (ln !== undefined && ln !== null && ln !== playerLapPeakForLapNum) {
+        playerLapPeakForLapNum = ln;
+        playerLapPeakSpeed = 0;
+        updateTopSpeedWidgets();
+    }
+
     el("position").textContent = car.carPosition || "--";
     el("currentLap").textContent = car.currentLapNum || "--";
     el("currentLapTime").textContent = formatTime(car.currentLapTimeInMs);
@@ -977,9 +1019,120 @@ function updateParticipants(data) {
     participantNames = [];
     if (data.participants) {
         for (let i = 0; i < data.participants.length; i++) {
-            participantNames[i] = data.participants[i]?.name || `Car ${i}`;
+            const p = data.participants[i];
+            participantNames[i] = p?.name || `Car ${i}`;
         }
     }
+    updateTopSpeedWidgets();
+}
+
+function formatSpeedKmh(v) {
+    if (!v || v <= 0) return "--";
+    return Math.round(v).toString();
+}
+
+function applyTopSpeedLayoutMode(root, compact) {
+    if (!root) return;
+    root.classList.toggle("ts-compact", compact);
+}
+
+function refreshTopSpeedLayoutModes() {
+    document.querySelectorAll("[data-ts-widget]").forEach(root => {
+        const w = root.clientWidth;
+        applyTopSpeedLayoutMode(root, w > 0 && w < 280);
+    });
+}
+
+function ensureTopSpeedLayoutObserver() {
+    if (typeof ResizeObserver === "undefined") return;
+    if (!_topSpeedLayoutObserver) {
+        _topSpeedLayoutObserver = new ResizeObserver(() => refreshTopSpeedLayoutModes());
+    }
+    document.querySelectorAll("[data-ts-widget]").forEach(root => {
+        if (_topSpeedObservedRoots.has(root)) return;
+        _topSpeedObservedRoots.add(root);
+        _topSpeedLayoutObserver.observe(root);
+    });
+    refreshTopSpeedLayoutModes();
+}
+
+window.ensureTopSpeedLayoutObserver = ensureTopSpeedLayoutObserver;
+
+function updateTopSpeedLeaderboard() {
+    const body = el("topSpeedLeaderboardBody");
+    if (!body) return;
+    if (!lastLapDataPacket?.lapDataItems) {
+        body.innerHTML = '<div class="ts-lb-placeholder">Waiting for lap data...</div>';
+        return;
+    }
+
+    const items = lastLapDataPacket.lapDataItems;
+    const rows = [];
+    for (let i = 0; i < items.length && i < sessionTopSpeedByCar.length; i++) {
+        const ld = items[i];
+        if (ld.resultStatus < 2) continue;
+        const spd = sessionTopSpeedByCar[i];
+        if (!spd) continue;
+        rows.push({
+            idx: i,
+            pos: ld.carPosition,
+            name: participantNames[i] || `Car ${i}`,
+            speed: spd,
+            isPlayer: i === playerCarIndex,
+        });
+    }
+
+    if (rows.length === 0) {
+        body.innerHTML = '<div class="ts-lb-placeholder">Waiting for telemetry...</div>';
+        return;
+    }
+
+    rows.sort((a, b) => b.speed - a.speed || a.pos - b.pos);
+
+    body.innerHTML = rows.map((r, i) => {
+        const rowCls = r.isPlayer ? "ts-lb-row player-row" : "ts-lb-row";
+        return `<div class="${rowCls}">
+            <span class="ts-lb-rank">${i + 1}</span>
+            <span class="ts-lb-name" title="${r.name}">${r.name}</span>
+            <span class="ts-lb-speed">${formatSpeedKmh(r.speed)}</span>
+        </div>`;
+    }).join("");
+}
+
+function updateTopSpeedCompareWidget() {
+    const sessionEl = el("topSpeedSessionBest");
+    const lapEl = el("topSpeedLapPeak");
+    const deltaEl = el("topSpeedCompareDelta");
+    if (!sessionEl || !lapEl || !deltaEl) return;
+
+    const sessionBest = sessionTopSpeedByCar[playerCarIndex] || 0;
+    sessionEl.textContent = sessionBest > 0 ? formatSpeedKmh(sessionBest) : "--";
+
+    const lapPeak = playerLapPeakSpeed;
+    lapEl.textContent = lapPeak > 0 ? formatSpeedKmh(lapPeak) : "--";
+
+    if (sessionBest <= 0 || lapPeak <= 0) {
+        deltaEl.textContent = "--";
+        deltaEl.className = "ts-compare-delta";
+        return;
+    }
+    const d = lapPeak - sessionBest;
+    const abs = Math.abs(Math.round(d));
+    if (d > 0) {
+        deltaEl.textContent = `+${abs} vs your session best`;
+        deltaEl.className = "ts-compare-delta ts-delta-up";
+    } else if (d < 0) {
+        deltaEl.textContent = `−${abs} vs your session best`;
+        deltaEl.className = "ts-compare-delta ts-delta-down";
+    } else {
+        deltaEl.textContent = "Matches your session best";
+        deltaEl.className = "ts-compare-delta ts-delta-even";
+    }
+}
+
+function updateTopSpeedWidgets() {
+    updateTopSpeedLeaderboard();
+    updateTopSpeedCompareWidget();
 }
 
 function buildPenaltyDetail(d) {
@@ -1604,6 +1757,7 @@ function initConnection() {
             if (lastTelemetrySessionUid != null && uid !== lastTelemetrySessionUid) {
                 pinnedPenalties = [];
                 renderEvents();
+                resetTopSpeedSessionState();
             }
             lastTelemetrySessionUid = uid;
         }
@@ -1666,6 +1820,7 @@ function requestCurrentState(connection) {
 
 document.addEventListener("DOMContentLoaded", async () => {
     if (typeof initWidgets === "function") initWidgets();
+    ensureTopSpeedLayoutObserver();
     syncRpmBarSegmentWidths(RPM_SCALE_FALLBACK);
     await loadPitTimes();
     initConnection();
