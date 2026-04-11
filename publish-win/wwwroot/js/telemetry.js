@@ -1039,7 +1039,9 @@ function applyTopSpeedLayoutMode(root, compact) {
 function refreshTopSpeedLayoutModes() {
     document.querySelectorAll("[data-ts-widget]").forEach(root => {
         const w = root.clientWidth;
-        applyTopSpeedLayoutMode(root, w > 0 && w < 280);
+        const isCompare = root.getAttribute("data-ts-widget") === "compare";
+        const compact = !isCompare && w > 0 && w < 280;
+        applyTopSpeedLayoutMode(root, compact);
     });
 }
 
@@ -1102,32 +1104,13 @@ function updateTopSpeedLeaderboard() {
 function updateTopSpeedCompareWidget() {
     const sessionEl = el("topSpeedSessionBest");
     const lapEl = el("topSpeedLapPeak");
-    const deltaEl = el("topSpeedCompareDelta");
-    if (!sessionEl || !lapEl || !deltaEl) return;
+    if (!sessionEl || !lapEl) return;
 
     const sessionBest = sessionTopSpeedByCar[playerCarIndex] || 0;
     sessionEl.textContent = sessionBest > 0 ? formatSpeedKmh(sessionBest) : "--";
 
     const lapPeak = playerLapPeakSpeed;
     lapEl.textContent = lapPeak > 0 ? formatSpeedKmh(lapPeak) : "--";
-
-    if (sessionBest <= 0 || lapPeak <= 0) {
-        deltaEl.textContent = "--";
-        deltaEl.className = "ts-compare-delta";
-        return;
-    }
-    const d = lapPeak - sessionBest;
-    const abs = Math.abs(Math.round(d));
-    if (d > 0) {
-        deltaEl.textContent = `+${abs} vs your session best`;
-        deltaEl.className = "ts-compare-delta ts-delta-up";
-    } else if (d < 0) {
-        deltaEl.textContent = `−${abs} vs your session best`;
-        deltaEl.className = "ts-compare-delta ts-delta-down";
-    } else {
-        deltaEl.textContent = "Matches your session best";
-        deltaEl.className = "ts-compare-delta ts-delta-even";
-    }
 }
 
 function updateTopSpeedWidgets() {

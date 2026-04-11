@@ -1888,6 +1888,7 @@
 .ts-compare-block {
     display: flex;
     flex-direction: column;
+    align-items: center;
     justify-content: center;
     gap: 4px;
     min-width: 0;
@@ -1898,8 +1899,8 @@
 }
 
 .ts-compare-block-current {
-    border-color: var(--accent-brand-border);
-    background: var(--accent-brand-soft);
+    border-color: rgba(0, 166, 255, 0.35);
+    background: rgba(0, 166, 255, 0.08);
 }
 
 .ts-compare-label {
@@ -1918,13 +1919,7 @@
 }
 
 .ts-compare-block-current .ts-compare-value {
-    color: var(--accent-brand-hover);
-}
-
-.ts-compare-sub {
-    font-size: 11px;
-    color: var(--text-secondary);
-    line-height: 1.25;
+    color: var(--accent-blue);
 }
 
 .ts-compare-divider {
@@ -1932,27 +1927,6 @@
     align-self: stretch;
     margin: 4px 0;
     background: var(--border);
-}
-
-.ts-compare-delta {
-    margin-top: 10px;
-    text-align: center;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-secondary);
-    font-family: var(--font-mono);
-}
-
-.ts-compare-delta.ts-delta-up {
-    color: var(--accent-green);
-}
-
-.ts-compare-delta.ts-delta-down {
-    color: var(--semantic-red);
-}
-
-.ts-compare-delta.ts-delta-even {
-    color: var(--accent-brand);
 }
 
 .ts-compare-layout.ts-compact .ts-compare-grid {
@@ -1969,16 +1943,4 @@
 
 .ts-compare-layout.ts-compact .ts-compare-value {
     font-size: clamp(20px, 6cqw + 14px, 30px);
-}
-
-@container (max-width: 260px) {
-    .ts-widget-layout[data-ts-widget="compare"] .ts-compare-grid {
-        grid-template-columns: 1fr;
-    }
-
-    .ts-widget-layout[data-ts-widget="compare"] .ts-compare-divider {
-        width: 100%;
-        height: 1px;
-        margin: 0;
-    }
 }

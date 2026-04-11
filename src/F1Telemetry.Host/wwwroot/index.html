@@ -272,13 +272,13 @@
 
     <template id="tpl-tyres">
         <div class="card tyre-widget"><h2 class="widget-title">Tyres</h2>
-        <div class="tyres-layout">
-            <div class="tyre-box" data-tyre-corner="FL"><span class="tyre-pos">FL</span><div class="tyre-temp-row"><span class="tyre-temp-val tyre-temp-surface" data-tyre-corner="FL" title="Surface">--</span><span class="tyre-temp-sep" aria-hidden="true">|</span><span class="tyre-temp-val tyre-temp-inner" data-tyre-corner="FL" title="Inner (carcass)">--</span></div><span class="tyre-wear" data-tyre-corner="FL">--%</span></div>
-            <div class="tyre-box" data-tyre-corner="FR"><span class="tyre-pos">FR</span><div class="tyre-temp-row"><span class="tyre-temp-val tyre-temp-surface" data-tyre-corner="FR" title="Surface">--</span><span class="tyre-temp-sep" aria-hidden="true">|</span><span class="tyre-temp-val tyre-temp-inner" data-tyre-corner="FR" title="Inner (carcass)">--</span></div><span class="tyre-wear" data-tyre-corner="FR">--%</span></div>
-            <div class="tyre-box" data-tyre-corner="RL"><span class="tyre-pos">RL</span><div class="tyre-temp-row"><span class="tyre-temp-val tyre-temp-surface" data-tyre-corner="RL" title="Surface">--</span><span class="tyre-temp-sep" aria-hidden="true">|</span><span class="tyre-temp-val tyre-temp-inner" data-tyre-corner="RL" title="Inner (carcass)">--</span></div><span class="tyre-wear" data-tyre-corner="RL">--%</span></div>
-            <div class="tyre-box" data-tyre-corner="RR"><span class="tyre-pos">RR</span><div class="tyre-temp-row"><span class="tyre-temp-val tyre-temp-surface" data-tyre-corner="RR" title="Surface">--</span><span class="tyre-temp-sep" aria-hidden="true">|</span><span class="tyre-temp-val tyre-temp-inner" data-tyre-corner="RR" title="Inner (carcass)">--</span></div><span class="tyre-wear" data-tyre-corner="RR">--%</span></div>
+        <div class="tyres-grid">
+            <div class="tc" data-tyre-corner="FL"><div class="tc-fill"></div><div class="tc-body"><div class="tc-temps"><svg class="tc-ico" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.8" fill="currentColor" fill-opacity="0.25"/></svg><span class="tc-tv tc-ts">--</span><span class="tc-sep">|</span><svg class="tc-ico" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.8" fill="currentColor"/></svg><span class="tc-tv tc-ti">--</span></div><div class="tc-wear">--</div><div class="tc-info"><span class="tc-bls">Blisters --</span></div><div class="tc-psi">-- psi</div></div><span class="tc-lbl tc-lbl-FL">◤ FL</span></div>
+            <div class="tc" data-tyre-corner="FR"><div class="tc-fill"></div><div class="tc-body"><div class="tc-temps"><svg class="tc-ico" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.8" fill="currentColor" fill-opacity="0.25"/></svg><span class="tc-tv tc-ts">--</span><span class="tc-sep">|</span><svg class="tc-ico" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.8" fill="currentColor"/></svg><span class="tc-tv tc-ti">--</span></div><div class="tc-wear">--</div><div class="tc-info"><span class="tc-bls">Blisters --</span></div><div class="tc-psi">-- psi</div></div><span class="tc-lbl tc-lbl-FR">FR ◥</span></div>
+            <div class="tc" data-tyre-corner="RL"><div class="tc-fill"></div><div class="tc-body"><div class="tc-temps"><svg class="tc-ico" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.8" fill="currentColor" fill-opacity="0.25"/></svg><span class="tc-tv tc-ts">--</span><span class="tc-sep">|</span><svg class="tc-ico" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.8" fill="currentColor"/></svg><span class="tc-tv tc-ti">--</span></div><div class="tc-wear">--</div><div class="tc-info"><span class="tc-bls">Blisters --</span></div><div class="tc-psi">-- psi</div></div><span class="tc-lbl tc-lbl-RL">◣ RL</span></div>
+            <div class="tc" data-tyre-corner="RR"><div class="tc-fill"></div><div class="tc-body"><div class="tc-temps"><svg class="tc-ico" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-width="1.8" fill="currentColor" fill-opacity="0.25"/></svg><span class="tc-tv tc-ts">--</span><span class="tc-sep">|</span><svg class="tc-ico" viewBox="0 0 10 10"><circle cx="5" cy="5" r="3.5" stroke="currentColor" stroke-opacity="0.35" stroke-width="1.8" fill="currentColor"/></svg><span class="tc-tv tc-ti">--</span></div><div class="tc-wear">--</div><div class="tc-info"><span class="tc-bls">Blisters --</span></div><div class="tc-psi">-- psi</div></div><span class="tc-lbl tc-lbl-RR">RR ◢</span></div>
         </div>
-        <div class="compound-info"><span class="compound-label">Compound:</span><span class="compound-value" data-tyre-compound>--</span><span class="compound-label">Age:</span><span class="compound-value" data-tyre-age>-- laps</span></div></div>
+        <div class="tyre-info-row"><span class="ti-dot" data-ti-dot></span><span class="ti-name" data-ti-name>--</span><span class="ti-range" data-ti-range>--</span><span class="ti-age" data-ti-age>--</span></div></div>
     </template>
 
     <template id="tpl-tyreSets">
@@ -370,18 +370,15 @@
         <div class="ts-widget-layout ts-compare-layout" id="topSpeedCompareLayout" data-ts-widget="compare">
             <div class="ts-compare-grid">
                 <div class="ts-compare-block">
-                    <div class="ts-compare-label">Your session best</div>
+                    <div class="ts-compare-label">Your best</div>
                     <div class="ts-compare-value" id="topSpeedSessionBest">--</div>
-                    <div class="ts-compare-sub">Your peak this session</div>
                 </div>
                 <div class="ts-compare-divider" aria-hidden="true"></div>
                 <div class="ts-compare-block ts-compare-block-current">
                     <div class="ts-compare-label">This lap</div>
                     <div class="ts-compare-value" id="topSpeedLapPeak">--</div>
-                    <div class="ts-compare-sub">Your best this lap</div>
                 </div>
             </div>
-            <div class="ts-compare-delta" id="topSpeedCompareDelta">--</div>
         </div></div>
     </template>
 

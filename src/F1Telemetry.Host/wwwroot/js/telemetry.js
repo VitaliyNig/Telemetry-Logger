@@ -73,30 +73,58 @@ const TYRE_COMPOUNDS = {
     11: "Super Soft", 12: "Soft", 13: "Medium", 14: "Hard", 15: "Wet",
 };
 
-// m_visualTyreCompound — F1: 16–18,7,8; Classic: как F1; F2: 15 wet, 19–22 (см. спецификацию)
 const VISUAL_COMPOUNDS = {
     16: "Soft", 17: "Medium", 18: "Hard", 7: "Inter", 8: "Wet",
     9: "Dry", 10: "Wet",
     15: "Wet", 19: "Super Soft", 20: "Soft", 21: "Medium", 22: "Hard",
 };
 
-const TYRE_TEMP_BORDER_DEFAULT = { min: 85, max: 95 };
-
-/** °C по m_visualTyreCompound — ориентир для UI (F1/F2/Classic id из спецификации). */
-const TYRE_OPTIMAL_TEMP_C = {
-    16: { min: 75, max: 85 },
-    17: { min: 75, max: 95 },
-    18: { min: 85, max: 95 },
-    19: { min: 85, max: 115 },
-    20: { min: 95, max: 115 },
-    21: { min: 90, max: 115 },
-    22: { min: 65, max: 85 },
-    7: { min: 55, max: 75 },
-    8: { min: 55, max: 65 },
-    9: { min: 80, max: 110 },
-    10: { min: 55, max: 65 },
-    15: { min: 55, max: 75 },
+const ACTUAL_COMPOUNDS = {
+    16: "C5", 17: "C4", 18: "C3", 19: "C2", 20: "C1", 21: "C0", 22: "C6",
+    7: "Inter", 8: "Wet", 9: "Dry", 10: "Wet",
+    11: "SS", 12: "S", 13: "M", 14: "H", 15: "W",
 };
+
+const COMPOUND_DOT_COLORS = {
+    16: "#ff3333", 17: "#ffd700", 18: "#e0e0e0", 7: "#00cc00", 8: "#00a6ff",
+    9: "#e0e0e0", 10: "#00a6ff", 15: "#00a6ff",
+    19: "#ff3333", 20: "#ffd700", 21: "#e0e0e0", 22: "#e0e0e0",
+};
+
+const ACTUAL_COMPOUND_TEMP = {
+    20: { min: 90, opt: 100, max: 115 },
+    19: { min: 85, opt: 95, max: 115 },
+    18: { min: 80, opt: 90, max: 105 },
+    17: { min: 75, opt: 85, max: 100 },
+    16: { min: 70, opt: 80, max: 90 },
+    22: { min: 65, opt: 75, max: 85 },
+    7:  { min: 60, opt: 70, max: 80 },
+    8:  { min: 50, opt: 60, max: 70 },
+};
+const ACTUAL_COMPOUND_TEMP_DEFAULT = { min: 80, opt: 90, max: 105 };
+
+const TEMP_COLORS = { cold: "#00a6ff", normal: "#22c55e", hot: "#eab308", critical: "#ef4444" };
+
+function getCompoundTempRange(actualCompoundId) {
+    return ACTUAL_COMPOUND_TEMP[actualCompoundId] || ACTUAL_COMPOUND_TEMP_DEFAULT;
+}
+
+function tyreTempColor(temp, range) {
+    if (!range) range = ACTUAL_COMPOUND_TEMP_DEFAULT;
+    const t = Number(temp);
+    if (!Number.isFinite(t) || t <= 0) return null;
+    if (t < range.min) return TEMP_COLORS.cold;
+    if (t < range.opt) return TEMP_COLORS.normal;
+    if (t <= range.max) return TEMP_COLORS.hot;
+    return TEMP_COLORS.critical;
+}
+
+function tyreTempColorAlpha(temp, range, alpha) {
+    const hex = tyreTempColor(temp, range);
+    if (!hex) return null;
+    const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
+    return `rgba(${r},${g},${b},${alpha})`;
+}
 
 const ERS_MODES = { 0: "None", 1: "Medium", 2: "Hotlap", 3: "Overtake" };
 
@@ -282,7 +310,7 @@ const DRSD_REASON_NAMES = {
 
 let playerCarIndex = 0;
 let participantNames = [];
-let maxEvents = 50;
+let maxEvents = 500;
 let events = [];
 let pinnedPenalties = [];
 
@@ -319,6 +347,54 @@ function closeEventFilterPanel() {
     if (_eventFilterPanel) {
         _eventFilterPanel.remove();
         _eventFilterPanel = null;
+    }
+}
+
+let _tyreInfoPanel = null;
+
+function initTyreInfoTooltip() {
+    document.querySelectorAll(".tyre-info-btn").forEach(btn => {
+        btn.addEventListener("mouseenter", () => openTyreInfo(btn));
+        btn.addEventListener("mouseleave", closeTyreInfo);
+        btn.addEventListener("focus", () => openTyreInfo(btn));
+        btn.addEventListener("blur", closeTyreInfo);
+    });
+}
+
+function openTyreInfo(anchor) {
+    closeTyreInfo();
+    const panel = document.createElement("div");
+    panel.className = "tyre-info-panel";
+    panel.innerHTML =
+        `<div class="tip-section"><div class="tip-title">Legend</div>` +
+        `<div class="tip-row"><svg class="tl-ico" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11" rx="2" stroke="#ef4444" stroke-width="2" fill="none"/></svg><span>Border = Surface temp</span></div>` +
+        `<div class="tip-row"><svg class="tl-ico" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11" rx="2" stroke="#22c55e" stroke-opacity="0.35" stroke-width="1.5" fill="#22c55e"/></svg><span>Fill = Carcass temp</span></div>` +
+        `<div class="tip-row"><svg class="tl-ico" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11" rx="2" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" fill="none"/><rect x="1.5" y="8" width="11" height="5.5" rx="0 0 2 2" fill="#b45309" opacity="0.7"/></svg><span>Level = Wear</span></div></div>` +
+        `<div class="tip-section"><div class="tip-title">Temperature scale</div>` +
+        `<div class="tip-scale">` +
+        `<span class="tip-zone" style="background:#00a6ff">Cold</span>` +
+        `<span class="tip-zone" style="background:#22c55e">Normal</span>` +
+        `<span class="tip-zone" style="background:#eab308">Hot</span>` +
+        `<span class="tip-zone" style="background:#ef4444">Overheat</span>` +
+        `</div>` +
+        `<div class="tip-desc">< min&ensp;·&ensp;min – opt&ensp;·&ensp;opt – max&ensp;·&ensp;> max</div></div>`;
+
+    document.body.appendChild(panel);
+    _tyreInfoPanel = panel;
+
+    const r = anchor.getBoundingClientRect();
+    const pw = panel.offsetWidth;
+    let left = r.right - pw;
+    if (left < 4) left = 4;
+    if (left + pw > window.innerWidth - 4) left = window.innerWidth - pw - 4;
+    panel.style.left = left + "px";
+    panel.style.top = (r.bottom + 6) + "px";
+}
+
+function closeTyreInfo() {
+    if (_tyreInfoPanel) {
+        _tyreInfoPanel.remove();
+        _tyreInfoPanel = null;
     }
 }
 
@@ -414,193 +490,109 @@ const RPM_SCALE_FALLBACK = 15000;
 const RPM_BAR_GREEN_END = 11000;
 const RPM_BAR_GRADIENT_END = 12000;
 let lastSessionLinkId = null;
-/** m_visualTyreCompound from Car Status — used for Tyres widget optimal temp ranges. */
 let playerVisualTyreCompound = -1;
-/** Last player CarTelemetry row — re-apply tyre borders when compound updates. */
+let playerActualTyreCompound = -1;
 let lastPlayerCarTelemetry = null;
 
 function el(id) { return document.getElementById(id); }
 
-/** Tyres widget uses data-* (no duplicate ids when multiple Tyres widgets on grid). */
 function forEachTyreWidget(callback) {
     document.querySelectorAll(".tyre-widget").forEach(callback);
 }
 
-function getTyreOptimalRange(visualCompoundId) {
-    if (visualCompoundId === undefined || visualCompoundId === null || visualCompoundId < 0) {
-        return TYRE_TEMP_BORDER_DEFAULT;
-    }
-    return TYRE_OPTIMAL_TEMP_C[visualCompoundId] || TYRE_TEMP_BORDER_DEFAULT;
-}
+const TYRE_CORNERS = ["RL", "RR", "FL", "FR"];
 
-/** Border by temp vs compound range: blue under, green in range, red over. */
-function tyreTempBorderStyle(tempC, visualCompoundId) {
-    if (tempC === undefined || tempC === null) {
-        return { borderColor: "", borderWidth: "", boxClass: "" };
-    }
-    const { min, max } = getTyreOptimalRange(visualCompoundId);
-    const t = Number(tempC);
-    if (!Number.isFinite(t)) {
-        return { borderColor: "", borderWidth: "", boxClass: "" };
-    }
-    if (t < min) {
-        return {
-            borderColor: "rgba(0, 166, 255, 0.9)",
-            borderWidth: "2px",
-            boxClass: "tyre-box-temp tyre-box-temp-cold",
-        };
-    }
-    if (t > max) {
-        return {
-            borderColor: "rgba(225, 6, 0, 0.95)",
-            borderWidth: "2px",
-            boxClass: "tyre-box-temp tyre-box-temp-hot",
-        };
-    }
-    return {
-        borderColor: "rgba(0, 215, 0, 0.85)",
-        borderWidth: "2px",
-        boxClass: "tyre-box-temp tyre-box-temp-ok",
-    };
-}
-
-function formatTyreDegCell(v) {
+function formatDeg(v) {
     if (v === undefined || v === null || v === 0) return "--";
     return v + "°";
-}
-
-/** Border vs compound band: prefer inner (carcass) when valid, else surface. */
-function pickTyreBorderTempC(innerArr, surfaceArr, index) {
-    const ti = innerArr?.[index];
-    const ts = surfaceArr?.[index];
-    if (ti !== undefined && ti !== null && ti > 0) return ti;
-    if (ts !== undefined && ts !== null && ts > 0) return ts;
-    return null;
 }
 
 function setTyreWidgetTemps(car) {
     const inner = car.tyresInnerTemperature;
     const surf = car.tyresSurfaceTemperature;
+    const press = car.tyresPressure;
     if ((!inner || inner.length < 4) && (!surf || surf.length < 4)) return;
 
-    const corners = ["RL", "RR", "FL", "FR"];
-    const compoundId = playerVisualTyreCompound;
+    const range = getCompoundTempRange(playerActualTyreCompound);
     forEachTyreWidget(w => {
         for (let i = 0; i < 4; i++) {
-            const corner = corners[i];
-            const box = w.querySelector(`.tyre-box[data-tyre-corner="${corner}"]`);
-            const nodeS = w.querySelector(`.tyre-temp-surface[data-tyre-corner="${corner}"]`);
-            const nodeI = w.querySelector(`.tyre-temp-inner[data-tyre-corner="${corner}"]`);
-            if (!nodeS || !nodeI) continue;
+            const corner = TYRE_CORNERS[i];
+            const card = w.querySelector(`.tc[data-tyre-corner="${corner}"]`);
+            if (!card) continue;
 
             const ts = surf?.[i];
             const ti = inner?.[i];
-            nodeS.textContent = formatTyreDegCell(ts);
-            nodeS.className =
-                "tyre-temp-val tyre-temp-surface" +
-                (ts !== undefined && ts !== null && ts > 0 ? " " + getTyreTemperatureClass(ts) : "");
 
-            nodeI.textContent = formatTyreDegCell(ti);
-            nodeI.className =
-                "tyre-temp-val tyre-temp-inner" +
-                (ti !== undefined && ti !== null && ti > 0 ? " " + getTyreTemperatureClass(ti) : "");
+            const surfCol = tyreTempColor(ts, range);
+            const innerCol = tyreTempColor(ti, range);
 
-            const borderT = pickTyreBorderTempC(inner, surf, i);
-            if (box) {
-                if (borderT === null) {
-                    box.classList.remove("tyre-box-temp", "tyre-box-temp-cold", "tyre-box-temp-ok", "tyre-box-temp-hot");
-                    box.style.borderWidth = "";
-                    box.style.borderColor = "";
-                } else {
-                    const st = tyreTempBorderStyle(borderT, compoundId);
-                    box.classList.remove("tyre-box-temp", "tyre-box-temp-cold", "tyre-box-temp-ok", "tyre-box-temp-hot");
-                    if (st.boxClass) {
-                        for (const c of st.boxClass.split(" ")) if (c) box.classList.add(c);
-                        box.style.borderColor = st.borderColor;
-                        box.style.borderWidth = st.borderWidth;
-                    } else {
-                        box.classList.remove("tyre-box-temp", "tyre-box-temp-cold", "tyre-box-temp-ok", "tyre-box-temp-hot");
-                        box.style.borderWidth = "";
-                        box.style.borderColor = "";
-                    }
-                }
+            card.style.borderColor = surfCol || "var(--border)";
+            card.style.boxShadow = surfCol ? `0 0 8px ${tyreTempColorAlpha(ts, range, 0.3)}` : "";
+
+            const fill = card.querySelector(".tc-fill");
+            if (fill) {
+                fill.style.background = innerCol ? tyreTempColorAlpha(ti, range, 0.12) : "";
             }
+
+            const nodeS = card.querySelector(".tc-ts");
+            const nodeI = card.querySelector(".tc-ti");
+            if (nodeS) { nodeS.textContent = formatDeg(ts); nodeS.style.color = surfCol || ""; }
+            if (nodeI) { nodeI.textContent = formatDeg(ti); nodeI.style.color = innerCol || ""; }
+
+            const icos = card.querySelectorAll(".tc-temps .tc-ico");
+            if (icos[0]) icos[0].style.color = surfCol || "var(--text-dim)";
+            if (icos[1]) icos[1].style.color = innerCol || "var(--text-dim)";
+
+            const psiEl = card.querySelector(".tc-psi");
+            if (psiEl) psiEl.textContent = press?.[i] != null ? press[i].toFixed(1) + " psi" : "-- psi";
         }
     });
 }
 
-function tyreWearToPct(wear) {
-    const w = Number(wear);
-    if (!Number.isFinite(w)) return null;
-    return Math.min(100, Math.max(0, w));
-}
-
-function formatTyreWearPct(wear) {
-    const pct = tyreWearToPct(wear);
-    if (pct === null) return "--%";
-    return pct.toFixed(0) + "%";
-}
-
-const WEAR_STEP_COLORS = [
-    "rgba(16, 185, 129, 0.38)",   // 0–9%
-    "rgba(34, 197, 94, 0.38)",    // 10–19%
-    "rgba(132, 204, 22, 0.38)",   // 20–29%
-    "rgba(234, 179, 8, 0.38)",    // 30–39%
-    "rgba(245, 158, 11, 0.38)",   // 40–49%
-    "rgba(249, 115, 22, 0.40)",   // 50–59%
-    "rgba(239, 68, 68, 0.40)",    // 60–69%
-    "rgba(220, 38, 38, 0.42)",    // 70–79%
-    "rgba(185, 28, 28, 0.45)",    // 80–89%
-    "rgba(153, 27, 27, 0.50)",    // 90–100%
-];
-
-function tyreWearBackground(pct) {
-    const idx = Math.min(WEAR_STEP_COLORS.length - 1, Math.max(0, Math.floor(pct / 10)));
-    return WEAR_STEP_COLORS[idx];
-}
-
-function resetTyreBoxWearStyling(box) {
-    box.classList.remove("tyre-box-wear");
-    box.style.background = "";
-}
-
 function setTyreWidgetWear(car) {
-    const wear = car?.tyresDamage;
-    const corners = ["RL", "RR", "FL", "FR"];
-    forEachTyreWidget(widgetRoot => {
+    const wear = car?.tyresWear;
+    const blisters = car?.tyreBlisters;
+
+    forEachTyreWidget(w => {
         for (let i = 0; i < 4; i++) {
-            const corner = corners[i];
-            const box = widgetRoot.querySelector(`.tyre-box[data-tyre-corner="${corner}"]`);
-            const node = widgetRoot.querySelector(`.tyre-wear[data-tyre-corner="${corner}"]`);
-            if (!box || !node) continue;
+            const corner = TYRE_CORNERS[i];
+            const card = w.querySelector(`.tc[data-tyre-corner="${corner}"]`);
+            if (!card) continue;
 
-            if (!wear || wear.length <= i) {
-                node.textContent = "--%";
-                resetTyreBoxWearStyling(box);
-                continue;
-            }
+            const wearNode = card.querySelector(".tc-wear");
+            const fill = card.querySelector(".tc-fill");
+            const blsNode = card.querySelector(".tc-bls");
 
-            node.textContent = formatTyreWearPct(wear[i]);
-            const pct = tyreWearToPct(wear[i]);
-            if (pct === null) {
-                resetTyreBoxWearStyling(box);
-                continue;
-            }
-            box.classList.add("tyre-box-wear");
-            box.style.background = tyreWearBackground(pct);
+            const w_ = wear?.[i];
+            const pct = (w_ != null && Number.isFinite(Number(w_))) ? Math.min(100, Math.max(0, Number(w_))) : null;
+
+            if (wearNode) wearNode.textContent = pct !== null ? Math.round(pct) + "%" : "--";
+            if (fill) fill.style.height = pct !== null ? (100 - pct) + "%" : "100%";
+            if (blsNode) blsNode.textContent = blisters?.[i] != null ? `Blisters ${blisters[i]}%` : "Blisters --";
         }
     });
 }
 
 function setTyreWidgetCompoundAge(car) {
     if (!car) return;
-    const compound = VISUAL_COMPOUNDS[car.visualTyreCompound] || `ID:${car.visualTyreCompound}`;
-    const age = car.tyresAgeLaps + " laps";
+    const visual = VISUAL_COMPOUNDS[car.visualTyreCompound] || "--";
+    const actual = ACTUAL_COMPOUNDS[car.actualTyreCompound] || "";
+    const dotCol = COMPOUND_DOT_COLORS[car.visualTyreCompound] || "var(--text-dim)";
+    const range = getCompoundTempRange(car.actualTyreCompound);
+
+    const nameText = actual ? `${actual}` : visual;
+    const rangeText = `${range.min}–${range.max}°C`;
+    const ageText = `${car.tyresAgeLaps} laps`;
+
     forEachTyreWidget(w => {
-        const c = w.querySelector("[data-tyre-compound]");
-        const a = w.querySelector("[data-tyre-age]");
-        if (c) c.textContent = compound;
-        if (a) a.textContent = age;
+        const dot = w.querySelector("[data-ti-dot]");
+        const name = w.querySelector("[data-ti-name]");
+        const rng = w.querySelector("[data-ti-range]");
+        const age = w.querySelector("[data-ti-age]");
+        if (dot) dot.style.background = dotCol;
+        if (name) name.textContent = nameText;
+        if (rng) rng.textContent = rangeText;
+        if (age) age.textContent = ageText;
     });
 }
 
@@ -633,13 +625,6 @@ function formatSectorTime(msPart, minutesPart) {
     if (msPart === 0 && minutesPart === 0) return "--";
     const totalMs = minutesPart * 60000 + msPart;
     return formatTime(totalMs);
-}
-
-function getTyreTemperatureClass(temp) {
-    if (temp < 60) return "temp-cold";
-    if (temp <= 100) return "temp-optimal";
-    if (temp <= 120) return "temp-hot";
-    return "temp-critical";
 }
 
 function setDamageBar(elId, pct) {
@@ -687,6 +672,7 @@ function updateSession(data) {
         if (lastSessionLinkId !== null && linkId !== lastSessionLinkId) {
             playerMaxRpm = 0;
             playerVisualTyreCompound = -1;
+            playerActualTyreCompound = -1;
             lastPlayerCarTelemetry = null;
             pedalHistoryT.length = 0;
             pedalHistoryB.length = 0;
@@ -926,11 +912,11 @@ function updateCarStatus(data) {
 
     syncRpmBarSegmentWidths(playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK);
 
-    const prevCompound = playerVisualTyreCompound;
-    if (car.visualTyreCompound !== undefined && car.visualTyreCompound !== null) {
-        playerVisualTyreCompound = car.visualTyreCompound;
-    }
-    if (prevCompound !== playerVisualTyreCompound && lastPlayerCarTelemetry) {
+    const prevVisual = playerVisualTyreCompound;
+    const prevActual = playerActualTyreCompound;
+    if (car.visualTyreCompound != null) playerVisualTyreCompound = car.visualTyreCompound;
+    if (car.actualTyreCompound != null) playerActualTyreCompound = car.actualTyreCompound;
+    if ((prevVisual !== playerVisualTyreCompound || prevActual !== playerActualTyreCompound) && lastPlayerCarTelemetry) {
         setTyreWidgetTemps(lastPlayerCarTelemetry);
     }
 
@@ -1039,7 +1025,10 @@ function applyTopSpeedLayoutMode(root, compact) {
 function refreshTopSpeedLayoutModes() {
     document.querySelectorAll("[data-ts-widget]").forEach(root => {
         const w = root.clientWidth;
-        applyTopSpeedLayoutMode(root, w > 0 && w < 280);
+        const isCompare = root.getAttribute("data-ts-widget") === "compare";
+        // Compare stays horizontal at narrow widths; leaderboard still stacks below 280px.
+        const compact = !isCompare && w > 0 && w < 280;
+        applyTopSpeedLayoutMode(root, compact);
     });
 }
 
@@ -1102,32 +1091,13 @@ function updateTopSpeedLeaderboard() {
 function updateTopSpeedCompareWidget() {
     const sessionEl = el("topSpeedSessionBest");
     const lapEl = el("topSpeedLapPeak");
-    const deltaEl = el("topSpeedCompareDelta");
-    if (!sessionEl || !lapEl || !deltaEl) return;
+    if (!sessionEl || !lapEl) return;
 
     const sessionBest = sessionTopSpeedByCar[playerCarIndex] || 0;
     sessionEl.textContent = sessionBest > 0 ? formatSpeedKmh(sessionBest) : "--";
 
     const lapPeak = playerLapPeakSpeed;
     lapEl.textContent = lapPeak > 0 ? formatSpeedKmh(lapPeak) : "--";
-
-    if (sessionBest <= 0 || lapPeak <= 0) {
-        deltaEl.textContent = "--";
-        deltaEl.className = "ts-compare-delta";
-        return;
-    }
-    const d = lapPeak - sessionBest;
-    const abs = Math.abs(Math.round(d));
-    if (d > 0) {
-        deltaEl.textContent = `+${abs} vs your session best`;
-        deltaEl.className = "ts-compare-delta ts-delta-up";
-    } else if (d < 0) {
-        deltaEl.textContent = `−${abs} vs your session best`;
-        deltaEl.className = "ts-compare-delta ts-delta-down";
-    } else {
-        deltaEl.textContent = "Matches your session best";
-        deltaEl.className = "ts-compare-delta ts-delta-even";
-    }
 }
 
 function updateTopSpeedWidgets() {

@@ -15,7 +15,7 @@ const WIDGET_REGISTRY = {
     gapBoard:         { title: "Gap Board",           tpl: "tpl-gapBoard",        w: 5, h: 3, minW: 3, minH: 2 },
     qualiStandings:   { title: "Quali Standings",    tpl: "tpl-qualiStandings",  w: 7, h: 6, minW: 4, minH: 3 },
     topSpeed:         { title: "Session Top Speeds",   tpl: "tpl-topSpeed",         w: 4, h: 5, minW: 2, minH: 3 },
-    topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare", w: 3, h: 3, minW: 2, minH: 2 },
+    topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare", w: 3, h: 3, minW: 1, minH: 2 },
 };
 
 const PRESETS_STORAGE_KEY = "f1telemetry_presets_v1";

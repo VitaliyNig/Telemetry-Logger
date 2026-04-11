@@ -15,7 +15,7 @@ const WIDGET_REGISTRY = {
     gapBoard:         { title: "Gap Board",           tpl: "tpl-gapBoard",        w: 5, h: 3, minW: 3, minH: 2 },
     qualiStandings:   { title: "Quali Standings",    tpl: "tpl-qualiStandings",  w: 7, h: 6, minW: 4, minH: 3 },
     topSpeed:         { title: "Session Top Speeds",   tpl: "tpl-topSpeed",         w: 4, h: 5, minW: 2, minH: 3 },
-    topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare", w: 3, h: 3, minW: 2, minH: 2 },
+    topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare", w: 3, h: 3, minW: 1, minH: 2 },
 };
 
 const PRESETS_STORAGE_KEY = "f1telemetry_presets_v1";
@@ -41,14 +41,17 @@ function makeWidgetHtml(widgetId) {
     const reg = WIDGET_REGISTRY[widgetId];
     const content = getWidgetContent(widgetId);
     const bodyClass = widgetId === "events" ? "widget-body widget-body-events" : "widget-body";
-    const filterBtn = widgetId === "events"
-        ? `<button class="event-filter-toggle" id="btnEventFilter" title="Filter events"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button>`
-        : "";
+    let headerExtra = "";
+    if (widgetId === "events") {
+        headerExtra = `<button class="event-filter-toggle" id="btnEventFilter" title="Filter events"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button>`;
+    } else if (widgetId === "tyres") {
+        headerExtra = `<button class="tyre-info-btn" title="Legend &amp; temperature scale">?</button>`;
+    }
     return `<div class="widget-wrapper" data-widget-id="${widgetId}">
         <div class="widget-header">
             <span class="widget-drag-handle">⠿</span>
             <span class="widget-header-title">${reg.title}</span>
-            ${filterBtn}
+            ${headerExtra}
             <button class="widget-close-btn" onclick="removeWidget('${widgetId}')" title="Remove widget">✕</button>
         </div>
         <div class="${bodyClass}">${content}</div>
@@ -230,6 +233,9 @@ function wireWidgetEvents(widgetId) {
     }
     if (widgetId === "events" && typeof initEventFilter === "function") {
         initEventFilter();
+    }
+    if (widgetId === "tyres" && typeof initTyreInfoTooltip === "function") {
+        initTyreInfoTooltip();
     }
 }
 
