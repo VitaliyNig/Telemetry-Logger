@@ -282,8 +282,6 @@ const DRSD_REASON_NAMES = {
 
 let playerCarIndex = 0;
 let participantNames = [];
-/** m_teamId per car index (Participants); -1 until loaded. */
-let participantTeamIds = [];
 let maxEvents = 50;
 let events = [];
 let pinnedPenalties = [];
@@ -1019,13 +1017,10 @@ function updateCarDamage(data) {
 
 function updateParticipants(data) {
     participantNames = [];
-    participantTeamIds = [];
     if (data.participants) {
         for (let i = 0; i < data.participants.length; i++) {
             const p = data.participants[i];
             participantNames[i] = p?.name || `Car ${i}`;
-            const tid = p?.teamId;
-            participantTeamIds[i] = tid !== undefined && tid !== null ? tid : -1;
         }
     }
     updateTopSpeedWidgets();
@@ -1034,23 +1029,6 @@ function updateParticipants(data) {
 function formatSpeedKmh(v) {
     if (!v || v <= 0) return "--";
     return Math.round(v).toString();
-}
-
-function getPlayerTeamId() {
-    const t = participantTeamIds[playerCarIndex];
-    return t !== undefined && t !== null && t >= 0 ? t : -1;
-}
-
-function getSessionBestAmongTeammates() {
-    const teamId = getPlayerTeamId();
-    if (teamId < 0) return 0;
-    let best = 0;
-    for (let i = 0; i < sessionTopSpeedByCar.length; i++) {
-        if (participantTeamIds[i] !== teamId) continue;
-        const s = sessionTopSpeedByCar[i];
-        if (s > best) best = s;
-    }
-    return best;
 }
 
 function applyTopSpeedLayoutMode(root, compact) {
@@ -1127,27 +1105,27 @@ function updateTopSpeedCompareWidget() {
     const deltaEl = el("topSpeedCompareDelta");
     if (!sessionEl || !lapEl || !deltaEl) return;
 
-    const teamBest = getSessionBestAmongTeammates();
-    sessionEl.textContent = teamBest > 0 ? formatSpeedKmh(teamBest) : "--";
+    const sessionBest = sessionTopSpeedByCar[playerCarIndex] || 0;
+    sessionEl.textContent = sessionBest > 0 ? formatSpeedKmh(sessionBest) : "--";
 
     const lapPeak = playerLapPeakSpeed;
     lapEl.textContent = lapPeak > 0 ? formatSpeedKmh(lapPeak) : "--";
 
-    if (teamBest <= 0 || lapPeak <= 0) {
+    if (sessionBest <= 0 || lapPeak <= 0) {
         deltaEl.textContent = "--";
         deltaEl.className = "ts-compare-delta";
         return;
     }
-    const d = lapPeak - teamBest;
+    const d = lapPeak - sessionBest;
     const abs = Math.abs(Math.round(d));
     if (d > 0) {
-        deltaEl.textContent = `+${abs} vs team session best`;
+        deltaEl.textContent = `+${abs} vs your session best`;
         deltaEl.className = "ts-compare-delta ts-delta-up";
     } else if (d < 0) {
-        deltaEl.textContent = `−${abs} vs team session best`;
+        deltaEl.textContent = `−${abs} vs your session best`;
         deltaEl.className = "ts-compare-delta ts-delta-down";
     } else {
-        deltaEl.textContent = "Matches team session best";
+        deltaEl.textContent = "Matches your session best";
         deltaEl.className = "ts-compare-delta ts-delta-even";
     }
 }
