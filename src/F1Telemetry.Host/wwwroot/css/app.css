@@ -135,6 +135,11 @@ html, body {
     display: block;
 }
 
+/* Live dashboard: tighter gap below the app header */
+#panel-live {
+    padding-top: 12px;
+}
+
 .settings-tab-panel {
     display: none;
     flex-direction: column;
@@ -672,6 +677,10 @@ html, body {
 
     .tab-panel {
         padding: 16px;
+    }
+
+    #panel-live {
+        padding-top: 8px;
     }
 
     .settings-tab-panel {
