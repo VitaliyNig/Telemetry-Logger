@@ -52,12 +52,35 @@ function makeWidgetHtml(widgetId) {
         <div class="widget-header">
             <span class="widget-drag-handle">⠿</span>
             <span class="widget-header-title">${reg.title}</span>
+            <span class="widget-grid-size" title="Grid size (columns × rows)"></span>
             ${filterBtn}
             <button class="widget-close-btn" onclick="removeWidget('${widgetId}')" title="Remove widget">✕</button>
         </div>
         <div class="${bodyClass}">${content}</div>
     </div>`;
 }
+
+function updateWidgetGridSizeBadges() {
+    if (!grid) return;
+    const show = document.documentElement.classList.contains("dashboard-debug-layout");
+    if (!show) return;
+    for (const el of grid.getGridItems()) {
+        const node = el.gridstackNode;
+        const badge = el.querySelector(".widget-grid-size");
+        if (badge && node) badge.textContent = `w${node.w} h${node.h}`;
+    }
+}
+
+function clearWidgetGridSizeBadges() {
+    document.querySelectorAll(".widget-grid-size").forEach(b => { b.textContent = ""; });
+}
+
+/** Called from app.js when Debug Mode is toggled in settings. */
+window.__f1TelemetrySetDashboardDebugMode = function (enabled) {
+    document.documentElement.classList.toggle("dashboard-debug-layout", !!enabled);
+    if (enabled) updateWidgetGridSizeBadges();
+    else clearWidgetGridSizeBadges();
+};
 
 function getCurrentLayout() {
     if (!grid) return [];
@@ -201,6 +224,7 @@ function applyLayout(layout) {
     grid.commit();
     updateDropdown();
     updateSavePresetButtonState();
+    updateWidgetGridSizeBadges();
 }
 
 function switchPreset(presetName) {
@@ -238,6 +262,7 @@ function addWidget(widgetId, opts) {
     wireWidgetEvents(widgetId);
     updateSavePresetButtonState();
     updateDropdown();
+    updateWidgetGridSizeBadges();
 }
 
 function removeWidget(widgetId) {
@@ -348,7 +373,10 @@ function initWidgets() {
     applyLayout(layout);
     updatePresetButtons();
 
-    grid.on("change", updateSavePresetButtonState);
+    grid.on("change", () => {
+        updateSavePresetButtonState();
+        updateWidgetGridSizeBadges();
+    });
 
     document.querySelectorAll(".preset-btn").forEach(btn => {
         btn.addEventListener("click", () => {
@@ -399,4 +427,5 @@ function initWidgets() {
     });
 
     updateDropdown();
+    updateWidgetGridSizeBadges();
 }

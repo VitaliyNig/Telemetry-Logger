@@ -104,6 +104,9 @@
 
     function setDebugMode(enabled) {
         debugMode = enabled;
+        if (typeof window.__f1TelemetrySetDashboardDebugMode === 'function') {
+            window.__f1TelemetrySetDashboardDebugMode(enabled);
+        }
         if (enabled) {
             debugTabBtn.classList.remove('hidden');
             initSignalR();
