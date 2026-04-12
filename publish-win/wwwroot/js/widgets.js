@@ -1,24 +1,28 @@
 "use strict";
 
 const WIDGET_REGISTRY = {
-    session:      { title: "Session",              tpl: "tpl-session",      w: 2, h: 5, minW: 1, minH: 2 },
-    telemetry:    { title: "Car Telemetry",        tpl: "tpl-telemetry",    w: 3, h: 5, minW: 2, minH: 4 },
-    tyres:        { title: "Tyres",                tpl: "tpl-tyres",        w: 2, h: 5, minW: 2, minH: 2 },
-    tyreSets:     { title: "Available Tyre Sets",  tpl: "tpl-tyreSets",     w: 6, h: 3, minW: 3, minH: 2 },
-    pitPredictor: { title: "Pit Stop Predictor",   tpl: "tpl-pitPredictor", w: 4, h: 3, minW: 2, minH: 2 },
-    carStatus:    { title: "Car Status",           tpl: "tpl-carStatus",    w: 3, h: 2, minW: 1, minH: 3 },
-    lapData:      { title: "Lap Data",             tpl: "tpl-lapData",      w: 3, h: 3, minW: 1, minH: 2 },
-    damage:       { title: "Damage",               tpl: "tpl-damage",       w: 2, h: 3, minW: 1, minH: 2 },
-    events:       { title: "Events",               tpl: "tpl-events",       w: 4, h: 3, minW: 3, minH: 2 },
-    standings:    { title: "Standings",             tpl: "tpl-standings",    w: 6, h: 5, minW: 3, minH: 3 },
-    weather:          { title: "Weather Forecast",     tpl: "tpl-weather",         w: 6, h: 3, minW: 3, minH: 2 },
-    gapBoard:         { title: "Gap Board",           tpl: "tpl-gapBoard",        w: 5, h: 3, minW: 3, minH: 2 },
-    qualiStandings:   { title: "Quali Standings",    tpl: "tpl-qualiStandings",  w: 7, h: 6, minW: 4, minH: 3 },
-    topSpeed:         { title: "Session Top Speeds",   tpl: "tpl-topSpeed",         w: 4, h: 5, minW: 2, minH: 3 },
-    topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare", w: 3, h: 3, minW: 1, minH: 2 },
+    session:      { title: "Session",              tpl: "tpl-session",      w: 4, h: 10, minW: 2, minH: 4 },
+    telemetry:    { title: "Car Telemetry",        tpl: "tpl-telemetry",    w: 6, h: 10, minW: 4, minH: 8 },
+    tyres:        { title: "Tyres",                tpl: "tpl-tyres",        w: 4, h: 10, minW: 4, minH: 4 },
+    tyreSets:     { title: "Available Tyre Sets",  tpl: "tpl-tyreSets",     w: 12, h: 6, minW: 6, minH: 4 },
+    pitPredictor: { title: "Pit Stop Predictor",   tpl: "tpl-pitPredictor", w: 8, h: 6, minW: 4, minH: 4 },
+    carStatus:    { title: "Car Status",           tpl: "tpl-carStatus",    w: 6, h: 4, minW: 2, minH: 6 },
+    lapData:      { title: "Lap Data",             tpl: "tpl-lapData",      w: 6, h: 6, minW: 2, minH: 4 },
+    damage:       { title: "Damage",               tpl: "tpl-damage",       w: 4, h: 6, minW: 2, minH: 4 },
+    events:       { title: "Events",               tpl: "tpl-events",       w: 8, h: 6, minW: 6, minH: 4 },
+    standings:    { title: "Standings",             tpl: "tpl-standings",    w: 12, h: 10, minW: 6, minH: 6 },
+    weather:          { title: "Weather Forecast",     tpl: "tpl-weather",         w: 12, h: 6, minW: 6, minH: 4 },
+    gapBoard:         { title: "Gap Board",           tpl: "tpl-gapBoard",        w: 10, h: 6, minW: 6, minH: 4 },
+    qualiStandings:   { title: "Quali Standings",    tpl: "tpl-qualiStandings",  w: 14, h: 12, minW: 8, minH: 6 },
+    topSpeed:         { title: "Session Top Speeds",   tpl: "tpl-topSpeed",         w: 8, h: 10, minW: 4, minH: 6 },
+    topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare", w: 6, h: 6, minW: 2, minH: 4 },
 };
 
-const PRESETS_STORAGE_KEY = "f1telemetry_presets_v1";
+/** Finer grid (2× columns, 2× rows vs v1); physical size unchanged → scale saved layouts ×2. */
+const PRESETS_STORAGE_KEY = "f1telemetry_presets_v2";
+const PRESETS_STORAGE_KEY_V1 = "f1telemetry_presets_v1";
+const GRID_COLUMNS = 24;
+const GRID_CELL_HEIGHT_PX = 30;
 const ACTIVE_PRESET_KEY = "f1telemetry_active_preset_v1";
 const AUTO_SWITCH_KEY = "f1telemetry_autoswitch_v1";
 const LOCK_LAYOUT_KEY = "f1telemetry_lock_layout_v1";
@@ -84,10 +88,41 @@ function layoutsEqual(a, b) {
     return true;
 }
 
+function scaleLayoutToFinerGrid(layout, factor) {
+    if (!Array.isArray(layout)) return [];
+    return layout.map(item => ({
+        ...item,
+        x: Math.round(item.x * factor),
+        y: Math.round(item.y * factor),
+        w: Math.round(item.w * factor),
+        h: Math.round(item.h * factor),
+    }));
+}
+
+function migratePresetsV1ToV2(presetsV1) {
+    const out = {};
+    for (const [name, layout] of Object.entries(presetsV1)) {
+        out[name] = scaleLayoutToFinerGrid(layout, 2);
+    }
+    return out;
+}
+
 function loadAllPresets() {
     try {
-        const raw = localStorage.getItem(PRESETS_STORAGE_KEY);
-        if (raw) return JSON.parse(raw);
+        const rawV2 = localStorage.getItem(PRESETS_STORAGE_KEY);
+        if (rawV2) {
+            const parsed = JSON.parse(rawV2);
+            if (parsed && typeof parsed === "object") return parsed;
+        }
+        const rawV1 = localStorage.getItem(PRESETS_STORAGE_KEY_V1);
+        if (rawV1) {
+            const v1 = JSON.parse(rawV1);
+            if (v1 && typeof v1 === "object") {
+                const migrated = migratePresetsV1ToV2(v1);
+                localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(migrated));
+                return migrated;
+            }
+        }
     } catch (_) { /* ignore */ }
     return {};
 }
@@ -288,8 +323,8 @@ window.applyDashboardLayoutLock = applyDashboardLayoutLock;
 
 function initWidgets() {
     grid = GridStack.init({
-        column: 12,
-        cellHeight: 60,
+        column: GRID_COLUMNS,
+        cellHeight: GRID_CELL_HEIGHT_PX,
         margin: 8,
         handle: ".widget-drag-handle",
         animate: true,
