@@ -1,6 +1,4 @@
-using System.Diagnostics;
-using System.Runtime.InteropServices;
-using System.Text;
+using System.IO;
 using System.Text.Json;
 using F1Telemetry.Config;
 using F1Telemetry.Debug;
@@ -11,334 +9,246 @@ using F1Telemetry.Host.Ingress;
 using F1Telemetry.Host.Serialization;
 using F1Telemetry.Ingress;
 using F1Telemetry.State;
+using F1Telemetry.Tray;
 using F1Telemetry.Udp;
 using Microsoft.AspNetCore.StaticFiles;
-using Microsoft.Extensions.Hosting;
 
-var builder = WebApplication.CreateBuilder(args);
+namespace F1Telemetry;
 
-var appSettings = builder.Configuration.GetSection(AppSettings.SectionName).Get<AppSettings>() ?? new AppSettings();
-builder.WebHost.UseUrls($"http://0.0.0.0:{appSettings.WebPort}");
-
-builder.Services.Configure<TelemetryUdpOptions>(
-    builder.Configuration.GetSection(TelemetryUdpOptions.SectionName));
-builder.Services.Configure<AppSettings>(
-    builder.Configuration.GetSection(AppSettings.SectionName));
-
-builder.Services.AddF125Protocol();
-builder.Services.AddSingleton<TelemetryState>();
-builder.Services.AddSingleton<DebugPacketTracker>();
-builder.Services.AddSingleton<ITelemetryIngress, TelemetryPipelineIngress>();
-builder.Services.AddTelemetryUdpListener();
-builder.Services.AddSignalR()
-    .AddJsonProtocol(options =>
+static class Program
+{
+    [STAThread]
+    static void Main(string[] args)
     {
-        var json = options.PayloadSerializerOptions;
-        json.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-        json.Converters.Add(new FiniteSingleJsonConverter());
-        json.Converters.Add(new FiniteDoubleJsonConverter());
-    });
-
-builder.Services.ConfigureHttpJsonOptions(o =>
-{
-    var json = o.SerializerOptions;
-    json.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
-    json.Converters.Add(new FiniteSingleJsonConverter());
-    json.Converters.Add(new FiniteDoubleJsonConverter());
-});
-
-var app = builder.Build();
-
-app.UseDefaultFiles();
-app.UseStaticFiles(new StaticFileOptions
-{
-    // Browsers aggressively cache /js/*.js and /css/*.css; without this, UI updates look "stuck"
-    // after rebuild until a hard refresh. Local telemetry app does not benefit from long-lived cache.
-    OnPrepareResponse = ctx =>
-    {
-        var ext = Path.GetExtension(ctx.File.Name);
-        if (ext.Equals(".js", StringComparison.OrdinalIgnoreCase) ||
-            ext.Equals(".css", StringComparison.OrdinalIgnoreCase) ||
-            ext.Equals(".html", StringComparison.OrdinalIgnoreCase))
-        {
-            ctx.Context.Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
-            ctx.Context.Response.Headers.Append("Pragma", "no-cache");
-        }
-    }
-});
-
-app.MapHub<TelemetryHub>("/hub/telemetry");
-
-app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "f1-telemetry" }));
-
-app.MapGet("/api/info", (IConfiguration config) => Results.Ok(new
-{
-    game = "F1 25",
-    udpAddress = config.GetValue<string>("TelemetryUdp:ListenAddress") ?? "0.0.0.0",
-    udpPort = config.GetValue<int?>("TelemetryUdp:Port") ?? 20777,
-    webPort = appSettings.WebPort,
-    debugMode = appSettings.DebugMode,
-    packetTypes = Enum.GetNames<F125PacketId>()
-}));
-
-app.MapGet("/api/state", (TelemetryState state) =>
-{
-    var all = state.GetAll();
-    var result = new Dictionary<string, object>();
-    foreach (var (key, value) in all)
-    {
-        var name = ((F125PacketId)key).ToString();
-        result[name] = value;
-    }
-    return Results.Ok(result);
-});
-
-app.MapGet("/api/state/{packetType}", (string packetType, TelemetryState state) =>
-{
-    if (!Enum.TryParse<F125PacketId>(packetType, true, out var packetId))
-        return Results.NotFound(new { error = $"Unknown packet type: {packetType}" });
-
-    var data = state.Get((byte)packetId);
-    return data != null ? Results.Ok(data) : Results.NotFound(new { error = $"No data for {packetType}" });
-});
-
-app.MapGet("/api/settings", (IConfiguration config) =>
-{
-    var udpSection = config.GetSection("TelemetryUdp");
-    var appSection = config.GetSection("App");
-    return Results.Ok(new
-    {
-        udpListenIp = udpSection.GetValue<string>("ListenAddress") ?? "0.0.0.0",
-        udpListenPort = udpSection.GetValue<int?>("Port") ?? 20777,
-        webPort = appSection.GetValue<int?>("WebPort") ?? 5000,
-        debugMode = appSection.GetValue<bool?>("DebugMode") ?? false
-    });
-});
-
-app.MapPost("/api/settings", async (HttpContext ctx, IConfiguration config) =>
-{
-    var body = await ctx.Request.ReadFromJsonAsync<SettingsUpdateRequest>();
-    if (body is null)
-        return Results.BadRequest("Invalid request body");
-
-    var configPath = Path.Combine(AppContext.BaseDirectory, "appsettings.user.json");
-    var existing = new Dictionary<string, object>();
-    if (File.Exists(configPath))
-    {
-        var json = await File.ReadAllTextAsync(configPath);
-        existing = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(json)
-                   ?? new Dictionary<string, object>();
+        var app = new TelemetryTrayApp(args);
+        app.Run();
     }
 
-    existing["TelemetryUdp"] = new { ListenAddress = body.UdpListenIp, Port = body.UdpListenPort };
-    var currentApp = config.GetSection(AppSettings.SectionName).Get<AppSettings>() ?? new AppSettings();
-    existing["App"] = new
+    internal static WebApplication BuildWebApp(string[] args)
     {
-        WebPort = body.WebPort,
-        DebugMode = body.DebugMode,
-        LaunchBrowserOnStart = currentApp.LaunchBrowserOnStart
-    };
+        var builder = WebApplication.CreateBuilder(args);
 
-    var newJson = System.Text.Json.JsonSerializer.Serialize(existing,
-        new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-    await File.WriteAllTextAsync(configPath, newJson);
+        var appSettings = builder.Configuration.GetSection(AppSettings.SectionName).Get<AppSettings>() ?? new AppSettings();
+        builder.WebHost.UseUrls($"http://0.0.0.0:{appSettings.WebPort}");
 
-    return Results.Ok(new
-    {
-        saved = true,
-        message = "Settings saved. Web port changes require a restart."
-    });
-});
+        builder.Services.Configure<TelemetryUdpOptions>(
+            builder.Configuration.GetSection(TelemetryUdpOptions.SectionName));
+        builder.Services.Configure<AppSettings>(
+            builder.Configuration.GetSection(AppSettings.SectionName));
 
-var pitTimesPath = Path.Combine(app.Environment.WebRootPath, "data", "pit-times.json");
-
-app.MapGet("/api/pit-times", async () =>
-{
-    if (!File.Exists(pitTimesPath))
-        return Results.Ok(new Dictionary<string, object>());
-    var json = await File.ReadAllTextAsync(pitTimesPath);
-    var data = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, object>>(json);
-    return Results.Ok(data);
-});
-
-app.MapGet("/api/pit-times/{trackId}", async (string trackId) =>
-{
-    if (!File.Exists(pitTimesPath))
-        return Results.NotFound(new { error = "Pit times file not found" });
-    var json = await File.ReadAllTextAsync(pitTimesPath);
-    using var doc = System.Text.Json.JsonDocument.Parse(json);
-    if (doc.RootElement.TryGetProperty(trackId, out var entry))
-        return Results.Ok(System.Text.Json.JsonSerializer.Deserialize<object>(entry.GetRawText()));
-    return Results.NotFound(new { error = $"No pit time for track {trackId}" });
-});
-
-app.MapPut("/api/pit-times/{trackId}", async (string trackId, HttpContext ctx) =>
-{
-    var body = await ctx.Request.ReadFromJsonAsync<PitTimeUpdateRequest>();
-    if (body is null || body.PitTimeSec <= 0)
-        return Results.BadRequest("Invalid pit time");
-
-    var existing = new Dictionary<string, System.Text.Json.JsonElement>();
-    if (File.Exists(pitTimesPath))
-    {
-        var json = await File.ReadAllTextAsync(pitTimesPath);
-        existing = System.Text.Json.JsonSerializer.Deserialize<Dictionary<string, System.Text.Json.JsonElement>>(json)
-                   ?? new();
-    }
-
-    var entryJson = System.Text.Json.JsonSerializer.SerializeToElement(new
-    {
-        trackName = body.TrackName ?? $"Track {trackId}",
-        pitTimeSec = body.PitTimeSec
-    });
-    existing[trackId] = entryJson;
-
-    var dir = Path.GetDirectoryName(pitTimesPath);
-    if (dir != null && !Directory.Exists(dir))
-        Directory.CreateDirectory(dir);
-
-    var newJson = System.Text.Json.JsonSerializer.Serialize(existing,
-        new System.Text.Json.JsonSerializerOptions { WriteIndented = true });
-    await File.WriteAllTextAsync(pitTimesPath, newJson);
-
-    return Results.Ok(new { saved = true, trackId, pitTimeSec = body.PitTimeSec });
-});
-
-app.MapGet("/api/debug/stats", (DebugPacketTracker tracker) =>
-{
-    return Results.Ok(new
-    {
-        total = tracker.TotalPackets,
-        counts = tracker.GetPacketCounts()
-    });
-});
-
-app.MapGet("/api/debug/log", (DebugPacketTracker tracker) =>
-{
-    var entries = tracker.GetRecentEntries();
-    return Results.Ok(entries.Select(e => new
-    {
-        timestamp = e.Timestamp.ToString("HH:mm:ss.fff"),
-        name = e.PacketName
-    }));
-});
-
-app.MapGet("/api/debug/log/download", (DebugPacketTracker tracker) =>
-{
-    var text = tracker.ExportLog();
-    return Results.Text(text, "text/plain");
-});
-
-app.MapPost("/api/debug/reset", (DebugPacketTracker tracker) =>
-{
-    tracker.Reset();
-    return Results.Ok(new { reset = true });
-});
-
-var hostLifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
-var configuration = app.Configuration;
-
-hostLifetime.ApplicationStarted.Register(() =>
-{
-    PrintStartupBanner(configuration, appSettings.WebPort);
-});
-
-if (appSettings.LaunchBrowserOnStart)
-{
-    var log = app.Logger;
-    var port = appSettings.WebPort;
-    hostLifetime.ApplicationStarted.Register(() =>
-    {
-        var url = $"http://localhost:{port}/";
-        try
-        {
-            Process.Start(new ProcessStartInfo
+        builder.Services.AddF125Protocol();
+        builder.Services.AddSingleton<TelemetryState>();
+        builder.Services.AddSingleton<DebugPacketTracker>();
+        builder.Services.AddSingleton<ITelemetryIngress, TelemetryPipelineIngress>();
+        builder.Services.AddTelemetryUdpListener();
+        builder.Services.AddSignalR()
+            .AddJsonProtocol(options =>
             {
-                FileName = url,
-                UseShellExecute = true
+                var json = options.PayloadSerializerOptions;
+                json.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+                json.Converters.Add(new FiniteSingleJsonConverter());
+                json.Converters.Add(new FiniteDoubleJsonConverter());
             });
-        }
-        catch (Exception ex)
+
+        builder.Services.ConfigureHttpJsonOptions(o =>
         {
-            log.LogWarning(ex, "Could not launch browser for {Url}", url);
-        }
-    });
-}
+            var json = o.SerializerOptions;
+            json.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+            json.Converters.Add(new FiniteSingleJsonConverter());
+            json.Converters.Add(new FiniteDoubleJsonConverter());
+        });
 
-app.Run();
+        var app = builder.Build();
 
-static void PrintStartupBanner(IConfiguration config, int webPort)
-{
-    var udp = config.GetSection("TelemetryUdp");
-    var listen = udp.GetValue<string>("ListenAddress") ?? "0.0.0.0";
-    var udpPort = udp.GetValue<int?>("Port") ?? 20777;
-    var httpUrl = $"http://localhost:{webPort}";
+        app.UseDefaultFiles();
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            OnPrepareResponse = ctx =>
+            {
+                var ext = Path.GetExtension(ctx.File.Name);
+                if (ext.Equals(".js", StringComparison.OrdinalIgnoreCase) ||
+                    ext.Equals(".css", StringComparison.OrdinalIgnoreCase) ||
+                    ext.Equals(".html", StringComparison.OrdinalIgnoreCase))
+                {
+                    ctx.Context.Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
+                    ctx.Context.Response.Headers.Append("Pragma", "no-cache");
+                }
+            }
+        });
 
-    WindowsConsole.TryEnableVirtualTerminalProcessing();
-    try
-    {
-        Console.OutputEncoding = Encoding.UTF8;
+        app.MapHub<TelemetryHub>("/hub/telemetry");
+
+        MapApiEndpoints(app);
+
+        return app;
     }
-    catch
+
+    private static void MapApiEndpoints(WebApplication app)
     {
-        // ignore if console reconfig is not allowed
-    }
+        app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "f1-telemetry" }));
 
-    const string sep = "─────────────────────────────";
-    const string reset = "\u001b[0m";
-    const string title = "\u001b[97m";
-    const string dim = "\u001b[90m";
-    const string green = "\u001b[92m";
-    const string valueGray = "\u001b[37m";
-    const string keyBold = "\u001b[1;97m";
+        app.MapGet("/api/info", (IConfiguration config) => Results.Ok(new
+        {
+            game = "F1 25",
+            udpAddress = config.GetValue<string>("TelemetryUdp:ListenAddress") ?? "0.0.0.0",
+            udpPort = config.GetValue<int?>("TelemetryUdp:Port") ?? 20777,
+            webPort = config.GetValue<int?>("App:WebPort") ?? 5000,
+            debugMode = config.GetValue<bool?>("App:DebugMode") ?? false,
+            packetTypes = Enum.GetNames<F125PacketId>()
+        }));
 
-    Console.WriteLine();
-    Console.WriteLine($"{title}Telemetry Logger{reset}");
-    Console.WriteLine($"{dim}{sep}{reset}");
-    Console.Write($"{green}●{reset}{dim} UDP {reset}{valueGray}{listen}:{udpPort}{reset}");
-    Console.WriteLine();
-    Console.Write($"{green}●{reset}{dim} HTTP {reset}{valueGray}");
-    WriteConsoleHyperlink(httpUrl, httpUrl);
-    Console.WriteLine(reset);
-    Console.WriteLine($"{dim}{sep}{reset}");
-    Console.Write($"{green}Ready.{reset}{dim} Press {reset}{keyBold}Ctrl+C{reset}{dim} to stop.{reset}");
-    Console.WriteLine();
-    Console.WriteLine();
-}
+        app.MapGet("/api/state", (TelemetryState state) =>
+        {
+            var all = state.GetAll();
+            var result = new Dictionary<string, object>();
+            foreach (var (key, value) in all)
+            {
+                var name = ((F125PacketId)key).ToString();
+                result[name] = value;
+            }
+            return Results.Ok(result);
+        });
 
-static void WriteConsoleHyperlink(string url, string visible)
-{
-    const char esc = '\u001b';
-    Console.Write($"{esc}]8;;{url}{esc}\\{visible}{esc}]8;;{esc}\\");
-}
+        app.MapGet("/api/state/{packetType}", (string packetType, TelemetryState state) =>
+        {
+            if (!Enum.TryParse<F125PacketId>(packetType, true, out var packetId))
+                return Results.NotFound(new { error = $"Unknown packet type: {packetType}" });
 
-internal static class WindowsConsole
-{
-    private const int StdOutputHandle = -11;
-    private const uint EnableVirtualTerminalProcessing = 0x0004;
+            var data = state.Get((byte)packetId);
+            return data != null ? Results.Ok(data) : Results.NotFound(new { error = $"No data for {packetType}" });
+        });
 
-    [DllImport("kernel32.dll", SetLastError = true)]
-    private static extern nint GetStdHandle(int nStdHandle);
+        app.MapGet("/api/settings", (IConfiguration config) =>
+        {
+            var udpSection = config.GetSection("TelemetryUdp");
+            var appSection = config.GetSection("App");
+            return Results.Ok(new
+            {
+                udpListenIp = udpSection.GetValue<string>("ListenAddress") ?? "0.0.0.0",
+                udpListenPort = udpSection.GetValue<int?>("Port") ?? 20777,
+                webPort = appSection.GetValue<int?>("WebPort") ?? 5000,
+                debugMode = appSection.GetValue<bool?>("DebugMode") ?? false
+            });
+        });
 
-    [DllImport("kernel32.dll")]
-    private static extern bool GetConsoleMode(nint hConsoleHandle, out uint lpMode);
+        app.MapPost("/api/settings", async (HttpContext ctx, IConfiguration config) =>
+        {
+            var body = await ctx.Request.ReadFromJsonAsync<SettingsUpdateRequest>();
+            if (body is null)
+                return Results.BadRequest("Invalid request body");
 
-    [DllImport("kernel32.dll")]
-    private static extern bool SetConsoleMode(nint hConsoleHandle, uint dwMode);
+            var configPath = Path.Combine(AppContext.BaseDirectory, "appsettings.user.json");
+            var existing = new Dictionary<string, object>();
+            if (File.Exists(configPath))
+            {
+                var json = await File.ReadAllTextAsync(configPath);
+                existing = JsonSerializer.Deserialize<Dictionary<string, object>>(json)
+                           ?? new Dictionary<string, object>();
+            }
 
-    internal static void TryEnableVirtualTerminalProcessing()
-    {
-        if (!OperatingSystem.IsWindows())
-            return;
+            existing["TelemetryUdp"] = new { ListenAddress = body.UdpListenIp, Port = body.UdpListenPort };
+            var currentApp = config.GetSection(AppSettings.SectionName).Get<AppSettings>() ?? new AppSettings();
+            existing["App"] = new
+            {
+                WebPort = body.WebPort,
+                DebugMode = body.DebugMode,
+                LaunchBrowserOnStart = currentApp.LaunchBrowserOnStart
+            };
 
-        var handle = GetStdHandle(StdOutputHandle);
-        if (handle == 0 || handle == -1)
-            return;
+            var newJson = JsonSerializer.Serialize(existing,
+                new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(configPath, newJson);
 
-        if (!GetConsoleMode(handle, out var mode))
-            return;
+            return Results.Ok(new
+            {
+                saved = true,
+                message = "Settings saved. Web port changes require a restart."
+            });
+        });
 
-        SetConsoleMode(handle, mode | EnableVirtualTerminalProcessing);
+        var pitTimesPath = Path.Combine(app.Environment.WebRootPath, "data", "pit-times.json");
+
+        app.MapGet("/api/pit-times", async () =>
+        {
+            if (!File.Exists(pitTimesPath))
+                return Results.Ok(new Dictionary<string, object>());
+            var json = await File.ReadAllTextAsync(pitTimesPath);
+            var data = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
+            return Results.Ok(data);
+        });
+
+        app.MapGet("/api/pit-times/{trackId}", async (string trackId) =>
+        {
+            if (!File.Exists(pitTimesPath))
+                return Results.NotFound(new { error = "Pit times file not found" });
+            var json = await File.ReadAllTextAsync(pitTimesPath);
+            using var doc = JsonDocument.Parse(json);
+            if (doc.RootElement.TryGetProperty(trackId, out var entry))
+                return Results.Ok(JsonSerializer.Deserialize<object>(entry.GetRawText()));
+            return Results.NotFound(new { error = $"No pit time for track {trackId}" });
+        });
+
+        app.MapPut("/api/pit-times/{trackId}", async (string trackId, HttpContext ctx) =>
+        {
+            var body = await ctx.Request.ReadFromJsonAsync<PitTimeUpdateRequest>();
+            if (body is null || body.PitTimeSec <= 0)
+                return Results.BadRequest("Invalid pit time");
+
+            var existing = new Dictionary<string, JsonElement>();
+            if (File.Exists(pitTimesPath))
+            {
+                var json = await File.ReadAllTextAsync(pitTimesPath);
+                existing = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json) ?? new();
+            }
+
+            var entryJson = JsonSerializer.SerializeToElement(new
+            {
+                trackName = body.TrackName ?? $"Track {trackId}",
+                pitTimeSec = body.PitTimeSec
+            });
+            existing[trackId] = entryJson;
+
+            var dir = Path.GetDirectoryName(pitTimesPath);
+            if (dir != null && !Directory.Exists(dir))
+                Directory.CreateDirectory(dir);
+
+            var newJson = JsonSerializer.Serialize(existing,
+                new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(pitTimesPath, newJson);
+
+            return Results.Ok(new { saved = true, trackId, pitTimeSec = body.PitTimeSec });
+        });
+
+        app.MapGet("/api/debug/stats", (DebugPacketTracker tracker) =>
+        {
+            return Results.Ok(new
+            {
+                total = tracker.TotalPackets,
+                counts = tracker.GetPacketCounts()
+            });
+        });
+
+        app.MapGet("/api/debug/log", (DebugPacketTracker tracker) =>
+        {
+            var entries = tracker.GetRecentEntries();
+            return Results.Ok(entries.Select(e => new
+            {
+                timestamp = e.Timestamp.ToString("HH:mm:ss.fff"),
+                name = e.PacketName
+            }));
+        });
+
+        app.MapGet("/api/debug/log/download", (DebugPacketTracker tracker) =>
+        {
+            var text = tracker.ExportLog();
+            return Results.Text(text, "text/plain");
+        });
+
+        app.MapPost("/api/debug/reset", (DebugPacketTracker tracker) =>
+        {
+            tracker.Reset();
+            return Results.Ok(new { reset = true });
+        });
     }
 }
 

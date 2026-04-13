@@ -1175,8 +1175,19 @@ function updateEvent(data, header) {
         }
     }
 
-    const time = header?.sessionTime?.toFixed(1) || "--";
-    const entry = { code, name, detail, time, isPenalty, vehicleIdx, penaltyType };
+    const elapsed = header?.sessionTime ?? -1;
+    const sType = lastSessionPacket?.sessionType ?? 0;
+    const isRaceSession = sType === 15 || sType === 16 || sType === 17;
+    let timeCtx;
+    if (isRaceSession) {
+        const lap = lastLapDataPacket?.lapDataItems?.[playerCarIndex]?.currentLapNum ?? 0;
+        const totalLaps = lastSessionPacket?.totalLaps ?? 0;
+        timeCtx = { mode: "race", lap, totalLaps };
+    } else {
+        const duration = lastSessionPacket?.sessionDuration ?? 0;
+        timeCtx = { mode: "timed", elapsed, duration };
+    }
+    const entry = { code, name, detail, timeCtx, isPenalty, vehicleIdx, penaltyType };
 
     if (code === "PENA" && PINNABLE_PENALTY_TYPES.has(penaltyType)) {
         pinnedPenalties.unshift(entry);
@@ -1191,6 +1202,26 @@ function updateEvent(data, header) {
     renderEvents();
 }
 
+function fmtMmSs(totalSecs) {
+    const s = Math.max(0, Math.floor(totalSecs));
+    const m = Math.floor(s / 60);
+    const sec = s % 60;
+    return `${m}:${String(sec).padStart(2, "0")}`;
+}
+
+function formatEventTimeCtx(ctx) {
+    if (!ctx) return "--";
+    if (ctx.mode === "race") {
+        const lap = ctx.lap > 0 ? ctx.lap : "--";
+        const total = ctx.totalLaps > 0 ? ctx.totalLaps : "--";
+        return `L${lap} / ${total}`;
+    }
+    const elapsed = ctx.elapsed;
+    const duration = ctx.duration;
+    if (elapsed < 0 || duration <= 0) return "--";
+    return `${fmtMmSs(elapsed)} / ${fmtMmSs(duration)}`;
+}
+
 function renderEventItem(e, pinned) {
     const isSeriousPenalty = e.code === "PENA" && PINNABLE_PENALTY_TYPES.has(e.penaltyType);
 
@@ -1201,10 +1232,11 @@ function renderEventItem(e, pinned) {
     const codeColor = EVENT_CODE_COLORS[e.code] || "var(--accent-blue)";
     const icon = pinned ? '<span class="pin-icon">&#128204;</span> ' : "";
     const servedBadge = e.served ? ' <span class="served-badge">SERVED</span>' : "";
+    const timeLabel = formatEventTimeCtx(e.timeCtx);
     return `<div class="${cls}">
         <span class="event-code" style="color:${codeColor}">${icon}${e.code}</span>
         <span class="event-detail">${e.name}${e.detail ? " — " + e.detail : ""}${servedBadge}</span>
-        <span class="event-time">${e.time}s</span>
+        <span class="event-time">${timeLabel}</span>
     </div>`;
 }
 

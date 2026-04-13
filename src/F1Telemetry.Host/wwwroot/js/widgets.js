@@ -1,21 +1,21 @@
 "use strict";
 
 const WIDGET_REGISTRY = {
-    session:      { title: "Session",              tpl: "tpl-session",      w: 4, h: 10, minW: 2, minH: 4 },
-    telemetry:    { title: "Car Telemetry",        tpl: "tpl-telemetry",    w: 6, h: 10, minW: 4, minH: 8 },
-    tyres:        { title: "Tyres",                tpl: "tpl-tyres",        w: 4, h: 10, minW: 4, minH: 4 },
-    tyreSets:     { title: "Available Tyre Sets",  tpl: "tpl-tyreSets",     w: 12, h: 6, minW: 6, minH: 4 },
-    pitPredictor: { title: "Pit Stop Predictor",   tpl: "tpl-pitPredictor", w: 8, h: 6, minW: 4, minH: 4 },
-    carStatus:    { title: "Car Status",           tpl: "tpl-carStatus",    w: 6, h: 4, minW: 2, minH: 6 },
-    lapData:      { title: "Lap Data",             tpl: "tpl-lapData",      w: 6, h: 6, minW: 2, minH: 4 },
-    damage:       { title: "Damage",               tpl: "tpl-damage",       w: 4, h: 6, minW: 2, minH: 4 },
-    events:       { title: "Events",               tpl: "tpl-events",       w: 8, h: 6, minW: 6, minH: 4 },
-    standings:    { title: "Standings",             tpl: "tpl-standings",    w: 12, h: 10, minW: 6, minH: 6 },
-    weather:          { title: "Weather Forecast",     tpl: "tpl-weather",         w: 12, h: 6, minW: 6, minH: 4 },
-    gapBoard:         { title: "Gap Board",           tpl: "tpl-gapBoard",        w: 10, h: 6, minW: 6, minH: 4 },
-    qualiStandings:   { title: "Quali Standings",    tpl: "tpl-qualiStandings",  w: 14, h: 12, minW: 8, minH: 6 },
-    topSpeed:         { title: "Session Top Speeds",   tpl: "tpl-topSpeed",         w: 8, h: 10, minW: 4, minH: 6 },
-    topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare", w: 6, h: 6, minW: 2, minH: 4 },
+    session:      { title: "Session",              tpl: "tpl-session",      w: 4,   h: 9,   minW: 2,    minH: 4 },
+    telemetry:    { title: "Car Telemetry",        tpl: "tpl-telemetry",    w: 6,   h: 9,   minW: 4,    minH: 7 },
+    tyres:        { title: "Tyres",                tpl: "tpl-tyres",        w: 5,   h: 12,  minW: 4,    minH: 9 },
+    tyreSets:     { title: "Available Tyre Sets",  tpl: "tpl-tyreSets",     w: 12,  h: 6,   minW: 1,    minH: 1 },
+    pitPredictor: { title: "Pit Stop Predictor",   tpl: "tpl-pitPredictor", w: 8,   h: 6,   minW: 1,    minH: 1 },
+    carStatus:    { title: "Car Status",           tpl: "tpl-carStatus",    w: 6,   h: 4,   minW: 1,    minH: 1 },
+    lapData:      { title: "Lap Data",             tpl: "tpl-lapData",      w: 6,   h: 6,   minW: 1,    minH: 1 },
+    damage:       { title: "Damage",               tpl: "tpl-damage",       w: 4,   h: 6,   minW: 2,    minH: 6 },
+    events:       { title: "Events",               tpl: "tpl-events",       w: 8,   h: 6,   minW: 1,    minH: 1 },
+    standings:    { title: "Standings",            tpl: "tpl-standings",    w: 12,  h: 10,  minW: 1,    minH: 1 },
+    weather:          { title: "Weather Forecast",     tpl: "tpl-weather",         w: 12, h: 6, minW: 1, minH: 1 },
+    gapBoard:         { title: "Gap Board",           tpl: "tpl-gapBoard",        w: 10, h: 6, minW: 1, minH: 1 },
+    qualiStandings:   { title: "Quali Standings",    tpl: "tpl-qualiStandings",  w: 14, h: 12, minW: 1, minH: 1 },
+    topSpeed:         { title: "Session Top Speeds",   tpl: "tpl-topSpeed",         w: 8, h: 10, minW: 1, minH: 1 },
+    topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare", w: 6, h: 6, minW: 1, minH: 1 },
 };
 
 /** Finer grid (2× columns, 2× rows vs v1); physical size unchanged → scale saved layouts ×2. */
