@@ -1344,8 +1344,7 @@
 
 /* Standings */
 .standings-table-wrap {
-    max-height: 400px;
-    overflow-y: auto;
+    overflow-y: visible;
 }
 
 .standings-table {
@@ -1374,16 +1373,41 @@
 }
 
 .standings-table tr.player-row {
-    background: var(--accent-brand-soft);
+    background: rgba(0, 166, 255, 0.08);
 }
 
 .standings-table tr.player-row td:first-child {
-    color: var(--accent-brand);
+    color: var(--accent-blue);
     font-weight: 700;
 }
 
 .standings-table td.pit-status {
     color: var(--accent-orange);
+}
+
+/* Tyre: header + body centered so badge + age align under "Tyre" */
+.standings-table th.standings-tyre-col,
+.standings-table td.standings-tyre-cell {
+    text-align: center;
+}
+
+.standings-table td.standings-tyre-cell {
+    vertical-align: middle;
+    padding: 6px 12px;
+}
+
+.standings-tyre-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+}
+
+.standings-tyre-age {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--text-primary);
+    min-width: 14px;
 }
 
 /* Responsive */
@@ -1421,8 +1445,12 @@
 .tyreset-fitted {
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 10px;
     margin-bottom: 12px;
+    padding: 7px 10px;
+    background: var(--accent-brand-muted);
+    border-left: 3px solid var(--accent-brand);
+    border-radius: 4px;
 }
 
 .fitted-label {
@@ -1430,18 +1458,23 @@
     text-transform: uppercase;
     letter-spacing: 1px;
     color: var(--text-dim);
+    flex-shrink: 0;
 }
 
 .fitted-value {
     font-weight: 700;
     font-family: var(--font-mono);
-    font-size: 14px;
+    font-size: 13px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
 
 .tyreset-groups {
     display: flex;
-    flex-wrap: wrap;
+    flex-direction: column;
     gap: 12px;
+    overflow-y: auto;
 }
 
 .tyreset-placeholder {
@@ -1450,36 +1483,40 @@
     font-size: 13px;
 }
 
-.tyreset-group {
-    flex: 1;
-    min-width: 200px;
-}
+.tyreset-section {}
 
-.tyreset-group-title {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
+.tyreset-section-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     margin-bottom: 6px;
     padding-bottom: 4px;
     border-bottom: 1px solid var(--border);
 }
 
-.tyreset-group-title.compound-soft { color: #ff3333; }
-.tyreset-group-title.compound-medium { color: #ffd700; }
-.tyreset-group-title.compound-hard { color: #e0e0e0; }
-.tyreset-group-title.compound-inter { color: #00cc00; }
-.tyreset-group-title.compound-wet { color: #00a6ff; }
+.tyreset-section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-secondary);
+}
+
+.tyreset-section-count {
+    font-size: 10px;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+}
 
 .tyreset-item {
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 5px 8px;
+    padding: 6px 8px;
     border-radius: 4px;
-    background: rgba(255,255,255,0.03);
+    background: rgba(255,255,255,0.04);
     margin-bottom: 4px;
-    font-size: 12px;
+    font-size: 13px;
     font-family: var(--font-mono);
 }
 
@@ -1488,55 +1525,89 @@
     border-left: 3px solid var(--accent-brand);
 }
 
-.tyreset-item.unavailable {
-    opacity: 0.35;
+.tyreset-section-used .tyreset-item {
+    opacity: 0.45;
+    padding: 4px 8px;
+    font-size: 12px;
+    background: transparent;
 }
 
-.tyreset-compound-dot {
-    width: 10px;
-    height: 10px;
+/* Circular compound badge with compound initial letter */
+.tyreset-badge {
+    width: 24px;
+    height: 24px;
     border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
     flex-shrink: 0;
+    font-family: var(--font-mono);
+}
+
+.tyreset-badge.compound-soft     { background: #ff3333; color: #fff; }
+.tyreset-badge.compound-medium   { background: #ffd700; color: #111; }
+.tyreset-badge.compound-hard     { background: #e0e0e0; color: #111; }
+.tyreset-badge.compound-inter    { background: #00cc00; color: #111; }
+.tyreset-badge.compound-wet      { background: #00a6ff; color: #111; }
+
+.tyreset-badge-sm {
+    width: 18px;
+    height: 18px;
+    font-size: 9px;
 }
 
 .tyreset-wear-bar {
     flex: 1;
-    height: 6px;
+    height: 10px;
     background: rgba(255,255,255,0.08);
-    border-radius: 3px;
+    border-radius: 4px;
     overflow: hidden;
-    min-width: 50px;
+    min-width: 40px;
 }
 
 .tyreset-wear-fill {
     height: 100%;
-    border-radius: 3px;
+    border-radius: 4px;
     transition: width 0.3s;
 }
 
-.tyreset-detail {
+.tyreset-wear-pct {
     color: var(--text-secondary);
-    font-size: 11px;
-    min-width: 70px;
+    font-size: 12px;
+    min-width: 38px;
     text-align: right;
 }
 
 .tyreset-life {
     color: var(--text-dim);
-    font-size: 11px;
-    min-width: 50px;
+    font-size: 12px;
+    min-width: 38px;
     text-align: right;
 }
 
 .tyreset-delta {
-    font-size: 11px;
-    min-width: 55px;
+    font-size: 12px;
+    min-width: 44px;
     text-align: right;
 }
 
 .tyreset-delta.positive { color: var(--semantic-red); }
 .tyreset-delta.negative { color: var(--accent-green); }
 .tyreset-delta.zero { color: var(--text-dim); }
+
+.tyreset-fitted-badge {
+    font-size: 9px;
+    font-weight: 800;
+    color: var(--accent-brand);
+    background: var(--accent-brand-muted);
+    border: 1px solid var(--accent-brand-border);
+    border-radius: 3px;
+    padding: 1px 5px;
+    letter-spacing: 0.5px;
+    flex-shrink: 0;
+}
 
 /* Pit Stop Predictor */
 .pitstop-config {
@@ -1684,6 +1755,18 @@
     color: var(--accent-yellow);
 }
 
+.qs-delta-pb {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    min-width: 72px;
+}
+
+.qs-sector-hdr,
+.qs-sector {
+    width: 1%;
+    white-space: nowrap;
+}
+
 .qs-sector {
     font-size: 11px;
     color: var(--text-secondary);
@@ -1718,6 +1801,7 @@
 .qs-sector-none {
     color: var(--text-dim);
 }
+
 
 /* Weather Forecast */
 .weather-forecast {
@@ -1877,7 +1961,7 @@
 }
 
 .gap-pos-player {
-    color: var(--accent-brand);
+    color: var(--accent-blue);
 }
 
 .gap-driver-name {
@@ -1889,7 +1973,7 @@
 }
 
 .gap-row-player {
-    background: var(--accent-brand-soft);
+    background: rgba(0, 166, 255, 0.08);
 }
 
 .gap-time-cell {
@@ -1912,7 +1996,6 @@
 }
 
 @media (max-width: 768px) {
-    .tyreset-groups { flex-direction: column; }
     .pitstop-prediction { flex-direction: column; }
 }
 
@@ -1922,6 +2005,7 @@
     flex-direction: column;
     min-height: 0;
     height: 100%;
+    overflow: hidden;
 }
 
 .ts-widget-card .widget-title {
@@ -2026,75 +2110,138 @@
     gap: 4px 6px;
 }
 
-.ts-compare-layout {
-    padding-bottom: 12px;
-}
+/* ── Top Speed Compare widget (redesigned) ──────────────────────────── */
 
-.ts-compare-grid {
-    display: grid;
-    grid-template-columns: 1fr auto 1fr;
-    gap: 10px 12px;
-    align-items: stretch;
+/* container-type: size enables both cqw and cqh so font-size can scale
+   with widget height as well as width when the user resizes it. */
+.tsc-layout {
     flex: 1;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0 10px 10px;
+    container-type: size;
 }
 
-.ts-compare-block {
+.tsc-best-block {
+    flex: 1;
+    min-height: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 4px;
-    min-width: 0;
-    padding: 8px 6px;
+    padding: 6px 8px;
     border-radius: var(--radius);
     background: rgba(255, 255, 255, 0.03);
     border: 1px solid rgba(255, 255, 255, 0.06);
 }
 
-.ts-compare-block-current {
-    border-color: rgba(0, 166, 255, 0.35);
-    background: rgba(0, 166, 255, 0.08);
-}
-
-.ts-compare-label {
-    font-size: 10px;
+.tsc-label {
+    font-size: clamp(9px, 1.2cqw + 0.4cqh, 12px);
     text-transform: uppercase;
-    letter-spacing: 1px;
+    letter-spacing: 1.2px;
     color: var(--text-dim);
+    margin-bottom: 2px;
 }
 
-.ts-compare-value {
-    font-size: clamp(22px, 4.5cqw + 18px, 36px);
+.tsc-best-row {
+    display: flex;
+    align-items: baseline;
+    gap: 5px;
+}
+
+/* Scales with both width and height so the number grows in both dimensions */
+.tsc-best-value {
+    font-size: clamp(22px, 4cqw + 3cqh, 56px);
     font-weight: 800;
     font-family: var(--font-mono);
     color: var(--text-primary);
-    line-height: 1.1;
+    line-height: 1;
 }
 
-.ts-compare-block-current .ts-compare-value {
+.tsc-unit {
+    font-size: clamp(10px, 1.2cqw + 0.5cqh, 15px);
+    font-weight: 500;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    letter-spacing: 0.5px;
+}
+
+.tsc-unit-sm {
+    font-size: clamp(9px, 0.9cqw + 0.4cqh, 13px);
+}
+
+.tsc-sep {
+    height: 1px;
+    background: var(--border);
+    margin: 6px 0;
+    flex-shrink: 0;
+}
+
+.tsc-laps-row {
+    flex: 1;
+    min-height: 0;
+    display: grid;
+    grid-template-columns: 1fr auto 1fr;
+    gap: 0 8px;
+    align-items: stretch;
+}
+
+.tsc-lap-block {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 4px 4px;
+    border-radius: var(--radius);
+    background: rgba(255, 255, 255, 0.025);
+    border: 1px solid rgba(255, 255, 255, 0.05);
+    gap: 2px;
+    min-height: 0;
+}
+
+.tsc-lap-block-live {
+    border-color: rgba(0, 166, 255, 0.25);
+    background: rgba(0, 166, 255, 0.05);
+}
+
+.tsc-lap-row {
+    display: flex;
+    align-items: baseline;
+    gap: 3px;
+}
+
+.tsc-lap-value {
+    font-size: clamp(16px, 2.5cqw + 2cqh, 34px);
+    font-weight: 700;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.tsc-live-val {
     color: var(--accent-blue);
 }
 
-.ts-compare-divider {
+.tsc-delta {
+    font-size: clamp(10px, 1cqw + 0.6cqh, 14px);
+    font-family: var(--font-mono);
+    font-weight: 600;
+    min-height: 14px;
+    display: flex;
+    align-items: center;
+    color: var(--text-dim);
+    white-space: nowrap;
+}
+
+.tsc-delta-down { color: #ef4444; }
+.tsc-delta-up   { color: #22c55e; }
+.tsc-delta-pb   { color: #a855f7; letter-spacing: 0.5px; }
+.tsc-delta-neutral { color: var(--text-dim); }
+
+.tsc-vdivider {
     width: 1px;
     align-self: stretch;
-    margin: 4px 0;
     background: var(--border);
-}
-
-.ts-compare-layout.ts-compact .ts-compare-grid {
-    grid-template-columns: 1fr;
-    grid-template-rows: auto auto auto;
-    gap: 8px;
-}
-
-.ts-compare-layout.ts-compact .ts-compare-divider {
-    width: 100%;
-    height: 1px;
-    margin: 0;
-}
-
-.ts-compare-layout.ts-compact .ts-compare-value {
-    font-size: clamp(20px, 6cqw + 14px, 30px);
+    margin: 8px 0;
 }

@@ -45,11 +45,21 @@ sealed class TelemetryTrayApp : Application
                 PopupActivation = PopupActivationMode.LeftOrRightClick
             };
 
-            if (appSettings.LaunchBrowserOnStart)
+            var lifetime = webApp.Services.GetRequiredService<IHostApplicationLifetime>();
+            var port = webPort;
+            var tray = _trayIcon;
+
+            lifetime.ApplicationStarted.Register(() =>
             {
-                var lifetime = webApp.Services.GetRequiredService<IHostApplicationLifetime>();
-                var port = webPort;
-                lifetime.ApplicationStarted.Register(() =>
+                Dispatcher.BeginInvoke(() =>
+                {
+                    tray?.ShowBalloonTip(
+                        "Telemetry Logger",
+                        "The app is running in the background. Click the tray icon to open the web interface or manage the application.",
+                        BalloonIcon.Info);
+                });
+
+                if (appSettings.LaunchBrowserOnStart)
                 {
                     try
                     {
@@ -60,8 +70,8 @@ sealed class TelemetryTrayApp : Application
                         });
                     }
                     catch { /* browser launch is best-effort */ }
-                });
-            }
+                }
+            });
 
             _cts = new CancellationTokenSource();
             await webApp.RunAsync(_cts.Token);
@@ -80,9 +90,12 @@ sealed class TelemetryTrayApp : Application
 
     protected override void OnExit(ExitEventArgs e)
     {
-        _cts?.Cancel();
         _trayIcon?.Dispose();
+        _cts?.Cancel();
         base.OnExit(e);
+        // The web host shutdown runs on background threads; terminate the process
+        // immediately so the user doesn't wait for Kestrel/UDP teardown.
+        Environment.Exit(0);
     }
 
     private static System.Drawing.Icon CreateAppIcon()
@@ -96,10 +109,6 @@ sealed class TelemetryTrayApp : Application
         var visual = new DrawingVisual();
         using (var dc = visual.RenderOpen())
         {
-            dc.DrawRoundedRectangle(
-                new SolidColorBrush(Color.FromRgb(0x16, 0x1B, 0x22)),
-                null, new Rect(0, 0, size, size), 40, 40);
-
             dc.DrawGeometry(
                 new SolidColorBrush(Color.FromRgb(0x9B, 0x3F, 0xF5)),
                 null, Geometry.Parse(logoPath));

@@ -15,7 +15,7 @@ const WIDGET_REGISTRY = {
     gapBoard:         { title: "Gap Board",           tpl: "tpl-gapBoard",        w: 10, h: 6, minW: 1, minH: 1 },
     qualiStandings:   { title: "Quali Standings",    tpl: "tpl-qualiStandings",  w: 14, h: 12, minW: 1, minH: 1 },
     topSpeed:         { title: "Session Top Speeds",   tpl: "tpl-topSpeed",         w: 8, h: 10, minW: 1, minH: 1 },
-    topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare", w: 6, h: 6, minW: 1, minH: 1 },
+    topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare", w: 4, h: 10, minW: 3, minH: 7 },
 };
 
 /** Finer grid (2× columns, 2× rows vs v1); physical size unchanged → scale saved layouts ×2. */

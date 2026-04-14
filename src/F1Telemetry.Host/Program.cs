@@ -58,6 +58,8 @@ static class Program
             json.Converters.Add(new FiniteDoubleJsonConverter());
         });
 
+        builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(3));
+
         var app = builder.Build();
 
         app.UseDefaultFiles();

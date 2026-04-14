@@ -310,6 +310,7 @@ const DRSD_REASON_NAMES = {
 
 let playerCarIndex = 0;
 let participantNames = [];
+let lastCarStatusItems = null;
 let maxEvents = 500;
 let events = [];
 let pinnedPenalties = [];
@@ -475,6 +476,8 @@ const sessionTopSpeedByCar = new Array(22).fill(0);
 /** Player peak speed on the current lap number (reset when lap advances). */
 let playerLapPeakSpeed = 0;
 let playerLapPeakForLapNum = 0;
+/** Player peak speed on the last completed lap (saved when lap number advances). */
+let playerLastLapPeakSpeed = 0;
 let _topSpeedLayoutObserver = null;
 const _topSpeedObservedRoots = new WeakSet();
 
@@ -495,6 +498,16 @@ let playerActualTyreCompound = -1;
 let lastPlayerCarTelemetry = null;
 
 function el(id) { return document.getElementById(id); }
+
+function setText(id, text) {
+    const e = el(id);
+    if (e) e.textContent = text;
+}
+
+function setHtml(id, html) {
+    const e = el(id);
+    if (e) e.innerHTML = html;
+}
 
 function forEachTyreWidget(callback) {
     document.querySelectorAll(".tyre-widget").forEach(callback);
@@ -652,6 +665,7 @@ function pushTempHistory(history, value) {
 
 function renderTempWithTrend(elemId, temp, trend) {
     const e = el(elemId);
+    if (!e) return;
     const deltaAbs = Math.abs(trend.delta);
     const deltaText = deltaAbs > 0 ? ` (${trend.delta > 0 ? "+" : ""}${trend.delta}°)` : "";
     e.innerHTML = `${temp}°C <span class="temp-trend ${trend.cls}">${trend.arrow}${deltaText}</span>`;
@@ -660,6 +674,7 @@ function renderTempWithTrend(elemId, temp, trend) {
 function resetTopSpeedSessionState() {
     sessionTopSpeedByCar.fill(0);
     playerLapPeakSpeed = 0;
+    playerLastLapPeakSpeed = 0;
     playerLapPeakForLapNum = 0;
     updateTopSpeedWidgets();
 }
@@ -680,9 +695,9 @@ function updateSession(data) {
         lastSessionLinkId = linkId;
     }
 
-    el("trackName").textContent = TRACK_NAMES[data.trackId] || `Track ${data.trackId}`;
-    el("sessionType").textContent = SESSION_TYPES[data.sessionType] || `Type ${data.sessionType}`;
-    el("weather").textContent = WEATHER_NAMES[data.weather] || "Unknown";
+    setText("trackName", TRACK_NAMES[data.trackId] || `Track ${data.trackId}`);
+    setText("sessionType", SESSION_TYPES[data.sessionType] || `Type ${data.sessionType}`);
+    setText("weather", WEATHER_NAMES[data.weather] || "Unknown");
 
     if (data.trackId !== currentTrackId) {
         currentTrackId = data.trackId;
@@ -714,16 +729,16 @@ function updateSession(data) {
 
     updateWeatherForecast(data);
 
-    el("safetyCarStatus").textContent = SAFETY_CAR_STATUS[data.safetyCarStatus] || "None";
-    el("totalLaps").textContent = data.totalLaps > 0 ? data.totalLaps : "--";
+    setText("safetyCarStatus", SAFETY_CAR_STATUS[data.safetyCarStatus] || "None");
+    setText("totalLaps", data.totalLaps > 0 ? data.totalLaps : "--");
 
     const timeLeftSec = data.sessionTimeLeft;
     if (timeLeftSec > 0) {
         const m = Math.floor(timeLeftSec / 60);
         const s = timeLeftSec % 60;
-        el("timeLeft").textContent = `${m}:${String(s).padStart(2, "0")}`;
+        setText("timeLeft", `${m}:${String(s).padStart(2, "0")}`);
     } else {
-        el("timeLeft").textContent = "--";
+        setText("timeLeft", "--");
     }
 }
 
@@ -849,6 +864,7 @@ function updateCarTelemetry(data) {
             const lapNum = lastLapDataPacket?.lapDataItems?.[playerCarIndex]?.currentLapNum;
             const ln = lapNum !== undefined && lapNum !== null ? lapNum : 0;
             if (ln !== playerLapPeakForLapNum) {
+                if (playerLapPeakSpeed > 0) playerLastLapPeakSpeed = playerLapPeakSpeed;
                 playerLapPeakForLapNum = ln;
                 playerLapPeakSpeed = 0;
             }
@@ -861,16 +877,16 @@ function updateCarTelemetry(data) {
     const car = data.carTelemetryData?.[playerCarIndex];
     if (!car) return;
 
-    el("speed").textContent = car.speed;
+    setText("speed", car.speed);
     const gear = car.gear;
-    el("gear").textContent = gear === -1 ? "R" : gear === 0 ? "N" : gear.toString();
+    setText("gear", gear === -1 ? "R" : gear === 0 ? "N" : gear.toString());
 
     const scale = playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK;
     syncRpmBarSegmentWidths(scale);
     const rpmPct = Math.min(100, (car.engineRpm / scale) * 100);
     const rpmClip = el("rpmBarClip");
     if (rpmClip) rpmClip.style.setProperty("--rpm-pct", `${rpmPct}%`);
-    el("rpmValue").textContent = `${car.engineRpm} / ${scale} RPM`;
+    setText("rpmValue", `${car.engineRpm} / ${scale} RPM`);
 
     const t = Math.max(0, Math.min(1, Number(car.throttle) || 0));
     const b = Math.max(0, Math.min(1, Number(car.brake) || 0));
@@ -903,6 +919,7 @@ function updateCarTelemetry(data) {
 }
 
 function updateCarStatus(data) {
+    if (data.carStatusDataItems) lastCarStatusItems = data.carStatusDataItems;
     const car = data.carStatusDataItems?.[playerCarIndex];
     if (!car) return;
 
@@ -969,17 +986,18 @@ function updateLapData(data) {
 
     const ln = car.currentLapNum;
     if (ln !== undefined && ln !== null && ln !== playerLapPeakForLapNum) {
+        if (playerLapPeakSpeed > 0) playerLastLapPeakSpeed = playerLapPeakSpeed;
         playerLapPeakForLapNum = ln;
         playerLapPeakSpeed = 0;
         updateTopSpeedWidgets();
     }
 
-    el("position").textContent = car.carPosition || "--";
-    el("currentLap").textContent = car.currentLapNum || "--";
-    el("currentLapTime").textContent = formatTime(car.currentLapTimeInMs);
-    el("lastLapTime").textContent = formatTime(car.lastLapTimeInMs);
-    el("sector1").textContent = formatSectorTime(car.sector1TimeMsPart, car.sector1TimeMinutesPart);
-    el("sector2").textContent = formatSectorTime(car.sector2TimeMsPart, car.sector2TimeMinutesPart);
+    setText("position", car.carPosition || "--");
+    setText("currentLap", car.currentLapNum || "--");
+    setText("currentLapTime", formatTime(car.currentLapTimeInMs));
+    setText("lastLapTime", formatTime(car.lastLapTimeInMs));
+    setText("sector1", formatSectorTime(car.sector1TimeMsPart, car.sector1TimeMinutesPart));
+    setText("sector2", formatSectorTime(car.sector2TimeMsPart, car.sector2TimeMinutesPart));
 
     updateStandings(data);
     updateQualiStandings();
@@ -1090,14 +1108,54 @@ function updateTopSpeedLeaderboard() {
 
 function updateTopSpeedCompareWidget() {
     const sessionEl = el("topSpeedSessionBest");
-    const lapEl = el("topSpeedLapPeak");
-    if (!sessionEl || !lapEl) return;
+    if (!sessionEl) return;
 
     const sessionBest = sessionTopSpeedByCar[playerCarIndex] || 0;
+    const lastLap = playerLastLapPeakSpeed;
+    const thisLap = playerLapPeakSpeed;
+
     sessionEl.textContent = sessionBest > 0 ? formatSpeedKmh(sessionBest) : "--";
 
-    const lapPeak = playerLapPeakSpeed;
-    lapEl.textContent = lapPeak > 0 ? formatSpeedKmh(lapPeak) : "--";
+    const lastLapEl = el("topSpeedLastLapPeak");
+    if (lastLapEl) lastLapEl.textContent = lastLap > 0 ? formatSpeedKmh(lastLap) : "--";
+
+    const lapEl = el("topSpeedLapPeak");
+    if (lapEl) lapEl.textContent = thisLap > 0 ? formatSpeedKmh(thisLap) : "--";
+
+    const lastLapDeltaEl = el("topSpeedLastLapDelta");
+    if (lastLapDeltaEl) {
+        if (lastLap > 0 && sessionBest > 0) {
+            const delta = Math.round(lastLap - sessionBest);
+            if (delta === 0) {
+                lastLapDeltaEl.textContent = "PB";
+                lastLapDeltaEl.className = "tsc-delta tsc-delta-pb";
+            } else {
+                lastLapDeltaEl.textContent = delta.toString();
+                lastLapDeltaEl.className = "tsc-delta tsc-delta-down";
+            }
+        } else {
+            lastLapDeltaEl.textContent = "";
+            lastLapDeltaEl.className = "tsc-delta";
+        }
+    }
+
+    const thisLapDeltaEl = el("topSpeedThisLapDelta");
+    if (thisLapDeltaEl) {
+        if (thisLap > 0 && lastLap > 0) {
+            const delta = Math.round(thisLap - lastLap);
+            const sign = delta >= 0 ? "+" : "";
+            thisLapDeltaEl.textContent = sign + delta + " vs last";
+            thisLapDeltaEl.className = "tsc-delta " + (delta >= 0 ? "tsc-delta-up" : "tsc-delta-down");
+        } else if (thisLap > 0 && sessionBest > 0) {
+            const delta = Math.round(thisLap - sessionBest);
+            const sign = delta >= 0 ? "+" : "";
+            thisLapDeltaEl.textContent = sign + delta + " vs best";
+            thisLapDeltaEl.className = "tsc-delta " + (delta >= 0 ? "tsc-delta-up" : "tsc-delta-down");
+        } else {
+            thisLapDeltaEl.textContent = "LIVE";
+            thisLapDeltaEl.className = "tsc-delta tsc-delta-neutral";
+        }
+    }
 }
 
 function updateTopSpeedWidgets() {
@@ -1197,8 +1255,10 @@ function updateEvent(data, header) {
         entry.served = true;
     }
 
-    events.unshift(entry);
-    if (events.length > maxEvents) events.length = maxEvents;
+    if (eventFilter[code] !== false) {
+        events.unshift(entry);
+        if (events.length > maxEvents) events.length = maxEvents;
+    }
     renderEvents();
 }
 
@@ -1276,15 +1336,19 @@ function updateStandings(lapDataPacket) {
     const rows = [];
     for (let i = 0; i < items.length; i++) {
         const ld = items[i];
-        if (ld.resultStatus < 2) continue; // inactive
+        if (ld.resultStatus < 2) continue;
+        const statusCar = lastCarStatusItems?.[i];
+        const visualCompound = statusCar?.visualTyreCompound ?? -1;
+        const tyreAge = statusCar?.tyresAgeLaps ?? null;
         rows.push({
             idx: i,
             pos: ld.carPosition,
             name: participantNames[i] || `Car ${i}`,
-            lap: ld.currentLapNum,
             lastLap: formatTime(ld.lastLapTimeInMs),
             gapMs: ld.deltaToRaceLeaderMinutesPart * 60000 + ld.deltaToRaceLeaderMsPart,
             pitStatus: PIT_STATUS[ld.pitStatus] || "",
+            visualCompound,
+            tyreAge,
             isPlayer: i === playerCarIndex,
         });
     }
@@ -1292,14 +1356,19 @@ function updateStandings(lapDataPacket) {
     rows.sort((a, b) => a.pos - b.pos);
 
     const tbody = el("standingsBody");
+    if (!tbody) return;
     tbody.innerHTML = rows.map(r => {
         const gap = r.pos === 1 ? "Leader" : formatTime(r.gapMs);
+        const compInfo = getVisualCompoundInfo(r.visualCompound);
+        const abbr = getCompoundAbbr(compInfo.name);
+        const ageStr = r.tyreAge !== null && r.tyreAge >= 0 ? r.tyreAge : "";
+        const tyreBadge = `<span class="standings-tyre-wrap"><span class="tyreset-badge tyreset-badge-sm ${compInfo.css}">${abbr}</span><span class="standings-tyre-age">${ageStr}</span></span>`;
         return `<tr class="${r.isPlayer ? "player-row" : ""}">
             <td>${r.pos}</td>
             <td>${r.name}</td>
-            <td>${r.lap}</td>
-            <td>${r.lastLap}</td>
             <td>${gap}</td>
+            <td>${r.lastLap}</td>
+            <td class="standings-tyre-cell">${tyreBadge}</td>
             <td class="pit-status">${r.pitStatus}</td>
         </tr>`;
     }).join("");
@@ -1323,6 +1392,11 @@ function getVisualCompoundInfo(visualId) {
     return map[visualId] || { name: `ID:${visualId}`, css: "", dot: "#888" };
 }
 
+function getCompoundAbbr(name) {
+    const map = { "Super Soft": "SS", "Soft": "S", "Medium": "M", "Hard": "H", "Dry": "D", "Inter": "I", "Wet": "W" };
+    return map[name] || (name[0] || "?");
+}
+
 function updateTyreSets(data) {
     if (data.carIdx !== playerCarIndex) return;
 
@@ -1330,48 +1404,95 @@ function updateTyreSets(data) {
     const fittedIdx = data.fittedIdx;
     if (!sets || sets.length === 0) return;
 
-    const groups = {};
-    for (let i = 0; i < sets.length; i++) {
-        const s = sets[i];
-        const info = getVisualCompoundInfo(s.visualTyreCompound);
-        const key = info.name;
-        if (!groups[key]) groups[key] = { info, items: [] };
-        groups[key].items.push({ ...s, idx: i, isFitted: i === fittedIdx, compoundInfo: info });
-    }
+    const compoundOrder = ["Super Soft", "Soft", "Medium", "Hard", "Dry", "Inter", "Wet"];
 
-    const fittedSet = sets[fittedIdx];
-    const fittedInfo = fittedSet ? getVisualCompoundInfo(fittedSet.visualTyreCompound) : null;
+    const annotated = sets.map((s, i) => ({
+        ...s,
+        idx: i,
+        isFitted: i === fittedIdx,
+        compoundInfo: getVisualCompoundInfo(s.visualTyreCompound),
+    }));
+
+    // Update fitted banner
+    const fittedSet = annotated[fittedIdx];
     const fittedEl = el("fittedCompound");
-    if (fittedInfo) {
-        fittedEl.innerHTML = `<span style="color:${fittedInfo.dot}">●</span> ${fittedInfo.name} (${fittedSet.wear}% wear, ${fittedSet.lifeSpan} laps left)`;
+    if (fittedEl && fittedSet) {
+        const info = fittedSet.compoundInfo;
+        const abbr = getCompoundAbbr(info.name);
+        const wearColor = fittedSet.wear > 60 ? "var(--danger)" : fittedSet.wear > 30 ? "var(--warning)" : "var(--safe)";
+        fittedEl.innerHTML = `<span class="tyreset-badge ${info.css}">${abbr}</span>`
+            + `<span>${info.name}</span>`
+            + `<span style="color:${wearColor}">${fittedSet.wear}% worn</span>`
+            + `<span style="color:var(--text-dim)">${fittedSet.lifeSpan}L left</span>`;
     }
 
     const container = el("tyreSetGroups");
-    const order = ["Super Soft", "Soft", "Medium", "Hard", "Dry", "Inter", "Wet"];
+    if (!container) return;
+
+    // Split into available (incl. fitted) and used sets
+    const available = annotated.filter(s => s.available || s.isFitted);
+    const used = annotated.filter(s => !s.available && !s.isFitted);
+
+    // Sort available: by compound order, then by wear ascending (freshest first)
+    available.sort((a, b) => {
+        const ai = compoundOrder.indexOf(a.compoundInfo.name);
+        const bi = compoundOrder.indexOf(b.compoundInfo.name);
+        if (ai !== bi) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+        return a.wear - b.wear;
+    });
+
     let html = "";
 
-    for (const groupName of order) {
-        const g = groups[groupName];
-        if (!g) continue;
-        html += `<div class="tyreset-group">`;
-        html += `<div class="tyreset-group-title ${g.info.css}">${groupName} (${g.items.filter(x => x.available).length} avail.)</div>`;
-        for (const s of g.items) {
+    // --- Available section ---
+    if (available.length > 0) {
+        html += `<div class="tyreset-section">`;
+        html += `<div class="tyreset-section-header">`
+            + `<span class="tyreset-section-title">Available</span>`
+            + `<span class="tyreset-section-count">${available.length} set${available.length !== 1 ? "s" : ""}</span>`
+            + `</div>`;
+        for (const s of available) {
             const wearPct = s.wear;
-            const isFitted = s.isFitted;
-            const available = s.available;
-            const cls = isFitted ? "tyreset-item fitted" : available ? "tyreset-item" : "tyreset-item unavailable";
             const wearColor = wearPct > 60 ? "var(--danger)" : wearPct > 30 ? "var(--warning)" : "var(--safe)";
             const delta = s.lapDeltaTime;
             const deltaSign = delta > 0 ? "+" : "";
             const deltaCls = delta > 0 ? "positive" : delta < 0 ? "negative" : "zero";
-            const deltaText = delta !== 0 ? `${deltaSign}${(delta / 1000).toFixed(1)}s` : "base";
-            const tag = isFitted ? ' <span style="color:var(--accent-brand);font-weight:700;">FIT</span>' : "";
+            const deltaText = delta !== 0 ? `${deltaSign}${(delta / 1000).toFixed(1)}s` : "—";
+            const abbr = getCompoundAbbr(s.compoundInfo.name);
+            const cls = s.isFitted ? "tyreset-item fitted" : "tyreset-item";
             html += `<div class="${cls}">`;
-            html += `<span class="tyreset-compound-dot" style="background:${s.compoundInfo.dot}"></span>`;
+            html += `<span class="tyreset-badge ${s.compoundInfo.css}">${abbr}</span>`;
             html += `<div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div>`;
-            html += `<span class="tyreset-detail">${wearPct}% worn${tag}</span>`;
-            html += `<span class="tyreset-life">${s.lifeSpan}L / ${s.usableLife}L</span>`;
+            html += `<span class="tyreset-wear-pct" style="color:${wearColor}">${wearPct}%</span>`;
+            html += `<span class="tyreset-life">${s.lifeSpan}L</span>`;
             html += `<span class="tyreset-delta ${deltaCls}">${deltaText}</span>`;
+            if (s.isFitted) html += `<span class="tyreset-fitted-badge">ON</span>`;
+            html += `</div>`;
+        }
+        html += `</div>`;
+    }
+
+    // --- Used section ---
+    if (used.length > 0) {
+        // Sort used by compound order
+        used.sort((a, b) => {
+            const ai = compoundOrder.indexOf(a.compoundInfo.name);
+            const bi = compoundOrder.indexOf(b.compoundInfo.name);
+            return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+        });
+        html += `<div class="tyreset-section tyreset-section-used">`;
+        html += `<div class="tyreset-section-header">`
+            + `<span class="tyreset-section-title">Used</span>`
+            + `<span class="tyreset-section-count">${used.length} set${used.length !== 1 ? "s" : ""}</span>`
+            + `</div>`;
+        for (const s of used) {
+            const wearPct = s.wear;
+            const wearColor = wearPct > 60 ? "var(--danger)" : wearPct > 30 ? "var(--warning)" : "var(--safe)";
+            const abbr = getCompoundAbbr(s.compoundInfo.name);
+            html += `<div class="tyreset-item">`;
+            html += `<span class="tyreset-badge tyreset-badge-sm ${s.compoundInfo.css}">${abbr}</span>`;
+            html += `<div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div>`;
+            html += `<span class="tyreset-wear-pct">${wearPct}%</span>`;
+            html += `<span class="tyreset-life">${s.lifeSpan}L</span>`;
             html += `</div>`;
         }
         html += `</div>`;
@@ -1396,6 +1517,8 @@ function getPitTimeForTrack(trackId) {
 }
 
 function updatePitPredictor() {
+    const pitInput = el("pitTimeInput");
+    if (!pitInput) return;
     if (!lastLapDataPacket) return;
     const items = lastLapDataPacket.lapDataItems;
     if (!items) return;
@@ -1403,7 +1526,7 @@ function updatePitPredictor() {
     const playerLap = items[playerCarIndex];
     if (!playerLap || playerLap.resultStatus < 2) return;
 
-    const pitTimeSec = parseFloat(el("pitTimeInput").value) || getPitTimeForTrack(currentTrackId);
+    const pitTimeSec = parseFloat(pitInput.value) || getPitTimeForTrack(currentTrackId);
     const pitTimeMs = pitTimeSec * 1000;
 
     const sorted = [];
@@ -1435,7 +1558,7 @@ function updatePitPredictor() {
         }
     }
 
-    el("pitPredPos").textContent = predictedPos;
+    setText("pitPredPos", predictedPos);
 
     let carAhead = null;
     let carBehind = null;
@@ -1462,24 +1585,26 @@ function updatePitPredictor() {
     }
 
     if (carAhead) {
-        el("pitAheadName").textContent = carAhead.name;
-        el("pitAheadGap").textContent = `+${(carAhead.gapMs / 1000).toFixed(1)}s`;
+        setText("pitAheadName", carAhead.name);
+        setText("pitAheadGap", `+${(carAhead.gapMs / 1000).toFixed(1)}s`);
     } else {
-        el("pitAheadName").textContent = "Leader";
-        el("pitAheadGap").textContent = "--";
+        setText("pitAheadName", "Leader");
+        setText("pitAheadGap", "--");
     }
 
     if (carBehind) {
-        el("pitBehindName").textContent = carBehind.name;
-        el("pitBehindGap").textContent = `-${(carBehind.gapMs / 1000).toFixed(1)}s`;
+        setText("pitBehindName", carBehind.name);
+        setText("pitBehindGap", `-${(carBehind.gapMs / 1000).toFixed(1)}s`);
     } else {
-        el("pitBehindName").textContent = "No car behind";
-        el("pitBehindGap").textContent = "--";
+        setText("pitBehindName", "No car behind");
+        setText("pitBehindGap", "--");
     }
 }
 
 async function savePitTime() {
-    const val = parseFloat(el("pitTimeInput").value);
+    const pitInput = el("pitTimeInput");
+    if (!pitInput) return;
+    const val = parseFloat(pitInput.value);
     if (!val || val <= 0 || currentTrackId < 0) return;
     const trackName = TRACK_NAMES[currentTrackId] || `Track ${currentTrackId}`;
     try {
@@ -1490,8 +1615,8 @@ async function savePitTime() {
         });
         if (resp.ok) {
             pitTimesData[String(currentTrackId)] = { trackName, pitTimeSec: val };
-            el("pitSaveStatus").textContent = "Saved!";
-            setTimeout(() => { el("pitSaveStatus").textContent = ""; }, 2000);
+            setText("pitSaveStatus", "Saved!");
+            setTimeout(() => { setText("pitSaveStatus", ""); }, 2000);
         }
     } catch (e) {
         console.warn("Failed to save pit time:", e);
@@ -1565,6 +1690,7 @@ function updateQualiStandings() {
         const s1Ms = ld.sector1TimeMinutesPart * 60000 + ld.sector1TimeMsPart;
         const s2Ms = ld.sector2TimeMinutesPart * 60000 + ld.sector2TimeMsPart;
         const lapInvalid = ld.currentLapInvalid === 1;
+        const deltaMs = ld.driverStatus === 1 ? getLiveDeltaMs(i, ld) : null;
 
         rows.push({
             idx: i,
@@ -1576,6 +1702,7 @@ function updateQualiStandings() {
             s1Ms,
             s2Ms,
             lapInvalid,
+            deltaMs,
             isPlayer: i === playerCarIndex,
             driverStatus: ld.driverStatus,
         });
@@ -1614,18 +1741,84 @@ function updateQualiStandings() {
         const statusBadge = `<span class="qs-badge ${r.status.cls}">${r.status.label}</span>`;
         const invalidMark = r.lapInvalid && r.driverStatus === 1 ? ' <span class="qs-invalid">✗</span>' : "";
 
+        let deltaTd;
+        if (r.deltaMs !== null) {
+            const secs = r.deltaMs / 1000;
+            const sign = secs >= 0 ? "+" : "";
+            const formatted = sign + secs.toFixed(3);
+            const cls = r.lapInvalid ? "qs-sector-none" : secs < -0.0005 ? "qs-sector-up" : secs > 0.0005 ? "qs-sector-down" : "";
+            deltaTd = `<span class="${cls}">${formatted}</span>`;
+        } else {
+            deltaTd = `<span class="qs-sector-none">--</span>`;
+        }
+
         return `<tr class="${rowCls}">
             <td>${pos}</td>
             <td>${r.name}</td>
             <td>${bestLap}</td>
             <td class="qs-gap">${gap}</td>
-            <td>${r.status.label === "Flying" ? "L" + (lastLapDataPacket.lapDataItems[r.idx]?.currentLapNum || "") : "--"}</td>
+            <td class="qs-delta-pb">${deltaTd}</td>
             <td>${statusBadge}${invalidMark}</td>
             <td class="qs-sector">${s1Html}</td>
             <td class="qs-sector">${s2Html}</td>
             <td class="qs-sector">${s3Html}</td>
         </tr>`;
     }).join("");
+}
+
+/**
+ * Finds the best completed lap (by lapTimeInMs) from SessionHistory,
+ * excluding the current lap. Returns the history entry or null.
+ */
+function getBestPreviousLapEntry(carIdx, currentLapNum) {
+    const hist = sessionHistories[carIdx];
+    if (!hist || !hist.lapHistoryDataItems) return null;
+    let bestEntry = null;
+    let bestTime = 0;
+    for (let i = 0; i < hist.lapHistoryDataItems.length; i++) {
+        if (i + 1 === currentLapNum) continue;
+        const e = hist.lapHistoryDataItems[i];
+        if (!e || !e.lapTimeInMs) continue;
+        if (bestTime === 0 || e.lapTimeInMs < bestTime) {
+            bestTime = e.lapTimeInMs;
+            bestEntry = e;
+        }
+    }
+    return bestEntry;
+}
+
+/**
+ * Delta (ms) between current lap's committed sectors and the same sectors
+ * from the driver's previous best lap (fastest full lap, not best individual sectors).
+ * - sector 0 (in S1): nothing committed → null
+ * - sector 1 (in S2): S1 done → s1 − bestLapS1
+ * - sector 2 (in S3): S1+S2 done → (s1+s2) − (bestLapS1+bestLapS2)
+ */
+function getLiveDeltaMs(carIdx, ld) {
+    if (!ld || ld.driverStatus !== 1) return null;
+
+    const sector = ld.sector;
+    if (sector === 0) return null;
+
+    const bestLap = getBestPreviousLapEntry(carIdx, ld.currentLapNum);
+    if (!bestLap) return null;
+
+    const s1Actual = ld.sector1TimeMinutesPart * 60000 + ld.sector1TimeMsPart;
+    const blS1 = bestLap.sector1TimeMinutesPart * 60000 + bestLap.sector1TimeMsPart;
+
+    if (sector === 1) {
+        if (!s1Actual || !blS1) return null;
+        return s1Actual - blS1;
+    }
+
+    if (sector === 2) {
+        const s2Actual = ld.sector2TimeMinutesPart * 60000 + ld.sector2TimeMsPart;
+        const blS2 = bestLap.sector2TimeMinutesPart * 60000 + bestLap.sector2TimeMsPart;
+        if (!s1Actual || !s2Actual || !blS1 || !blS2) return null;
+        return (s1Actual + s2Actual) - (blS1 + blS2);
+    }
+
+    return null;
 }
 
 function updateGapBoard() {
@@ -1694,9 +1887,9 @@ function updateGapBoard() {
         if (playerTimeMs && timeMs) {
             const deltaMs = timeMs - playerTimeMs;
             if (deltaMs < 0) {
-                return { text: (deltaMs / 1000).toFixed(3), cls: "gap-cell-faster" };
+                return { text: (deltaMs / 1000).toFixed(3), cls: "gap-cell-slower" };
             } else if (deltaMs > 0) {
-                return { text: "+" + (deltaMs / 1000).toFixed(3), cls: "gap-cell-slower" };
+                return { text: "+" + (deltaMs / 1000).toFixed(3), cls: "gap-cell-faster" };
             }
             return { text: formatTime(timeMs), cls: "" };
         }

@@ -342,7 +342,7 @@
 
     <template id="tpl-standings">
         <div class="card"><h2 class="widget-title">Standings</h2>
-        <div class="standings-table-wrap"><table class="standings-table"><thead><tr><th>Pos</th><th>Driver</th><th>Lap</th><th>Last Lap</th><th>Gap</th><th>Pit</th></tr></thead><tbody id="standingsBody"></tbody></table></div></div>
+        <div class="standings-table-wrap"><table class="standings-table"><thead><tr><th>Pos</th><th>Driver</th><th>Gap</th><th>Last Lap</th><th class="standings-tyre-col">Tyre</th><th>Pit</th></tr></thead><tbody id="standingsBody"></tbody></table></div></div>
     </template>
 
     <template id="tpl-weather">
@@ -369,16 +369,32 @@
 
     <template id="tpl-topSpeedCompare">
         <div class="card ts-widget-card"><h2 class="widget-title">Top Speed Comparison</h2>
-        <div class="ts-widget-layout ts-compare-layout" id="topSpeedCompareLayout" data-ts-widget="compare">
-            <div class="ts-compare-grid">
-                <div class="ts-compare-block">
-                    <div class="ts-compare-label">Your best</div>
-                    <div class="ts-compare-value" id="topSpeedSessionBest">--</div>
+        <div class="tsc-layout" id="topSpeedCompareLayout" data-ts-widget="compare">
+            <div class="tsc-best-block">
+                <div class="tsc-label">SESSION BEST</div>
+                <div class="tsc-best-row">
+                    <span class="tsc-best-value" id="topSpeedSessionBest">--</span>
+                    <span class="tsc-unit">km/h</span>
                 </div>
-                <div class="ts-compare-divider" aria-hidden="true"></div>
-                <div class="ts-compare-block ts-compare-block-current">
-                    <div class="ts-compare-label">This lap</div>
-                    <div class="ts-compare-value" id="topSpeedLapPeak">--</div>
+            </div>
+            <div class="tsc-sep"></div>
+            <div class="tsc-laps-row">
+                <div class="tsc-lap-block">
+                    <div class="tsc-label">LAST LAP</div>
+                    <div class="tsc-lap-row">
+                        <span class="tsc-lap-value" id="topSpeedLastLapPeak">--</span>
+                        <span class="tsc-unit tsc-unit-sm">km/h</span>
+                    </div>
+                    <div class="tsc-delta" id="topSpeedLastLapDelta"></div>
+                </div>
+                <div class="tsc-vdivider" aria-hidden="true"></div>
+                <div class="tsc-lap-block tsc-lap-block-live">
+                    <div class="tsc-label">THIS LAP</div>
+                    <div class="tsc-lap-row">
+                        <span class="tsc-lap-value tsc-live-val" id="topSpeedLapPeak">--</span>
+                        <span class="tsc-unit tsc-unit-sm">km/h</span>
+                    </div>
+                    <div class="tsc-delta tsc-delta-neutral" id="topSpeedThisLapDelta">LIVE</div>
                 </div>
             </div>
         </div></div>
@@ -387,7 +403,7 @@
     <template id="tpl-qualiStandings">
         <div class="card"><h2 class="widget-title">Quali Standings</h2>
         <div class="standings-table-wrap"><table class="standings-table quali-table">
-            <thead><tr><th>Pos</th><th>Driver</th><th>Best Lap</th><th>Gap</th><th>Lap</th><th>Status</th><th>S1</th><th>S2</th><th>S3</th></tr></thead>
+            <thead><tr><th>Pos</th><th>Driver</th><th>Best Lap</th><th>Gap</th><th>Delta</th><th>Status</th><th class="qs-sector-hdr">S1</th><th class="qs-sector-hdr">S2</th><th class="qs-sector-hdr">S3</th></tr></thead>
             <tbody id="qualiStandingsBody"></tbody>
         </table></div></div>
     </template>
