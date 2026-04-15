@@ -33,6 +33,40 @@ const TRACK_NAMES = {
     41: "Zandvoort (R)"
 };
 
+/** Default pit lane loss (s) when no value is stored for a track. */
+const DEFAULT_PIT_TIME_SEC = 23.0;
+
+// Country codes for circuit flags (ISO 3166-1 alpha-2 → /assets/flags/<CC>.svg)
+const TRACK_FLAG_MAP = {
+    0:  "AU",  // Melbourne
+    2:  "CN",  // Shanghai
+    3:  "BH",  // Sakhir (Bahrain)
+    4:  "ES",  // Catalunya (Spain)
+    5:  "MC",  // Monaco
+    6:  "CA",  // Montreal (Canada)
+    7:  "GB",  // Silverstone (GB)
+    9:  "HU",  // Hungaroring
+    10: "BE",  // Spa (Belgium)
+    11: "IT",  // Monza
+    12: "SG",  // Singapore
+    13: "JP",  // Suzuka
+    14: "AE",  // Abu Dhabi
+    15: "US",  // Texas (USA)
+    16: "BR",  // Brazil
+    17: "AT",  // Austria
+    19: "MX",  // Mexico
+    20: "AZ",  // Baku (Azerbaijan)
+    26: "NL",  // Zandvoort
+    27: "IT",  // Imola
+    29: "SA",  // Jeddah (Saudi Arabia)
+    30: "US",  // Miami (USA)
+    31: "US",  // Las Vegas (USA)
+    32: "QA",  // Losail (Qatar)
+    39: "GB",  // Silverstone (R)
+    40: "AT",  // Austria (R)
+    41: "NL",  // Zandvoort (R)
+};
+
 // Session types — приложение Session Types (m_sessionType)
 const SESSION_TYPES = {
     0: "Unknown",
@@ -291,6 +325,20 @@ const TEAM_NAMES = {
     193: "McLaren '24", 194: "Sauber '24",
 };
 
+/** Accent for Gap Ring name colour (teamId → hex) */
+const TEAM_ACCENT_COLORS = {
+    0: "#00d2be", 1: "#e10600", 2: "#3671c6", 3: "#64c4ff", 4: "#229971",
+    5: "#ff8700", 6: "#6692ff", 7: "#b6babd", 8: "#ff8000", 9: "#52e252",
+    41: "#a8a8a8", 104: "#c0c0c0", 129: "#805eec", 142: "#e8e8e8", 154: "#e8e8e8",
+    185: "#00d2be", 186: "#e10600", 187: "#3671c6", 188: "#64c4ff", 189: "#229971",
+    190: "#ff8700", 191: "#6692ff", 192: "#b6babd", 193: "#ff8000", 194: "#52e252",
+};
+
+function teamAccentColor(teamId) {
+    if (teamId == null || teamId < 0) return "#94a3b8";
+    return TEAM_ACCENT_COLORS[teamId] || "#94a3b8";
+}
+
 /** m_platform — Participants / Lobby */
 const PLATFORM_NAMES = {
     1: "Steam", 3: "PlayStation", 4: "Xbox", 6: "Origin", 255: "Unknown",
@@ -310,6 +358,8 @@ const DRSD_REASON_NAMES = {
 
 let playerCarIndex = 0;
 let participantNames = [];
+/** @type {number[]} parallel to participantNames */
+let participantTeamIds = [];
 let lastCarStatusItems = null;
 let maxEvents = 500;
 let events = [];
@@ -349,6 +399,124 @@ function closeEventFilterPanel() {
         _eventFilterPanel.remove();
         _eventFilterPanel = null;
     }
+}
+
+let _pitTimesPanel = null;
+let _pitTimesPanelDocCloseBound = false;
+
+function closePitTimesPanel() {
+    if (_pitTimesPanel) {
+        _pitTimesPanel.remove();
+        _pitTimesPanel = null;
+    }
+}
+
+function syncMainPitInputFromTrack() {
+    const pitInput = el("pitTimeInput");
+    if (!pitInput || typeof getPitTimeForTrack !== "function" || typeof currentTrackId === "undefined") return;
+    pitInput.value = getPitTimeForTrack(currentTrackId).toFixed(1);
+}
+
+async function saveAllPitTimesFromPanel(panel, statusEl) {
+    const inputs = [...panel.querySelectorAll("input[data-track-id]")];
+    let ok = 0;
+    let fail = 0;
+    for (const inp of inputs) {
+        const tid = inp.dataset.trackId;
+        const val = parseFloat(inp.value);
+        if (!Number.isFinite(val) || val <= 0) continue;
+        const trackName = TRACK_NAMES[Number(tid)] || `Track ${tid}`;
+        try {
+            const resp = await fetch(`/api/pit-times/${tid}`, {
+                method: "PUT",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({ trackName, pitTimeSec: val }),
+            });
+            if (resp.ok) {
+                pitTimesData[tid] = { trackName, pitTimeSec: val };
+                ok++;
+            } else {
+                fail++;
+            }
+        } catch (_) {
+            fail++;
+        }
+    }
+    if (statusEl) {
+        if (fail === 0 && ok > 0) statusEl.textContent = "Saved";
+        else if (ok > 0 && fail > 0) statusEl.textContent = "Partial save";
+        else if (ok === 0 && fail > 0) statusEl.textContent = "Save failed";
+        else statusEl.textContent = "";
+        setTimeout(() => { statusEl.textContent = ""; }, 2800);
+    }
+    syncMainPitInputFromTrack();
+    if (typeof updatePitPredictor === "function") updatePitPredictor();
+}
+
+function initPitTimesPanel() {
+    const btn = document.getElementById("btnPitTimesSettings");
+    if (!btn || btn.dataset.pitTimesWired === "1") return;
+    btn.dataset.pitTimesWired = "1";
+
+    btn.addEventListener("click", async (e) => {
+        e.stopPropagation();
+        if (_pitTimesPanel) {
+            closePitTimesPanel();
+            return;
+        }
+
+        try {
+            await loadPitTimes();
+        } catch (_) { /* ignore */ }
+
+        const panel = document.createElement("div");
+        panel.className = "pit-times-panel";
+        _pitTimesPanel = panel;
+
+        const trackIds = Object.keys(TRACK_NAMES).map(Number).sort((a, b) => a - b);
+        let html = '<div class="pit-times-panel-header">Pit lane loss (seconds)</div>'
+            + '<div class="pit-times-list">';
+        for (const id of trackIds) {
+            const name = TRACK_NAMES[id];
+            const sec = getPitTimeForTrack(id);
+            const curCls = id === currentTrackId ? " pit-times-row-current" : "";
+            const escTitle = name.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
+            html += `<div class="pit-times-row${curCls}"><span class="pit-times-track" title="${escTitle}">${name}</span>`
+                + `<input type="number" class="pit-times-input" data-track-id="${id}" step="0.1" min="12" max="50" value="${sec.toFixed(1)}"></div>`;
+        }
+        html += "</div>";
+        html += "<div class=\"pit-times-footer\"><span class=\"pit-times-save-status\" id=\"pitTimesBulkStatus\"></span>"
+            + "<button type=\"button\" class=\"btn btn-small btn-primary\" id=\"btnPitTimesSaveAll\">Save all</button></div>";
+        panel.innerHTML = html;
+
+        document.body.appendChild(panel);
+
+        const rect = btn.getBoundingClientRect();
+        panel.style.top = (rect.bottom + 4) + "px";
+        const pw = panel.offsetWidth;
+        let left = Math.max(4, rect.right - pw);
+        if (left + pw > window.innerWidth - 4) left = window.innerWidth - pw - 4;
+        panel.style.left = left + "px";
+
+        panel.addEventListener("click", (ev) => ev.stopPropagation());
+
+        panel.querySelector("#btnPitTimesSaveAll")?.addEventListener("click", async () => {
+            const st = panel.querySelector("#pitTimesBulkStatus");
+            if (st) st.textContent = "…";
+            await saveAllPitTimesFromPanel(panel, st);
+        });
+
+        if (!_pitTimesPanelDocCloseBound) {
+            _pitTimesPanelDocCloseBound = true;
+            document.addEventListener("click", (ev) => {
+                if (!_pitTimesPanel) return;
+                const b = document.getElementById("btnPitTimesSettings");
+                if (b && (ev.target === b || b.contains(ev.target))) return;
+                if (_pitTimesPanel.contains(ev.target)) return;
+                closePitTimesPanel();
+            });
+        }
+    });
 }
 
 let _tyreInfoPanel = null;
@@ -468,6 +636,8 @@ let currentTrackId = -1;
 let pitTimesData = {};
 let lastLapDataPacket = null;
 let lastSessionPacket = null;
+/** Max lapDistance (m) seen this session — fallback when trackLength missing */
+let gapRingObservedMaxLapDist = 0;
 const sessionHistories = {};
 const GAP_BOARD_LAPS = 4;
 
@@ -634,6 +804,22 @@ function formatTime(ms) {
     return min > 0 ? `${min}:${sec.toFixed(3).padStart(6, "0")}` : `${sec.toFixed(3)}`;
 }
 
+/** Lap-style clock: MM:SS.mmm, or HH:MM:SS.mmm when >= 1h (server lapTime is seconds). */
+function formatLapClock(ms) {
+    if (ms == null || ms === 0) return "--";
+    const x = Math.round(ms);
+    const msPart = x % 1000;
+    let t = Math.floor(x / 1000);
+    const s = t % 60;
+    t = Math.floor(t / 60);
+    const m = t % 60;
+    const h = Math.floor(t / 60);
+    const p2 = (n) => String(n).padStart(2, "0");
+    const p3 = (n) => String(n).padStart(3, "0");
+    if (h > 0) return `${p2(h)}:${p2(m)}:${p2(s)}.${p3(msPart)}`;
+    return `${p2(m)}:${p2(s)}.${p3(msPart)}`;
+}
+
 function formatSectorTime(msPart, minutesPart) {
     if (msPart === 0 && minutesPart === 0) return "--";
     const totalMs = minutesPart * 60000 + msPart;
@@ -691,11 +877,23 @@ function updateSession(data) {
             lastPlayerCarTelemetry = null;
             pedalHistoryT.length = 0;
             pedalHistoryB.length = 0;
+            gapRingObservedMaxLapDist = 0;
         }
         lastSessionLinkId = linkId;
     }
 
     setText("trackName", TRACK_NAMES[data.trackId] || `Track ${data.trackId}`);
+    const flagEl = el("trackFlag");
+    if (flagEl) {
+        const cc = TRACK_FLAG_MAP[data.trackId];
+        if (cc) {
+            flagEl.src = `/assets/flags/${cc}.svg`;
+            flagEl.alt = cc;
+            flagEl.hidden = false;
+        } else {
+            flagEl.hidden = true;
+        }
+    }
     setText("sessionType", SESSION_TYPES[data.sessionType] || `Type ${data.sessionType}`);
     setText("weather", WEATHER_NAMES[data.weather] || "Unknown");
 
@@ -1003,6 +1201,7 @@ function updateLapData(data) {
     updateQualiStandings();
     updatePitPredictor();
     updateGapBoard();
+    updateGapRing();
 }
 
 function updateCarDamage(data) {
@@ -1021,13 +1220,16 @@ function updateCarDamage(data) {
 
 function updateParticipants(data) {
     participantNames = [];
+    participantTeamIds = [];
     if (data.participants) {
         for (let i = 0; i < data.participants.length; i++) {
             const p = data.participants[i];
             participantNames[i] = p?.name || `Car ${i}`;
+            participantTeamIds[i] = p?.teamId != null ? p.teamId : -1;
         }
     }
     updateTopSpeedWidgets();
+    updateGapRing();
 }
 
 function formatSpeedKmh(v) {
@@ -1044,7 +1246,7 @@ function refreshTopSpeedLayoutModes() {
     document.querySelectorAll("[data-ts-widget]").forEach(root => {
         const w = root.clientWidth;
         const isCompare = root.getAttribute("data-ts-widget") === "compare";
-        // Compare stays horizontal at narrow widths; leaderboard still stacks below 280px.
+        // Compare widget: column vs row via CSS @container on .tsc-layout. Leaderboard stacks below 280px.
         const compact = !isCompare && w > 0 && w < 280;
         applyTopSpeedLayoutMode(root, compact);
     });
@@ -1107,17 +1309,17 @@ function updateTopSpeedLeaderboard() {
 }
 
 function updateTopSpeedCompareWidget() {
-    const sessionEl = el("topSpeedSessionBest");
-    if (!sessionEl) return;
+    const lastLapEl = el("topSpeedLastLapPeak");
+    if (!lastLapEl) return;
 
     const sessionBest = sessionTopSpeedByCar[playerCarIndex] || 0;
     const lastLap = playerLastLapPeakSpeed;
     const thisLap = playerLapPeakSpeed;
 
-    sessionEl.textContent = sessionBest > 0 ? formatSpeedKmh(sessionBest) : "--";
+    lastLapEl.textContent = lastLap > 0 ? formatSpeedKmh(lastLap) : "--";
 
-    const lastLapEl = el("topSpeedLastLapPeak");
-    if (lastLapEl) lastLapEl.textContent = lastLap > 0 ? formatSpeedKmh(lastLap) : "--";
+    const sessionEl = el("topSpeedSessionBest");
+    if (sessionEl) sessionEl.textContent = sessionBest > 0 ? formatSpeedKmh(sessionBest) : "--";
 
     const lapEl = el("topSpeedLapPeak");
     if (lapEl) lapEl.textContent = thisLap > 0 ? formatSpeedKmh(thisLap) : "--";
@@ -1152,8 +1354,8 @@ function updateTopSpeedCompareWidget() {
             thisLapDeltaEl.textContent = sign + delta + " vs best";
             thisLapDeltaEl.className = "tsc-delta " + (delta >= 0 ? "tsc-delta-up" : "tsc-delta-down");
         } else {
-            thisLapDeltaEl.textContent = "LIVE";
-            thisLapDeltaEl.className = "tsc-delta tsc-delta-neutral";
+            thisLapDeltaEl.textContent = "";
+            thisLapDeltaEl.className = "tsc-delta";
         }
     }
 }
@@ -1218,7 +1420,7 @@ function updateEvent(data, header) {
             if (d.vehicleIdx !== undefined) {
                 detail = participantNames[d.vehicleIdx] || `Car ${d.vehicleIdx}`;
             }
-            if (d.lapTime) detail += ` ${d.lapTime.toFixed(3)}s`;
+            if (d.lapTime) detail += ` ${formatLapClock(d.lapTime * 1000)}`;
             if (d.speed) detail += ` ${d.speed.toFixed(1)} km/h`;
             if (d.overtakingVehicleIdx !== undefined && d.beingOvertakenVehicleIdx !== undefined) {
                 const overtaker = participantNames[d.overtakingVehicleIdx] || `Car ${d.overtakingVehicleIdx}`;
@@ -1512,8 +1714,9 @@ async function loadPitTimes() {
 
 function getPitTimeForTrack(trackId) {
     const entry = pitTimesData[String(trackId)];
-    if (entry && entry.pitTimeSec) return entry.pitTimeSec;
-    return 23.0;
+    if (entry && entry.pitTimeSec != null && Number.isFinite(Number(entry.pitTimeSec)))
+        return Number(entry.pitTimeSec);
+    return DEFAULT_PIT_TIME_SEC;
 }
 
 function updatePitPredictor() {
@@ -1526,7 +1729,7 @@ function updatePitPredictor() {
     const playerLap = items[playerCarIndex];
     if (!playerLap || playerLap.resultStatus < 2) return;
 
-    const pitTimeSec = parseFloat(pitInput.value) || getPitTimeForTrack(currentTrackId);
+    const pitTimeSec = parseFloat(pitInput.value) || getPitTimeForTrack(currentTrackId) || DEFAULT_PIT_TIME_SEC;
     const pitTimeMs = pitTimeSec * 1000;
 
     const sorted = [];
@@ -1819,6 +2022,297 @@ function getLiveDeltaMs(carIdx, ld) {
     }
 
     return null;
+}
+
+function escapeXmlText(s) {
+    return String(s)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;");
+}
+
+function driverAbbrFromName(fullName) {
+    if (!fullName || typeof fullName !== "string") return "?";
+    const parts = fullName.trim().split(/\s+/).filter(Boolean);
+    if (parts.length === 0) return "?";
+    const last = parts[parts.length - 1];
+    return (last.length <= 3 ? last : last.slice(0, 3)).toUpperCase();
+}
+
+function formatGapRingOuterMs(ms, isLeader) {
+    if (isLeader) return "—";
+    if (ms == null || ms <= 0) return "—";
+    return "+" + (ms / 1000).toFixed(3);
+}
+
+function formatGapRingIntervalMs(ms, isLeader) {
+    if (isLeader) return "LEAD";
+    if (ms == null || ms <= 0) return "—";
+    return "+" + (ms / 1000).toFixed(3);
+}
+
+function normalizeLapDistanceMeters(d, lapLen) {
+    if (!Number.isFinite(d) || lapLen <= 0) return 0;
+    let x = d % lapLen;
+    if (x < 0) x += lapLen;
+    if (x < 0) x = 0;
+    if (x >= lapLen) x = lapLen - 1e-6;
+    return x;
+}
+
+/** 12 o’clock = lap distance 0 (start/finish) */
+function lapDistanceToAngleRad(lapDistNorm, lapLen) {
+    const t = lapLen > 0 ? lapDistNorm / lapLen : 0;
+    return -Math.PI / 2 + t * 2 * Math.PI;
+}
+
+function getGapRingLapLengthMeters(items, activeIdxs) {
+    const sp = lastSessionPacket;
+    const tl = sp?.trackLength;
+    if (tl != null && tl > 200) return tl;
+
+    const s3 = sp?.sector3LapDistanceStart;
+    if (s3 != null && s3 > 200) return Math.max(s3 / 0.38, 3500);
+
+    for (const i of activeIdxs) {
+        const d = items[i]?.lapDistance;
+        if (d != null && d > gapRingObservedMaxLapDist) gapRingObservedMaxLapDist = d;
+    }
+    return Math.max(gapRingObservedMaxLapDist * 1.06, 4500);
+}
+
+function updateGapRing() {
+    const svg = el("gapRingSvg");
+    const elAheadName = el("gapRingAheadName");
+    const elAheadGap = el("gapRingAheadGap");
+    const elPlayer = el("gapRingPlayer");
+    const elBehindGap = el("gapRingBehindGap");
+    const elBehindName = el("gapRingBehindName");
+    if (!svg && !elPlayer) return;
+
+    if (!lastLapDataPacket) {
+        if (svg) svg.innerHTML = "";
+        if (elAheadName) {
+            elAheadName.innerHTML = "";
+            elAheadName.style.removeProperty("color");
+        }
+        if (elAheadGap) {
+            elAheadGap.innerHTML = "";
+            elAheadGap.style.removeProperty("color");
+        }
+        if (elPlayer) elPlayer.innerHTML = '<span class="gap-ring-c-dim">Waiting…</span>';
+        if (elBehindGap) {
+            elBehindGap.innerHTML = "";
+            elBehindGap.style.removeProperty("color");
+        }
+        if (elBehindName) {
+            elBehindName.innerHTML = "";
+            elBehindName.style.removeProperty("color");
+        }
+        return;
+    }
+
+    const items = lastLapDataPacket.lapDataItems;
+    if (!items) return;
+
+    const sorted = [];
+    const activeIdxs = [];
+    for (let i = 0; i < items.length; i++) {
+        const ld = items[i];
+        if (ld.resultStatus < 2) continue;
+        activeIdxs.push(i);
+        const gapLeaderMs = ld.deltaToRaceLeaderMinutesPart * 60000 + ld.deltaToRaceLeaderMsPart;
+        const gapAheadMs = ld.deltaToCarInFrontMinutesPart * 60000 + ld.deltaToCarInFrontMsPart;
+        sorted.push({
+            idx: i,
+            pos: ld.carPosition,
+            name: participantNames[i] || `Car ${i}`,
+            gapLeaderMs,
+            gapAheadMs,
+            currentLapNum: ld.currentLapNum,
+            isPlayer: i === playerCarIndex,
+        });
+    }
+    sorted.sort((a, b) => a.pos - b.pos);
+    if (sorted.length === 0) {
+        if (svg) svg.innerHTML = "";
+        if (elAheadName) {
+            elAheadName.innerHTML = "";
+            elAheadName.style.removeProperty("color");
+        }
+        if (elAheadGap) {
+            elAheadGap.innerHTML = "";
+            elAheadGap.style.removeProperty("color");
+        }
+        if (elPlayer) elPlayer.innerHTML = '<span class="gap-ring-c-dim">No data</span>';
+        if (elBehindGap) {
+            elBehindGap.innerHTML = "";
+            elBehindGap.style.removeProperty("color");
+        }
+        if (elBehindName) {
+            elBehindName.innerHTML = "";
+            elBehindName.style.removeProperty("color");
+        }
+        return;
+    }
+
+    const leaderLap = items[sorted[0].idx].currentLapNum || 0;
+    const lapLen = getGapRingLapLengthMeters(items, activeIdxs);
+    const n = sorted.length;
+    const fontOuter = n > 16 ? 6.5 : n > 12 ? 7.5 : 8.5;
+    const fontName = n > 16 ? 8 : n > 12 ? 9 : 10;
+    const fontInner = n > 16 ? 6.5 : n > 12 ? 7.5 : 8.5;
+
+    /** Driver dots + track ring (smaller ring; same radius for both). */
+    const R_DOT = 76;
+    /** Gap to leader / interval labels — further from dots than before */
+    const R_OUTER = R_DOT + 38;
+    const R_NAME = R_DOT + 14;
+    const R_INNER = R_DOT - 24;
+    /** When two cars share almost the same track angle, fan them slightly along the arc (r fixed). */
+    const ANG_STACK_RAD = 0.052;
+    const angBucket = new Map();
+    function stackIndexForAngle(ang) {
+        const key = Math.round(ang / 0.04);
+        const c = angBucket.get(key) || 0;
+        angBucket.set(key, c + 1);
+        return c;
+    }
+
+    const placed = [];
+    for (const d of sorted) {
+        const ld = items[d.idx];
+        const lapDistNorm = normalizeLapDistanceMeters(ld.lapDistance, lapLen);
+        const angRaw = lapDistanceToAngleRad(lapDistNorm, lapLen);
+        const stack = stackIndexForAngle(angRaw);
+        const angDraw = angRaw + stack * ANG_STACK_RAD;
+        const cos = Math.cos(angDraw);
+        const sin = Math.sin(angDraw);
+        placed.push({ d, cos, sin });
+    }
+
+    let paths = "";
+    paths += `<circle cx="0" cy="0" r="${R_DOT}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="6" />`;
+    paths += `<line x1="0" y1="-46" x2="0" y2="-80" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" stroke-linecap="round" />`;
+    paths += `<text x="0" y="-84" class="gap-ring-sf" font-size="8" fill="rgba(255,255,255,0.4)" text-anchor="middle" dominant-baseline="auto">S/F</text>`;
+
+    for (const { cos, sin } of placed) {
+        const cx = cos * R_DOT;
+        const cy = sin * R_DOT;
+        paths += `<line x1="0" y1="0" x2="${cx}" y2="${cy}" class="gap-ring-spoke" stroke="rgba(255,255,255,0.09)" stroke-width="0.5" />`;
+    }
+
+    for (const { d, cos, sin } of placed) {
+        const teamColor = teamAccentColor(participantTeamIds[d.idx]);
+        const cx = cos * R_DOT;
+        const cy = sin * R_DOT;
+        const rDotPx = d.isPlayer ? 5.5 : 4.5;
+        const sw = d.isPlayer ? 1.8 : 1.1;
+        paths += `<circle cx="${cx}" cy="${cy}" r="${rDotPx}" fill="${teamColor}" fill-opacity="0.92" stroke="rgba(255,255,255,0.9)" stroke-width="${sw}" />`;
+    }
+
+    for (const { d, cos, sin } of placed) {
+        const lapsDown = leaderLap - (d.currentLapNum || 0);
+        const lapSuffix = lapsDown > 0 ? ` ${lapsDown}L` : "";
+
+        const teamColor = teamAccentColor(participantTeamIds[d.idx]);
+        const isLeader = d.pos === 1;
+        const outerText = formatGapRingOuterMs(d.gapLeaderMs, isLeader);
+        const innerText = formatGapRingIntervalMs(d.gapAheadMs, isLeader);
+
+        const ox = cos * R_OUTER;
+        const oy = sin * R_OUTER;
+        const mx = cos * R_NAME;
+        const my = sin * R_NAME;
+        const ix = cos * R_INNER;
+        const iy = sin * R_INNER;
+
+        const nameCls = d.isPlayer ? "gap-ring-txt-name gap-ring-txt-player" : "gap-ring-txt-name";
+        paths += `<text x="${ox}" y="${oy}" class="gap-ring-txt-outer" font-size="${fontOuter}">${escapeXmlText(outerText)}</text>`;
+        paths += `<text x="${mx}" y="${my}" class="${nameCls}" fill="${teamColor}" font-size="${fontName}" font-weight="600">${escapeXmlText(driverAbbrFromName(d.name) + lapSuffix)}</text>`;
+        paths += `<text x="${ix}" y="${iy}" class="gap-ring-txt-inner" font-size="${fontInner}">${escapeXmlText(innerText)}</text>`;
+    }
+
+    if (svg) svg.innerHTML = paths;
+
+    if (!elPlayer) return;
+
+    const pi = sorted.findIndex(x => x.isPlayer);
+    if (pi < 0) {
+        if (elAheadName) {
+            elAheadName.innerHTML = "";
+            elAheadName.style.removeProperty("color");
+        }
+        if (elAheadGap) {
+            elAheadGap.innerHTML = "";
+            elAheadGap.style.removeProperty("color");
+        }
+        elPlayer.innerHTML = '<span class="gap-ring-c-dim">No player car</span>';
+        if (elBehindGap) {
+            elBehindGap.innerHTML = "";
+            elBehindGap.style.removeProperty("color");
+        }
+        if (elBehindName) {
+            elBehindName.innerHTML = "";
+            elBehindName.style.removeProperty("color");
+        }
+        return;
+    }
+
+    const p = sorted[pi];
+    const ahead = pi > 0 ? sorted[pi - 1] : null;
+    const behind = pi < n - 1 ? sorted[pi + 1] : null;
+    const pLd = items[p.idx];
+    const aheadMs = p.pos === 1 ? null : (pLd.deltaToCarInFrontMinutesPart * 60000 + pLd.deltaToCarInFrontMsPart);
+    const behindMs = behind
+        ? (items[behind.idx].deltaToCarInFrontMinutesPart * 60000 + items[behind.idx].deltaToCarInFrontMsPart)
+        : null;
+
+    const aheadTeamColor = ahead ? teamAccentColor(participantTeamIds[ahead.idx]) : null;
+    const behindTeamColor = behind ? teamAccentColor(participantTeamIds[behind.idx]) : null;
+
+    if (elAheadName) {
+        if (ahead) {
+            elAheadName.textContent = `P${ahead.pos} ${driverAbbrFromName(ahead.name)}`;
+            elAheadName.style.color = aheadTeamColor;
+        } else {
+            elAheadName.innerHTML = '<span class="gap-ring-c-dim">Leader</span>';
+            elAheadName.style.removeProperty("color");
+        }
+    }
+
+    if (elAheadGap) {
+        if (ahead && aheadMs != null && aheadMs >= 0) {
+            elAheadGap.textContent = `-${(aheadMs / 1000).toFixed(3)}`;
+            elAheadGap.style.color = aheadTeamColor;
+        } else {
+            elAheadGap.innerHTML = '<span class="gap-ring-c-dim">—</span>';
+            elAheadGap.style.removeProperty("color");
+        }
+    }
+
+    elPlayer.textContent = `P${p.pos} ${driverAbbrFromName(p.name)}`;
+
+    if (elBehindGap) {
+        if (behind && behindMs != null && behindMs >= 0) {
+            elBehindGap.textContent = `+${(behindMs / 1000).toFixed(3)}`;
+            elBehindGap.style.color = behindTeamColor;
+        } else {
+            elBehindGap.innerHTML = '<span class="gap-ring-c-dim">—</span>';
+            elBehindGap.style.removeProperty("color");
+        }
+    }
+
+    if (elBehindName) {
+        if (behind) {
+            elBehindName.textContent = `P${behind.pos} ${driverAbbrFromName(behind.name)}`;
+            elBehindName.style.color = behindTeamColor;
+        } else {
+            elBehindName.innerHTML = '<span class="gap-ring-c-dim">—</span>';
+            elBehindName.style.removeProperty("color");
+        }
+    }
 }
 
 function updateGapBoard() {

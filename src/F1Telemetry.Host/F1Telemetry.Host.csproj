@@ -31,4 +31,15 @@
           SkipUnchangedFiles="true" />
   </Target>
 
+  <!-- Copy country flag SVGs so they are served as static files at /assets/flags/*.svg -->
+  <Target Name="SyncFlagsToWwwroot" BeforeTargets="BeforeBuild">
+    <ItemGroup>
+      <_FlagFiles Include="$(MSBuildThisFileDirectory)..\..\assets\flags\*.svg" />
+    </ItemGroup>
+    <MakeDir Directories="$(MSBuildThisFileDirectory)wwwroot\assets\flags" />
+    <Copy SourceFiles="@(_FlagFiles)"
+          DestinationFolder="$(MSBuildThisFileDirectory)wwwroot\assets\flags"
+          SkipUnchangedFiles="true" />
+  </Target>
+
 </Project>

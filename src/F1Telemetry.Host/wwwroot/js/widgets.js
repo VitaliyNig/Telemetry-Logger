@@ -1,21 +1,22 @@
 "use strict";
 
 const WIDGET_REGISTRY = {
-    session:      { title: "Session",              tpl: "tpl-session",      w: 4,   h: 9,   minW: 2,    minH: 4 },
-    telemetry:    { title: "Car Telemetry",        tpl: "tpl-telemetry",    w: 6,   h: 9,   minW: 4,    minH: 7 },
-    tyres:        { title: "Tyres",                tpl: "tpl-tyres",        w: 5,   h: 12,  minW: 4,    minH: 9 },
+    session:      { title: "Session",              tpl: "tpl-session",      w: 4,   h: 9,   minW: 1,    minH: 1 },
+    telemetry:    { title: "Car Telemetry",        tpl: "tpl-telemetry",    w: 6,   h: 9,   minW: 1,    minH: 1 },
+    tyres:        { title: "Tyres",                tpl: "tpl-tyres",        w: 5,   h: 12,  minW: 1,    minH: 1 },
     tyreSets:     { title: "Available Tyre Sets",  tpl: "tpl-tyreSets",     w: 12,  h: 6,   minW: 1,    minH: 1 },
-    pitPredictor: { title: "Pit Stop Predictor",   tpl: "tpl-pitPredictor", w: 8,   h: 6,   minW: 1,    minH: 1 },
+    pitPredictor: { title: "Pit Stop Predictor",   tpl: "tpl-pitPredictor", w: 6,   h: 6,   minW: 1,    minH: 1 },
     carStatus:    { title: "Car Status",           tpl: "tpl-carStatus",    w: 6,   h: 4,   minW: 1,    minH: 1 },
     lapData:      { title: "Lap Data",             tpl: "tpl-lapData",      w: 6,   h: 6,   minW: 1,    minH: 1 },
-    damage:       { title: "Damage",               tpl: "tpl-damage",       w: 4,   h: 6,   minW: 2,    minH: 6 },
+    damage:       { title: "Damage",               tpl: "tpl-damage",       w: 4,   h: 6,   minW: 1,    minH: 1 },
     events:       { title: "Events",               tpl: "tpl-events",       w: 8,   h: 6,   minW: 1,    minH: 1 },
     standings:    { title: "Standings",            tpl: "tpl-standings",    w: 12,  h: 10,  minW: 1,    minH: 1 },
-    weather:          { title: "Weather Forecast",     tpl: "tpl-weather",         w: 12, h: 6, minW: 1, minH: 1 },
-    gapBoard:         { title: "Gap Board",           tpl: "tpl-gapBoard",        w: 10, h: 6, minW: 1, minH: 1 },
-    qualiStandings:   { title: "Quali Standings",    tpl: "tpl-qualiStandings",  w: 14, h: 12, minW: 1, minH: 1 },
-    topSpeed:         { title: "Session Top Speeds",   tpl: "tpl-topSpeed",         w: 8, h: 10, minW: 1, minH: 1 },
-    topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare", w: 4, h: 10, minW: 3, minH: 7 },
+    weather:          { title: "Weather Forecast",     tpl: "tpl-weather",          w: 8,   h: 8,   minW: 1, minH: 1 },
+    gapBoard:         { title: "Gap Board",           tpl: "tpl-gapBoard",          w: 8,   h: 7,   minW: 1, minH: 1 },
+    gapRing:          { title: "Gap Ring",            tpl: "tpl-gapRing",           w: 6,   h: 16,  minW: 1, minH: 1 },
+    qualiStandings:   { title: "Quali Standings",    tpl: "tpl-qualiStandings",     w: 14,  h: 12,  minW: 1, minH: 1 },
+    topSpeed:         { title: "Session Top Speeds",   tpl: "tpl-topSpeed",         w: 8,   h: 10,  minW: 1, minH: 1 },
+    topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare",  w: 4,   h: 10,  minW: 1, minH: 1 },
 };
 
 /** Finer grid (2× columns, 2× rows vs v1); physical size unchanged → scale saved layouts ×2. */
@@ -48,6 +49,8 @@ function makeWidgetHtml(widgetId) {
     let headerExtra = "";
     if (widgetId === "events") {
         headerExtra = `<button class="event-filter-toggle" id="btnEventFilter" title="Filter events"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button>`;
+    } else if (widgetId === "pitPredictor") {
+        headerExtra = `<button type="button" class="pit-times-toggle" id="btnPitTimesSettings" title="Pit times for all tracks"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>`;
     } else if (widgetId === "tyres") {
         headerExtra = `<button class="tyre-info-btn" title="Legend &amp; temperature scale">?</button>`;
     }
@@ -288,11 +291,20 @@ function wireWidgetEvents(widgetId) {
     if (widgetId === "pitPredictor") {
         const btn = document.getElementById("btnSavePitTime");
         const input = document.getElementById("pitTimeInput");
+        if (input && typeof getPitTimeForTrack === "function" && typeof currentTrackId !== "undefined") {
+            input.value = getPitTimeForTrack(currentTrackId).toFixed(1);
+        }
         if (btn && typeof savePitTime === "function") btn.addEventListener("click", savePitTime);
-        if (input && typeof updatePitPredictor === "function") input.addEventListener("change", updatePitPredictor);
+        if (input && typeof updatePitPredictor === "function") {
+            input.addEventListener("change", updatePitPredictor);
+            updatePitPredictor();
+        }
     }
     if (widgetId === "events" && typeof initEventFilter === "function") {
         initEventFilter();
+    }
+    if (widgetId === "pitPredictor" && typeof initPitTimesPanel === "function") {
+        initPitTimesPanel();
     }
     if (widgetId === "tyres" && typeof initTyreInfoTooltip === "function") {
         initTyreInfoTooltip();

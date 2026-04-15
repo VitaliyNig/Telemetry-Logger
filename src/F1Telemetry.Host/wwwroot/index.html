@@ -202,7 +202,7 @@
     <template id="tpl-session">
         <div class="card"><h2 class="widget-title">Session</h2>
         <div class="session-grid">
-            <div class="stat-box"><span class="stat-label">Track</span><span class="stat-value" id="trackName">--</span></div>
+            <div class="stat-box"><span class="stat-label">Track</span><span class="stat-value stat-value-track"><img id="trackFlag" class="track-flag" src="" alt="" hidden><span id="trackName">--</span></span></div>
             <div class="stat-box"><span class="stat-label">Session</span><span class="stat-value" id="sessionType">--</span></div>
             <div class="stat-box"><span class="stat-label">Weather</span><span class="stat-value" id="weather">--</span></div>
             <div class="stat-box"><span class="stat-label">Track Temp</span><span class="stat-value" id="trackTemp">--</span></div>
@@ -359,6 +359,24 @@
         </div></div>
     </template>
 
+    <template id="tpl-gapRing">
+        <div class="card gap-ring-card">
+            <h2 class="widget-title">Gap Ring</h2>
+            <div class="gap-ring-body">
+                <div class="gap-ring-svg-wrap">
+                    <svg id="gapRingSvg" class="gap-ring-svg" viewBox="-118 -118 236 236" role="img" aria-label="Gaps on track order"></svg>
+                </div>
+                <div class="gap-ring-center" id="gapRingCenter">
+                    <div id="gapRingAheadName" class="gap-ring-c-neighbor gap-ring-c-ahead"></div>
+                    <div id="gapRingAheadGap" class="gap-ring-c-gap gap-ring-c-gap-ahead"></div>
+                    <div id="gapRingPlayer" class="gap-ring-c-player"></div>
+                    <div id="gapRingBehindGap" class="gap-ring-c-gap gap-ring-c-gap-behind"></div>
+                    <div id="gapRingBehindName" class="gap-ring-c-neighbor gap-ring-c-behind"></div>
+                </div>
+            </div>
+        </div>
+    </template>
+
     <template id="tpl-topSpeed">
         <div class="card ts-widget-card"><h2 class="widget-title">Session Top Speeds</h2>
         <div class="ts-widget-layout" id="topSpeedLeaderboardLayout" data-ts-widget="leaderboard">
@@ -369,34 +387,34 @@
 
     <template id="tpl-topSpeedCompare">
         <div class="card ts-widget-card"><h2 class="widget-title">Top Speed Comparison</h2>
-        <div class="tsc-layout" id="topSpeedCompareLayout" data-ts-widget="compare">
-            <div class="tsc-best-block">
-                <div class="tsc-label">SESSION BEST</div>
-                <div class="tsc-best-row">
-                    <span class="tsc-best-value" id="topSpeedSessionBest">--</span>
+        <div class="tsc-outer" id="topSpeedCompareLayout" data-ts-widget="compare">
+        <div class="tsc-layout">
+            <div class="tsc-block">
+                <div class="tsc-label">Session best</div>
+                <div class="tsc-value-row">
+                    <span class="tsc-metric" id="topSpeedSessionBest">--</span>
                     <span class="tsc-unit">km/h</span>
                 </div>
             </div>
-            <div class="tsc-sep"></div>
-            <div class="tsc-laps-row">
-                <div class="tsc-lap-block">
-                    <div class="tsc-label">LAST LAP</div>
-                    <div class="tsc-lap-row">
-                        <span class="tsc-lap-value" id="topSpeedLastLapPeak">--</span>
-                        <span class="tsc-unit tsc-unit-sm">km/h</span>
-                    </div>
-                    <div class="tsc-delta" id="topSpeedLastLapDelta"></div>
+            <div class="tsc-sep tsc-sep-between" aria-hidden="true"></div>
+            <div class="tsc-block">
+                <div class="tsc-label">Last lap</div>
+                <div class="tsc-value-row">
+                    <span class="tsc-metric" id="topSpeedLastLapPeak">--</span>
+                    <span class="tsc-unit">km/h</span>
                 </div>
-                <div class="tsc-vdivider" aria-hidden="true"></div>
-                <div class="tsc-lap-block tsc-lap-block-live">
-                    <div class="tsc-label">THIS LAP</div>
-                    <div class="tsc-lap-row">
-                        <span class="tsc-lap-value tsc-live-val" id="topSpeedLapPeak">--</span>
-                        <span class="tsc-unit tsc-unit-sm">km/h</span>
-                    </div>
-                    <div class="tsc-delta tsc-delta-neutral" id="topSpeedThisLapDelta">LIVE</div>
-                </div>
+                <div class="tsc-delta" id="topSpeedLastLapDelta"></div>
             </div>
+            <div class="tsc-sep tsc-sep-between" aria-hidden="true"></div>
+            <div class="tsc-block tsc-block-live">
+                <div class="tsc-label">This lap</div>
+                <div class="tsc-value-row">
+                    <span class="tsc-metric tsc-live-val" id="topSpeedLapPeak">--</span>
+                    <span class="tsc-unit">km/h</span>
+                </div>
+                <div class="tsc-delta" id="topSpeedThisLapDelta"></div>
+            </div>
+        </div>
         </div></div>
     </template>
 
