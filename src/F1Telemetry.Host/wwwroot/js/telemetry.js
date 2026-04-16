@@ -2429,39 +2429,12 @@ function updateGapBoard() {
     container.innerHTML = html;
 }
 
-function isPracticeSessionType() {
-    const t = lastSessionPacket?.sessionType ?? 0;
-    return t >= 1 && t <= 4;
-}
-
-function isTimeTrialSessionType() {
-    const t = lastSessionPacket?.sessionType ?? 0;
-    if (t === 18) return true;
-    return lastSessionPacket?.gameMode === 5 || lastSessionPacket?.ruleSet === 2;
-}
-
-function lapTimesWidgetMode() {
-    if (isTimeTrialSessionType()) return "tt";
-    if (isPracticeSessionType()) return "practice";
-    return null;
-}
-
-function getBestLapHistoryEntryForTable(carIdx) {
-    const hist = sessionHistories[carIdx];
-    if (!hist?.lapHistoryDataItems?.length || !hist.bestLapTimeLapNum) return null;
-    const idx = hist.bestLapTimeLapNum - 1;
-    return hist.lapHistoryDataItems[idx] || null;
-}
 
 function sectorMsFromHistoryEntry(entry, sectorNum) {
     if (!entry) return 0;
     if (sectorNum === 1) return (entry.sector1TimeMinutesPart || 0) * 60000 + (entry.sector1TimeMsPart || 0);
     if (sectorNum === 2) return (entry.sector2TimeMinutesPart || 0) * 60000 + (entry.sector2TimeMsPart || 0);
     return (entry.sector3TimeMinutesPart || 0) * 60000 + (entry.sector3TimeMsPart || 0);
-}
-
-function assistOnOff(v) {
-    return v === 0 ? "Off" : "On";
 }
 
 function equalPerfTooltipAndIcon(equalB) {
@@ -2475,63 +2448,62 @@ function equalPerfTooltipAndIcon(equalB) {
 
 function formatCarSetupPopoverHtml(setup) {
     if (!setup) {
-        return '<div class="lt-setup-title">Setup</div><p>No car setup data.</p>';
+        return '<div class="lt-setup-title">Setup</div><p class="lt-setup-empty">No car setup data.</p>';
     }
-    const n = (v, d) => (v !== undefined && v !== null && Number.isFinite(Number(v))) ? Number(v).toFixed(d) : "—";
-    const b = (v) => (v !== undefined && v !== null) ? String(v) : "—";
-    let rows = [
-        ["Front wing", b(setup.frontWing)],
-        ["Rear wing", b(setup.rearWing)],
-        ["On throttle", setup.onThrottle != null ? `${setup.onThrottle}%` : "—"],
-        ["Off throttle", setup.offThrottle != null ? `${setup.offThrottle}%` : "—"],
-        ["Front camber", n(setup.frontCamber, 2) + "°"],
-        ["Rear camber", n(setup.rearCamber, 2) + "°"],
-        ["Front toe", n(setup.frontToe, 2) + "°"],
-        ["Rear toe", n(setup.rearToe, 2) + "°"],
-        ["Front suspension", b(setup.frontSuspension)],
-        ["Rear suspension", b(setup.rearSuspension)],
-        ["Front ARB", b(setup.frontAntiRollBar)],
-        ["Rear ARB", b(setup.rearAntiRollBar)],
-        ["Front ride height", b(setup.frontSuspensionHeight)],
-        ["Rear ride height", b(setup.rearSuspensionHeight)],
-        ["Brake pressure", b(setup.brakePressure)],
-        ["Brake bias", b(setup.brakeBias)],
-        ["Engine braking", b(setup.engineBraking)],
-        ["RL pressure", n(setup.rearLeftTyrePressure, 1) + " psi"],
-        ["RR pressure", n(setup.rearRightTyrePressure, 1) + " psi"],
-        ["FL pressure", n(setup.frontLeftTyrePressure, 1) + " psi"],
-        ["FR pressure", n(setup.frontRightTyrePressure, 1) + " psi"],
-        ["Ballast", b(setup.ballast)],
-        ["Fuel load", n(setup.fuelLoad, 2)],
-    ];
-    let html = '<div class="lt-setup-title">Car setup</div><dl>';
-    for (const [k, v] of rows) {
-        html += `<dt>${k}</dt><dd>${v}</dd>`;
+    const num = (v, d) => (v != null && Number.isFinite(Number(v))) ? Number(v).toFixed(d) : null;
+    const int = (v) => (v != null && Number.isFinite(Number(v))) ? Number(v) : null;
+
+    function bar(label, value, max, suffix) {
+        if (value == null) return `<div class="lt-setup-row"><span class="lt-setup-label">${label}</span><span class="lt-setup-val">—</span></div>`;
+        const pct = Math.max(0, Math.min(100, (Math.abs(value) / max) * 100));
+        const display = suffix ? value + suffix : value;
+        return `<div class="lt-setup-row"><span class="lt-setup-label">${label}</span><div class="lt-setup-bar-track"><div class="lt-setup-bar-fill" style="width:${pct.toFixed(1)}%"></div></div><span class="lt-setup-val">${display}</span></div>`;
     }
-    html += "</dl>";
+
+    function section(title, rows) {
+        return `<div class="lt-setup-section"><div class="lt-setup-section-title">${title}</div>${rows}</div>`;
+    }
+
+    let html = "";
+    html += section("Aerodynamics",
+        bar("Front Wing", int(setup.frontWing), 50, "") +
+        bar("Rear Wing", int(setup.rearWing), 50, ""));
+
+    html += section("Transmission",
+        bar("Differential Adjustment On Throttle", int(setup.onThrottle), 100, "%") +
+        bar("Differential Adjustment Off Throttle", int(setup.offThrottle), 100, "%"));
+
+    html += section("Suspension Geometry",
+        bar("Front Camber", num(setup.frontCamber, 2), 5, "°") +
+        bar("Rear Camber", num(setup.rearCamber, 2), 5, "°") +
+        bar("Front Toe", num(setup.frontToe, 2), 2, "°") +
+        bar("Rear Toe", num(setup.rearToe, 2), 2, "°"));
+
+    html += section("Suspension",
+        bar("Front Suspension", int(setup.frontSuspension), 50, "") +
+        bar("Rear Suspension", int(setup.rearSuspension), 50, "") +
+        bar("Front Anti-Roll Bar", int(setup.frontAntiRollBar), 50, "") +
+        bar("Rear Anti-Roll Bar", int(setup.rearAntiRollBar), 50, "") +
+        bar("Front Ride Height", int(setup.frontSuspensionHeight), 50, "") +
+        bar("Rear Ride Height", int(setup.rearSuspensionHeight), 50, ""));
+
+    html += section("Brakes",
+        bar("Brake Pressure", int(setup.brakePressure), 100, "") +
+        bar("Front Brake Bias", int(setup.brakeBias), 100, ""));
+
+    html += section("Tyres",
+        bar("Front Right Tyre Pressure", num(setup.frontRightTyrePressure, 1), 35, " psi") +
+        bar("Front Left Tyre Pressure", num(setup.frontLeftTyrePressure, 1), 35, " psi") +
+        bar("Rear Right Tyre Pressure", num(setup.rearRightTyrePressure, 1), 35, " psi") +
+        bar("Rear Left Tyre Pressure", num(setup.rearLeftTyrePressure, 1), 35, " psi"));
+
     return html;
 }
 
-function formatTimeTrialAssistsHtml(ds) {
-    if (!ds) return "";
-    const custom = ds.customSetup === 1 ? "Custom" : "Preset / default";
-    let h = '<div class="lt-setup-divider"></div><div class="lt-setup-title">Session options</div><dl>';
-    h += `<dt>Performance</dt><dd>${ds.equalCarPerformance === 1 ? "Equal" : "Realistic"}</dd>`;
-    h += `<dt>Setup</dt><dd>${custom}</dd>`;
-    h += `<dt>Traction control</dt><dd>${assistOnOff(ds.tractionControl)}</dd>`;
-    h += `<dt>Gearbox</dt><dd>${assistOnOff(ds.gearboxAssist)}</dd>`;
-    h += `<dt>ABS</dt><dd>${assistOnOff(ds.antiLockBrakes)}</dd>`;
-    h += `<dt>Valid lap</dt><dd>${ds.valid === 1 ? "Yes" : "No"}</dd>`;
-    h += "</dl>";
-    return h;
-}
-
-function buildLapTimesSetupHtml(carIdx, ttDataset) {
+function buildLapTimesSetupHtml(carIdx) {
     const setups = lastCarSetupsPacket?.carSetupData;
     const setup = (carIdx != null && carIdx >= 0 && carIdx <= 21) ? setups?.[carIdx] : null;
-    let html = formatCarSetupPopoverHtml(setup);
-    if (ttDataset) html += formatTimeTrialAssistsHtml(ttDataset);
-    return html;
+    return formatCarSetupPopoverHtml(setup);
 }
 
 function registerLapTimesSetup(html) {
@@ -2609,7 +2581,8 @@ function ensureLapTimesMenuHandlers() {
 }
 
 function renderLapTimesPractice(tbody, headRow) {
-    if (!lastLapDataPacket?.lapDataItems) {
+    const hist = sessionHistories[playerCarIndex];
+    if (!hist?.lapHistoryDataItems?.length) {
         tbody.innerHTML = '<tr><td colspan="7" class="lt-placeholder">Waiting for lap data…</td></tr>';
         return;
     }
@@ -2619,146 +2592,50 @@ function renderLapTimesPractice(tbody, headRow) {
 
     const eq = lastSessionPacket?.equalCarPerformance;
     const perfIcon = equalPerfTooltipAndIcon(eq);
+    const rawTid = participantTeamIds[playerCarIndex];
+    const teamIdForColor = (typeof rawTid === "number" && rawTid >= 0) ? rawTid : -1;
+    const tcol = teamAccentColor(teamIdForColor);
+    const teamName = teamIdForColor >= 0 ? (TEAM_NAMES[teamIdForColor] || "") : "";
 
-    const items = lastLapDataPacket.lapDataItems;
-    const rows = [];
-    for (let i = 0; i < items.length; i++) {
-        const ld = items[i];
-        if (ld.resultStatus < 2) continue;
-        const entry = getBestLapHistoryEntryForTable(i);
-        const bestMs = entry?.lapTimeInMs || 0;
-        if (!bestMs) continue;
-        const lapInvalid = entry && (entry.lapValidBitFlags & 1) === 0;
-        const rawTid = participantTeamIds[i];
-        const teamIdForColor = (typeof rawTid === "number" && rawTid >= 0) ? rawTid : -1;
-        const tcol = teamAccentColor(teamIdForColor);
-        const name = participantNames[i] || (teamIdForColor >= 0 ? TEAM_NAMES[teamIdForColor] : "") || `Car ${i}`;
-        const sub = teamIdForColor >= 0 ? (TEAM_NAMES[teamIdForColor] || "") : "";
+    const laps = hist.lapHistoryDataItems;
+    let html = "";
+    let hasRows = false;
 
-        rows.push({
-            i,
-            pos: ld.carPosition,
-            name,
-            sub,
-            tcol,
-            bestMs,
-            s1: sectorMsFromHistoryEntry(entry, 1),
-            s2: sectorMsFromHistoryEntry(entry, 2),
-            s3: sectorMsFromHistoryEntry(entry, 3),
-            lapInvalid,
-            isPlayer: i === playerCarIndex,
-        });
-    }
-
-    rows.sort((a, b) => {
-        if (a.bestMs && b.bestMs) return a.bestMs - b.bestMs;
-        if (a.bestMs) return -1;
-        if (b.bestMs) return 1;
-        return a.pos - b.pos;
-    });
-
-    tbody.innerHTML = rows.map((r, idx) => {
-        const tCls = r.lapInvalid ? " lt-time-inv" : "";
-        const tLap = r.lapInvalid ? formatTime(r.bestMs) + " (inv.)" : formatTime(r.bestMs);
-        const setupHtml = buildLapTimesSetupHtml(r.i, null);
+    for (let i = 0; i < laps.length; i++) {
+        const entry = laps[i];
+        if (!entry?.lapTimeInMs) continue;
+        hasRows = true;
+        const lapInvalid = (entry.lapValidBitFlags & 1) === 0;
+        const rowCls = lapInvalid ? "lt-lap-invalid" : "";
+        const lapTime = formatTime(entry.lapTimeInMs);
+        const s1 = formatTime(sectorMsFromHistoryEntry(entry, 1));
+        const s2 = formatTime(sectorMsFromHistoryEntry(entry, 2));
+        const s3 = formatTime(sectorMsFromHistoryEntry(entry, 3));
+        const setupHtml = buildLapTimesSetupHtml(playerCarIndex);
         const sid = registerLapTimesSetup(setupHtml);
-        const rowCls = r.isPlayer ? "player-row" : "";
-        return `<tr class="${rowCls}">
-            <td>${idx + 1}</td>
-            <td class="lt-car-cell"><div class="lt-car-inner"><span class="lt-team-line" style="background:${r.tcol}"></span><div class="lt-car-meta"><span class="lt-car-name">${escapeXmlText(r.name)}</span><span class="lt-car-sub">${escapeXmlText(r.sub)}</span></div>${perfIcon}</div></td>
-            <td class="${tCls}">${tLap}</td>
-            <td class="${tCls}">${formatTime(r.s1)}</td>
-            <td class="${tCls}">${formatTime(r.s2)}</td>
-            <td class="${tCls}">${formatTime(r.s3)}</td>
+        html += `<tr class="${rowCls}">
+            <td>${i + 1}</td>
+            <td class="lt-car-cell"><div class="lt-car-inner"><span class="lt-team-line" style="background:${tcol}"></span><div class="lt-car-meta"><span class="lt-car-name">${escapeXmlText(teamName)}</span></div>${perfIcon}</div></td>
+            <td>${lapTime}</td>
+            <td>${s1}</td>
+            <td>${s2}</td>
+            <td>${s3}</td>
             <td><button type="button" class="lt-setup-btn" data-lt-sid="${sid}" title="Setup (click or right‑click)" aria-expanded="false">⋮</button></td>
         </tr>`;
-    }).join("");
-
-    if (rows.length === 0) {
-        tbody.innerHTML = '<tr><td colspan="7" class="lt-placeholder">No valid lap times yet (complete a lap).</td></tr>';
-    }
-}
-
-function renderLapTimesTimeTrial(tbody, headRow) {
-    if (!lastTimeTrialPacket) {
-        tbody.innerHTML = '<tr><td colspan="7" class="lt-placeholder">Waiting for Time Trial packet…</td></tr>';
-        return;
-    }
-    if (headRow) {
-        headRow.innerHTML = '<th class="lt-col-lead">Type</th><th>Car</th><th>Lap</th><th>S1</th><th>S2</th><th>S3</th><th class="lt-col-setup"></th>';
     }
 
-    const p = lastTimeTrialPacket;
-    const sets = [
-        { label: "Session best", ds: p.playerSessionBestDataSet ?? p.PlayerSessionBestDataSet },
-        { label: "Personal best", ds: p.personalBestDataSet ?? p.PersonalBestDataSet },
-        { label: "Rival", ds: p.rivalDataSet ?? p.RivalDataSet },
-    ];
-
-    const rows = [];
-    for (const { label, ds } of sets) {
-        if (!ds) continue;
-        const lapMs = ds.lapTimeInMs || 0;
-        const carIdx = (typeof ds.carIdx === "number" && ds.carIdx >= 0 && ds.carIdx <= 21) ? ds.carIdx : -1;
-        const teamId = ds.teamId != null ? ds.teamId : 0;
-        const tcol = teamAccentColor(teamId);
-        const name = (carIdx >= 0 && participantNames[carIdx])
-            ? participantNames[carIdx]
-            : (TEAM_NAMES[teamId] || (carIdx >= 0 ? `Car ${carIdx}` : "—"));
-        const sub = TEAM_NAMES[teamId] || "";
-        const invalid = ds.valid !== 1 || !lapMs;
-        rows.push({ label, ds, lapMs, carIdx, tcol, name, sub, invalid });
-    }
-
-    tbody.innerHTML = rows.map((r) => {
-        const tCls = r.invalid ? " lt-time-inv" : "";
-        const tLap = r.invalid ? "--" : formatTime(r.lapMs);
-        const s1 = r.invalid ? "--" : formatTime(r.ds.sector1TimeInMs);
-        const s2 = r.invalid ? "--" : formatTime(r.ds.sector2TimeInMs);
-        const s3 = r.invalid ? "--" : formatTime(r.ds.sector3TimeInMs);
-        const perfIcon = equalPerfTooltipAndIcon(r.ds.equalCarPerformance);
-        const setupHtml = buildLapTimesSetupHtml(r.carIdx, r.ds);
-        const sid = registerLapTimesSetup(setupHtml);
-        const isPlayer = r.carIdx === playerCarIndex;
-        const rowCls = isPlayer ? "player-row" : "";
-        return `<tr class="${rowCls}">
-            <td>${escapeXmlText(r.label)}</td>
-            <td class="lt-car-cell"><div class="lt-car-inner"><span class="lt-team-line" style="background:${r.tcol}"></span><div class="lt-car-meta"><span class="lt-car-name">${escapeXmlText(r.name)}</span><span class="lt-car-sub">${escapeXmlText(r.sub)}</span></div>${perfIcon}</div></td>
-            <td class="${tCls}">${tLap}</td>
-            <td class="${tCls}">${s1}</td>
-            <td class="${tCls}">${s2}</td>
-            <td class="${tCls}">${s3}</td>
-            <td><button type="button" class="lt-setup-btn" data-lt-sid="${sid}" title="Setup (click or right‑click)" aria-expanded="false">⋮</button></td>
-        </tr>`;
-    }).join("");
+    tbody.innerHTML = hasRows ? html : '<tr><td colspan="7" class="lt-placeholder">No lap times yet (complete a lap).</td></tr>';
 }
 
 function updateTimeTrial(data) {
     lastTimeTrialPacket = data;
-    updateLapTimesWidget();
 }
 
 function updateLapTimesWidget() {
     ensureLapTimesMenuHandlers();
     const tbody = document.getElementById("lapTimesBody");
     if (!tbody) return;
-
-    const mode = lapTimesWidgetMode();
     const headRow = document.getElementById("lapTimesHeadRow");
-
-    if (!mode) {
-        if (headRow) {
-            headRow.innerHTML = '<th class="lt-col-lead">#</th><th>Car</th><th>Lap</th><th>S1</th><th>S2</th><th>S3</th><th class="lt-col-setup"></th>';
-        }
-        tbody.innerHTML = '<tr><td colspan="7" class="lt-placeholder">Shown in Practice and Time Trial.</td></tr>';
-        return;
-    }
-
-    if (mode === "tt") {
-        renderLapTimesTimeTrial(tbody, headRow);
-        return;
-    }
-
     renderLapTimesPractice(tbody, headRow);
 }
 

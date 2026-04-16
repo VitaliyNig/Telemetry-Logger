@@ -2573,50 +2573,90 @@
 .lt-setup-popover {
     position: fixed;
     z-index: 12000;
-    min-width: 220px;
-    max-width: min(320px, calc(100vw - 16px));
-    max-height: min(420px, 70vh);
+    width: 340px;
+    max-width: calc(100vw - 16px);
+    max-height: min(520px, 75vh);
     overflow: auto;
-    padding: 10px 12px;
-    background: var(--bg-card);
+    padding: 8px;
+    background: var(--bg-dark);
     border: 1px solid var(--border);
     border-radius: var(--radius);
-    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.55);
     font-size: 12px;
     color: var(--text-secondary);
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
 }
 
-.lt-setup-popover .lt-setup-title {
-    font-size: 11px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
+.lt-setup-empty {
+    text-align: center;
     color: var(--text-dim);
-    margin-bottom: 8px;
-}
-
-.lt-setup-popover dl {
+    font-style: italic;
+    padding: 12px 8px;
     margin: 0;
 }
 
-.lt-setup-popover dt {
-    float: left;
-    clear: left;
-    width: 46%;
-    margin: 0 0 4px;
-    color: var(--text-dim);
-    font-size: 11px;
+.lt-setup-section {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 10px 12px;
 }
 
-.lt-setup-popover dd {
-    margin: 0 0 4px 48%;
+.lt-setup-section-title {
+    font-size: 13px;
+    font-weight: 700;
     color: var(--text-primary);
-    font-weight: 500;
+    margin-bottom: 10px;
 }
 
-.lt-setup-popover .lt-setup-divider {
-    margin: 10px 0 8px;
-    border-top: 1px solid var(--border);
+.lt-setup-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 6px;
+}
+
+.lt-setup-row:last-child {
+    margin-bottom: 0;
+}
+
+.lt-setup-label {
+    flex-shrink: 0;
+    width: 42%;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-secondary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.lt-setup-bar-track {
+    flex: 1;
+    height: 8px;
+    background: var(--border);
+    border-radius: 4px;
+    overflow: hidden;
+    min-width: 40px;
+}
+
+.lt-setup-bar-fill {
+    height: 100%;
+    background: var(--accent-brand);
+    border-radius: 4px;
+    transition: width 0.3s ease;
+}
+
+.lt-setup-val {
+    flex-shrink: 0;
+    min-width: 44px;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
 }
 
 .lt-placeholder {
@@ -2631,7 +2671,6 @@
     background: rgba(155, 63, 245, 0.06);
 }
 
-.lap-times-table .lt-time-inv {
-    opacity: 0.55;
-    text-decoration: line-through;
+.lap-times-table tr.lt-lap-invalid td {
+    background: rgba(239, 68, 68, 0.12);
 }
