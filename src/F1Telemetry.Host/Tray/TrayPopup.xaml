@@ -146,7 +146,7 @@
                             <ColumnDefinition Width="*"/>
                             <ColumnDefinition Width="Auto"/>
                         </Grid.ColumnDefinitions>
-                        <TextBlock Text="Open Data Folder" FontSize="13"/>
+                        <TextBlock Text="Open Logs Folder" FontSize="13"/>
                         <TextBlock Grid.Column="1" Text="&#x2192;" FontSize="13"
                                    Foreground="{StaticResource TextMuted}"/>
                     </Grid>

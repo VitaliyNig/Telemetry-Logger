@@ -297,15 +297,14 @@
 }
 
 #btnSaveSettings.btn-settings-dirty {
-    background: var(--accent-yellow);
-    border-color: rgba(255, 215, 0, 0.45);
-    color: #1a1a1a;
-    font-weight: 700;
+    background: transparent;
+    border-color: var(--accent-yellow);
+    color: var(--accent-yellow);
 }
 
 #btnSaveSettings.btn-settings-dirty:hover {
-    background: #ffe033;
-    border-color: rgba(255, 215, 0, 0.65);
+    background: var(--accent-yellow);
+    border-color: var(--accent-yellow);
     color: #0d0d0d;
 }
 

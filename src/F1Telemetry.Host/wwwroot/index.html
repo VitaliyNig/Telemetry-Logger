@@ -135,6 +135,18 @@
                 </div>
 
                 <div class="settings-group">
+                    <h3>History</h3>
+                    <div class="setting-row setting-toggle">
+                        <label for="enableSessionLogging">Session Logging</label>
+                        <label class="toggle-switch">
+                            <input type="checkbox" id="enableSessionLogging" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        <span class="setting-hint">Record session data to Logs/ folder. Disabling stops recording but Live mode continues to work.</span>
+                    </div>
+                </div>
+
+                <div class="settings-group">
                     <h3>Developer</h3>
                     <div class="setting-row setting-toggle">
                         <label for="debugMode">Debug Mode</label>
@@ -150,7 +162,7 @@
             </div>
             <footer class="settings-footer" id="settingsFooter">
                 <div class="settings-footer-inner">
-                    <button type="button" class="btn btn-primary" id="btnSaveSettings">Save Settings</button>
+                    <button type="button" class="btn btn-small btn-secondary" id="btnSaveSettings">Save Settings</button>
                     <span class="save-status" id="saveStatus"></span>
                 </div>
             </footer>

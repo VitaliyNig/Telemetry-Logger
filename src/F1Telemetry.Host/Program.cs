@@ -147,7 +147,8 @@ static class Program
                 udpListenIp = udpSection.GetValue<string>("ListenAddress") ?? "0.0.0.0",
                 udpListenPort = udpSection.GetValue<int?>("Port") ?? 20777,
                 webPort = appSection.GetValue<int?>("WebPort") ?? 5000,
-                debugMode = appSection.GetValue<bool?>("DebugMode") ?? false
+                debugMode = appSection.GetValue<bool?>("DebugMode") ?? false,
+                enableSessionLogging = appSection.GetValue<bool?>("EnableSessionLogging") ?? true
             });
         });
 
@@ -172,6 +173,7 @@ static class Program
             {
                 WebPort = body.WebPort,
                 DebugMode = body.DebugMode,
+                EnableSessionLogging = body.EnableSessionLogging,
                 LaunchBrowserOnStart = currentApp.LaunchBrowserOnStart
             };
 
@@ -352,7 +354,8 @@ record SettingsUpdateRequest(
     string UdpListenIp,
     int UdpListenPort,
     int WebPort,
-    bool DebugMode);
+    bool DebugMode,
+    bool EnableSessionLogging);
 
 record OpenFolderRequest(string Folder);
 
