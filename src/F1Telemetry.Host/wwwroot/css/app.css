@@ -146,6 +146,7 @@ html, body {
     padding: 0;
     overflow: hidden;
     min-height: 0;
+    position: relative;
 }
 
 .settings-tab-panel.active {
@@ -157,22 +158,27 @@ html, body {
     min-height: 0;
     overflow-y: auto;
     padding: 24px;
+    padding-bottom: 90px;
 }
 
 .settings-footer {
-    flex-shrink: 0;
-    position: sticky;
+    position: absolute;
     bottom: 0;
+    left: 0;
+    right: 0;
     z-index: 30;
-    padding: 14px 24px;
-    background: transparent;
-    border-top: none;
+    padding: 16px 24px;
+    background: rgba(13, 17, 23, 0.72);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border-top: 1px solid rgba(48, 54, 61, 0.5);
 }
 
 .settings-footer-inner {
     max-width: 640px;
     margin: 0 auto;
     display: flex;
+    justify-content: center;
     align-items: center;
     gap: 12px;
     flex-wrap: wrap;

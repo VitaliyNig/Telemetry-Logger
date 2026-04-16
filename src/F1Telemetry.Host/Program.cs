@@ -1,5 +1,7 @@
 using System.IO;
 using System.Text.Json;
+using System.Text.Json.Serialization;
+using Microsoft.Extensions.Options;
 using F1Telemetry.Config;
 using F1Telemetry.Debug;
 using F1Telemetry.F125;
@@ -30,6 +32,9 @@ static class Program
     {
         var builder = WebApplication.CreateBuilder(args);
 
+        var userConfigPath = Path.Combine(AppContext.BaseDirectory, "appsettings.user.json");
+        builder.Configuration.AddJsonFile(userConfigPath, optional: true, reloadOnChange: true);
+
         var appSettings = builder.Configuration.GetSection(AppSettings.SectionName).Get<AppSettings>() ?? new AppSettings();
         builder.WebHost.UseUrls($"http://0.0.0.0:{appSettings.WebPort}");
 
@@ -58,6 +63,7 @@ static class Program
         {
             var json = o.SerializerOptions;
             json.PropertyNamingPolicy = JsonNamingPolicy.CamelCase;
+            json.PropertyNameCaseInsensitive = true;
             json.Converters.Add(new FiniteSingleJsonConverter());
             json.Converters.Add(new FiniteDoubleJsonConverter());
         });
@@ -138,17 +144,17 @@ static class Program
             return data != null ? Results.Ok(data) : Results.NotFound(new { error = $"No data for {packetType}" });
         });
 
-        app.MapGet("/api/settings", (IConfiguration config) =>
+        app.MapGet("/api/settings", (IConfiguration config, IOptionsMonitor<AppSettings> appSettings) =>
         {
             var udpSection = config.GetSection("TelemetryUdp");
-            var appSection = config.GetSection("App");
+            var s = appSettings.CurrentValue;
             return Results.Ok(new
             {
                 udpListenIp = udpSection.GetValue<string>("ListenAddress") ?? "0.0.0.0",
                 udpListenPort = udpSection.GetValue<int?>("Port") ?? 20777,
-                webPort = appSection.GetValue<int?>("WebPort") ?? 5000,
-                debugMode = appSection.GetValue<bool?>("DebugMode") ?? false,
-                enableSessionLogging = appSection.GetValue<bool?>("EnableSessionLogging") ?? true
+                webPort = s.WebPort,
+                debugMode = s.DebugMode,
+                enableSessionLogging = s.EnableSessionLogging
             });
         });
 
@@ -351,11 +357,11 @@ static class Program
 }
 
 record SettingsUpdateRequest(
-    string UdpListenIp,
-    int UdpListenPort,
-    int WebPort,
-    bool DebugMode,
-    bool EnableSessionLogging);
+    [property: JsonPropertyName("udpListenIp")] string UdpListenIp,
+    [property: JsonPropertyName("udpListenPort")] int UdpListenPort,
+    [property: JsonPropertyName("webPort")] int WebPort,
+    [property: JsonPropertyName("debugMode")] bool DebugMode,
+    [property: JsonPropertyName("enableSessionLogging")] bool EnableSessionLogging);
 
 record OpenFolderRequest(string Folder);
 
