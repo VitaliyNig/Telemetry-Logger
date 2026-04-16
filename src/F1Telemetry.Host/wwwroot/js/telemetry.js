@@ -327,16 +327,20 @@ const TEAM_NAMES = {
 
 /** Accent for Gap Ring name colour (teamId → hex) */
 const TEAM_ACCENT_COLORS = {
-    0: "#00d2be", 1: "#e10600", 2: "#3671c6", 3: "#64c4ff", 4: "#229971",
-    5: "#ff8700", 6: "#6692ff", 7: "#b6babd", 8: "#ff8000", 9: "#52e252",
-    41: "#a8a8a8", 104: "#c0c0c0", 129: "#805eec", 142: "#e8e8e8", 154: "#e8e8e8",
-    185: "#00d2be", 186: "#e10600", 187: "#3671c6", 188: "#64c4ff", 189: "#229971",
-    190: "#ff8700", 191: "#6692ff", 192: "#b6babd", 193: "#ff8000", 194: "#52e252",
+    0: "#5FE0CF", 1: "#FF5A6E", 2: "#3A5BA9", 3: "#4F8DFF", 4: "#2FBF8F",
+    5: "#00A0E3", 6: "#8EA8FF", 7: "#CCCCCC", 8: "#FF8C3A", 9: "#66E000",
+    41: "#E1E1E1", 104: "#F5F5F5", 129: "#FFD84D", 142: "#a79a72", 154: "#a79a72",
+    155: "#FFD84D",
+    158: "#B83244", 159: "#BFBFBF", 160: "#F2F2F2", 161: "#8C2A2E", 162: "#1F8FA6",
+    163: "#8F8F8F", 164: "#FF9A2F", 165: "#FF4A4F", 166: "#9B3CC4", 167: "#E06A47",
+    168: "#FFD84D",
+    185: "#5FE0CF", 186: "#FF5A6E", 187: "#3A5BA9", 188: "#4F8DFF", 189: "#2FBF8F",
+    190: "#00A0E3", 191: "#8EA8FF", 192: "#CCCCCC", 193: "#FF8C3A", 194: "#66E000",
 };
 
 function teamAccentColor(teamId) {
-    if (teamId == null || teamId < 0) return "#94a3b8";
-    return TEAM_ACCENT_COLORS[teamId] || "#94a3b8";
+    if (teamId == null || teamId < 0) return "#F5F5F5";
+    return TEAM_ACCENT_COLORS[teamId] || "#F5F5F5";
 }
 
 /** m_platform — Participants / Lobby */
@@ -641,6 +645,8 @@ let gapRingObservedMaxLapDist = 0;
 const sessionHistories = {};
 /** Last full Car Setups packet (all cars) — used by Lap Times setup popover. */
 let lastCarSetupsPacket = null;
+/** Per-lap setup snapshots: Map<lapIndex, setupObject> */
+const _lapSetupSnapshots = new Map();
 /** Time Trial packet (session / personal / rival rows). */
 let lastTimeTrialPacket = null;
 let _lapTimesSetupIdSeq = 0;
@@ -1197,6 +1203,13 @@ function updateLapData(data) {
     const ln = car.currentLapNum;
     if (ln !== undefined && ln !== null && ln !== playerLapPeakForLapNum) {
         if (playerLapPeakSpeed > 0) playerLastLapPeakSpeed = playerLapPeakSpeed;
+        /* Snapshot car setup for the completed lap (lapIndex = ln - 2 because
+           lapHistoryDataItems is 0-based and ln just incremented to the new lap) */
+        const completedLapIdx = ln - 2;
+        if (completedLapIdx >= 0) {
+            const curSetup = lastCarSetupsPacket?.carSetupData?.[playerCarIndex];
+            if (curSetup) _lapSetupSnapshots.set(completedLapIdx, structuredClone(curSetup));
+        }
         playerLapPeakForLapNum = ln;
         playerLapPeakSpeed = 0;
         updateTopSpeedWidgets();
@@ -2440,10 +2453,8 @@ function sectorMsFromHistoryEntry(entry, sectorNum) {
 function equalPerfTooltipAndIcon(equalB) {
     const isEqual = equalB === 1;
     const title = isEqual ? "Equal car performance" : "Realistic car performance";
-    const svg = isEqual
-        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M5 8h14M5 16h14"/><path d="M8 8l2-3h4l2 3M8 16l2 3h4l2-3"/></svg>'
-        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 14l3-7h10l3 7"/><circle cx="8" cy="17" r="2"/><circle cx="16" cy="17" r="2"/><path d="M7 7l1-3h8l1 3"/></svg>';
-    return `<span class="lt-perf-ico" title="${title}">${svg}</span>`;
+    const letter = isEqual ? "E" : "R";
+    return `<span class="lt-perf-ico" title="${title}">${letter}</span>`;
 }
 
 function formatCarSetupPopoverHtml(setup) {
@@ -2453,9 +2464,10 @@ function formatCarSetupPopoverHtml(setup) {
     const num = (v, d) => (v != null && Number.isFinite(Number(v))) ? Number(v).toFixed(d) : null;
     const int = (v) => (v != null && Number.isFinite(Number(v))) ? Number(v) : null;
 
-    function bar(label, value, max, suffix) {
+    function bar(label, value, min, max, suffix) {
         if (value == null) return `<div class="lt-setup-row"><span class="lt-setup-label">${label}</span><span class="lt-setup-val">—</span></div>`;
-        const pct = Math.max(0, Math.min(100, (Math.abs(value) / max) * 100));
+        const range = max - min;
+        const pct = range > 0 ? Math.max(0, Math.min(100, ((value - min) / range) * 100)) : 0;
         const display = suffix ? value + suffix : value;
         return `<div class="lt-setup-row"><span class="lt-setup-label">${label}</span><div class="lt-setup-bar-track"><div class="lt-setup-bar-fill" style="width:${pct.toFixed(1)}%"></div></div><span class="lt-setup-val">${display}</span></div>`;
     }
@@ -2466,36 +2478,36 @@ function formatCarSetupPopoverHtml(setup) {
 
     let html = "";
     html += section("Aerodynamics",
-        bar("Front Wing", int(setup.frontWing), 50, "") +
-        bar("Rear Wing", int(setup.rearWing), 50, ""));
+        bar("Front Wing", int(setup.frontWing), 0, 50, "") +
+        bar("Rear Wing", int(setup.rearWing), 0, 50, ""));
 
     html += section("Transmission",
-        bar("Differential Adjustment On Throttle", int(setup.onThrottle), 100, "%") +
-        bar("Differential Adjustment Off Throttle", int(setup.offThrottle), 100, "%"));
+        bar("On Throttle", int(setup.onThrottle), 10, 100, "%") +
+        bar("Off Throttle", int(setup.offThrottle), 10, 100, "%"));
 
     html += section("Suspension Geometry",
-        bar("Front Camber", num(setup.frontCamber, 2), 5, "°") +
-        bar("Rear Camber", num(setup.rearCamber, 2), 5, "°") +
-        bar("Front Toe", num(setup.frontToe, 2), 2, "°") +
-        bar("Rear Toe", num(setup.rearToe, 2), 2, "°"));
+        bar("Front Camber", num(setup.frontCamber, 2), -3.50, -2.50, "°") +
+        bar("Rear Camber", num(setup.rearCamber, 2), -2.00, -1.00, "°") +
+        bar("Front Toe", num(setup.frontToe, 2), 0.00, 0.20, "°") +
+        bar("Rear Toe", num(setup.rearToe, 2), 0.10, 0.25, "°"));
 
     html += section("Suspension",
-        bar("Front Suspension", int(setup.frontSuspension), 50, "") +
-        bar("Rear Suspension", int(setup.rearSuspension), 50, "") +
-        bar("Front Anti-Roll Bar", int(setup.frontAntiRollBar), 50, "") +
-        bar("Rear Anti-Roll Bar", int(setup.rearAntiRollBar), 50, "") +
-        bar("Front Ride Height", int(setup.frontSuspensionHeight), 50, "") +
-        bar("Rear Ride Height", int(setup.rearSuspensionHeight), 50, ""));
+        bar("Front Suspension", int(setup.frontSuspension), 1, 41, "") +
+        bar("Rear Suspension", int(setup.rearSuspension), 1, 41, "") +
+        bar("Front Anti-Roll Bar", int(setup.frontAntiRollBar), 1, 21, "") +
+        bar("Rear Anti-Roll Bar", int(setup.rearAntiRollBar), 1, 21, "") +
+        bar("Front Ride Height", int(setup.frontSuspensionHeight), 15, 35, "") +
+        bar("Rear Ride Height", int(setup.rearSuspensionHeight), 40, 60, ""));
 
     html += section("Brakes",
-        bar("Brake Pressure", int(setup.brakePressure), 100, "") +
-        bar("Front Brake Bias", int(setup.brakeBias), 100, ""));
+        bar("Front Brake Bias", int(setup.brakeBias), 50, 70, "%") +
+        bar("Brake Pressure", int(setup.brakePressure), 80, 100, "%"));
 
     html += section("Tyres",
-        bar("Front Right Tyre Pressure", num(setup.frontRightTyrePressure, 1), 35, " psi") +
-        bar("Front Left Tyre Pressure", num(setup.frontLeftTyrePressure, 1), 35, " psi") +
-        bar("Rear Right Tyre Pressure", num(setup.rearRightTyrePressure, 1), 35, " psi") +
-        bar("Rear Left Tyre Pressure", num(setup.rearLeftTyrePressure, 1), 35, " psi"));
+        bar("FR Tyre Pressure", num(setup.frontRightTyrePressure, 1), 22.5, 29.5, " psi") +
+        bar("FL Tyre Pressure", num(setup.frontLeftTyrePressure, 1), 22.5, 29.5, " psi") +
+        bar("RR Tyre Pressure", num(setup.rearRightTyrePressure, 1), 20.5, 26.5, " psi") +
+        bar("RL Tyre Pressure", num(setup.rearLeftTyrePressure, 1), 20.5, 26.5, " psi"));
 
     return html;
 }
@@ -2611,7 +2623,10 @@ function renderLapTimesPractice(tbody, headRow) {
         const s1 = formatTime(sectorMsFromHistoryEntry(entry, 1));
         const s2 = formatTime(sectorMsFromHistoryEntry(entry, 2));
         const s3 = formatTime(sectorMsFromHistoryEntry(entry, 3));
-        const setupHtml = buildLapTimesSetupHtml(playerCarIndex);
+        const snapSetup = _lapSetupSnapshots.get(i);
+        const setupHtml = snapSetup
+            ? formatCarSetupPopoverHtml(snapSetup)
+            : buildLapTimesSetupHtml(playerCarIndex);
         const sid = registerLapTimesSetup(setupHtml);
         html += `<tr class="${rowCls}">
             <td>${i + 1}</td>
@@ -2676,6 +2691,7 @@ function initConnection() {
                 lastTimeTrialPacket = null;
                 lastCarSetupsPacket = null;
                 _lapTimesSetupContent.clear();
+                _lapSetupSnapshots.clear();
                 closeLapTimesSetupPopover();
             }
             lastTelemetrySessionUid = uid;

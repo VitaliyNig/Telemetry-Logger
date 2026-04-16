@@ -2602,6 +2602,10 @@
     gap: 6px;
 }
 
+.lt-setup-popover[hidden] {
+    display: none;
+}
+
 .lt-setup-empty {
     text-align: center;
     color: var(--text-dim);
