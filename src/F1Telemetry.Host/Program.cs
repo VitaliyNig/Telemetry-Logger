@@ -11,6 +11,7 @@ using F1Telemetry.Ingress;
 using F1Telemetry.State;
 using F1Telemetry.Tray;
 using F1Telemetry.Udp;
+using Microsoft.AspNetCore.ResponseCompression;
 using Microsoft.AspNetCore.StaticFiles;
 
 namespace F1Telemetry;
@@ -58,10 +59,20 @@ static class Program
             json.Converters.Add(new FiniteDoubleJsonConverter());
         });
 
+        builder.Services.AddResponseCompression(opts =>
+        {
+            opts.EnableForHttps = true;
+            opts.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
+                new[] { "application/octet-stream" });
+        });
+
         builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(3));
 
         var app = builder.Build();
 
+        app.Services.GetRequiredService<DebugPacketTracker>().PacketNameResolver = F125PacketNames.Get;
+
+        app.UseResponseCompression();
         app.UseDefaultFiles();
         app.UseStaticFiles(new StaticFileOptions
         {
@@ -96,7 +107,7 @@ static class Program
             udpPort = config.GetValue<int?>("TelemetryUdp:Port") ?? 20777,
             webPort = config.GetValue<int?>("App:WebPort") ?? 5000,
             debugMode = config.GetValue<bool?>("App:DebugMode") ?? false,
-            packetTypes = Enum.GetNames<F125PacketId>()
+            packetTypes = Enum.GetValues<F125PacketId>().Select(v => F125PacketNames.Get((byte)v)).ToArray()
         }));
 
         app.MapGet("/api/state", (TelemetryState state) =>
@@ -105,7 +116,7 @@ static class Program
             var result = new Dictionary<string, object>();
             foreach (var (key, value) in all)
             {
-                var name = ((F125PacketId)key).ToString();
+                var name = F125PacketNames.Get(key);
                 result[name] = value;
             }
             return Results.Ok(result);
@@ -226,7 +237,7 @@ static class Program
             return Results.Ok(new
             {
                 total = tracker.TotalPackets,
-                counts = tracker.GetPacketCounts()
+                counts = tracker.GetPacketCountsByName()
             });
         });
 
@@ -236,7 +247,7 @@ static class Program
             return Results.Ok(entries.Select(e => new
             {
                 timestamp = e.Timestamp.ToString("HH:mm:ss.fff"),
-                name = e.PacketName
+                name = F125PacketNames.Get(e.PacketId)
             }));
         });
 

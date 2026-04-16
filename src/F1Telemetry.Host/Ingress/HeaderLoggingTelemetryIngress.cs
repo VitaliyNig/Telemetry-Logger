@@ -34,7 +34,7 @@ public sealed class HeaderLoggingTelemetryIngress : ITelemetryIngress
 
     public async Task OnPacketAsync(RawTelemetryPacket packet, CancellationToken cancellationToken)
     {
-        var span = packet.Payload.AsSpan();
+        var span = packet.Payload.Span;
         if (!_headerReader.TryRead(span, out var header))
         {
             _logger.LogWarning(
@@ -54,8 +54,7 @@ public sealed class HeaderLoggingTelemetryIngress : ITelemetryIngress
                 F125Constants.ExpectedPacketFormat);
         }
 
-        var id = (F125PacketId)header.PacketId;
-        var packetName = id.ToString();
+        var packetName = F125PacketNames.Get(header.PacketId);
 
         _logger.LogDebug(
             "Packet {PacketId} ({Name}) sessionTime={SessionTime:F3}s frame={Frame}",
@@ -64,7 +63,7 @@ public sealed class HeaderLoggingTelemetryIngress : ITelemetryIngress
             header.SessionTime,
             header.FrameIdentifier);
 
-        _tracker.RecordPacket(packetName);
+        _tracker.RecordPacket(header.PacketId);
 
         if (_appSettings.CurrentValue.DebugMode)
         {
@@ -72,7 +71,7 @@ public sealed class HeaderLoggingTelemetryIngress : ITelemetryIngress
             {
                 timestamp = DateTimeOffset.UtcNow.ToString("HH:mm:ss.fff"),
                 name = packetName,
-                counts = _tracker.GetPacketCounts(),
+                counts = _tracker.GetPacketCountsByName(),
                 total = _tracker.TotalPackets
             }, cancellationToken);
         }

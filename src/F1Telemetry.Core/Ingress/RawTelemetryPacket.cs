@@ -2,10 +2,10 @@ using System.Net;
 
 namespace F1Telemetry.Ingress;
 
-/// <summary>One UDP datagram as received from the game (payload is owned copy).</summary>
+/// <summary>One UDP datagram as received from the game.</summary>
 public sealed class RawTelemetryPacket
 {
-    public RawTelemetryPacket(DateTimeOffset receivedAt, IPEndPoint remoteEndPoint, byte[] payload)
+    public RawTelemetryPacket(DateTimeOffset receivedAt, IPEndPoint remoteEndPoint, ReadOnlyMemory<byte> payload)
     {
         ReceivedAt = receivedAt;
         RemoteEndPoint = remoteEndPoint;
@@ -14,5 +14,5 @@ public sealed class RawTelemetryPacket
 
     public DateTimeOffset ReceivedAt { get; }
     public IPEndPoint RemoteEndPoint { get; }
-    public byte[] Payload { get; }
+    public ReadOnlyMemory<byte> Payload { get; }
 }
