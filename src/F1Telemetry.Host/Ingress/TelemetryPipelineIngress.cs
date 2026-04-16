@@ -93,7 +93,8 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
             return;
 
         _state.Update(header.PacketId, deserialized);
-        _sessionLogger.ProcessPacket(header, header.PacketId, deserialized);
+        if (_appSettings.CurrentValue.EnableSessionLogging)
+            _sessionLogger.ProcessPacket(header, header.PacketId, deserialized);
 
         if (header.PacketId == (byte)F125PacketId.LapData && deserialized is LapDataPacket lapDataPacket)
         {

@@ -20,6 +20,7 @@
     var webPort = document.getElementById('webPort');
     var debugModeToggle = document.getElementById('debugMode');
     var autoSwitchPreset = document.getElementById('autoSwitchPreset');
+    var enableSessionLogging = document.getElementById('enableSessionLogging');
     var btnSave = document.getElementById('btnSaveSettings');
     var saveStatus = document.getElementById('saveStatus');
 
@@ -37,7 +38,8 @@
             udpListenPort: udpListenPort ? parseInt(udpListenPort.value, 10) : 0,
             webPort: webPort ? parseInt(webPort.value, 10) : 0,
             debugMode: !!(debugModeToggle && debugModeToggle.checked),
-            autoSwitchPreset: !!(autoSwitchPreset && autoSwitchPreset.checked)
+            autoSwitchPreset: !!(autoSwitchPreset && autoSwitchPreset.checked),
+            enableSessionLogging: !!(enableSessionLogging && enableSessionLogging.checked)
         };
     }
 
@@ -177,6 +179,7 @@
                 udpListenPort.value = data.udpListenPort;
                 webPort.value = data.webPort;
                 debugModeToggle.checked = data.debugMode;
+                if (enableSessionLogging) enableSessionLogging.checked = data.enableSessionLogging;
                 setDebugMode(data.debugMode);
                 syncDashboardTogglesFromStorage();
                 lastSavedSettingsSnapshot = getSettingsSnapshot();
@@ -217,6 +220,9 @@
     if (autoSwitchPreset) {
         autoSwitchPreset.addEventListener('change', updateSettingsDirtyState);
     }
+    if (enableSessionLogging) {
+        enableSessionLogging.addEventListener('change', updateSettingsDirtyState);
+    }
 
     function wireSettingsInputsDirty() {
         [udpListenIp, udpListenPort, webPort].forEach(function (el) {
@@ -232,7 +238,8 @@
             udpListenIp: udpListenIp.value.trim(),
             udpListenPort: parseInt(udpListenPort.value, 10),
             webPort: parseInt(webPort.value, 10),
-            debugMode: debugModeToggle.checked
+            debugMode: debugModeToggle.checked,
+            enableSessionLogging: !!(enableSessionLogging && enableSessionLogging.checked)
         };
 
         saveStatus.textContent = 'Saving...';

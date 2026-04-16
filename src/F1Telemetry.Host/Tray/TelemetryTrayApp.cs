@@ -35,7 +35,7 @@ sealed class TelemetryTrayApp : Application
             var webPort = appSettings.WebPort;
             var udpAddress = config.GetValue<string>("TelemetryUdp:ListenAddress") ?? "0.0.0.0";
             var udpPort = config.GetValue<int?>("TelemetryUdp:Port") ?? 20777;
-            var dataFolder = webApp.Environment.WebRootPath;
+            var dataFolder = Path.Combine(AppContext.BaseDirectory, "Logs");
 
             _trayIcon = new TaskbarIcon
             {
