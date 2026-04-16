@@ -307,8 +307,9 @@ function wireWidgetEvents(widgetId) {
     if (widgetId === "pitPredictor" && typeof initPitTimesPanel === "function") {
         initPitTimesPanel();
     }
-    if (widgetId === "tyres" && typeof initTyreInfoTooltip === "function") {
-        initTyreInfoTooltip();
+    if (widgetId === "tyres") {
+        if (typeof _tyreWidgetCache !== "undefined") _tyreWidgetCache.clear();
+        if (typeof initTyreInfoTooltip === "function") initTyreInfoTooltip();
     }
     if (widgetId === "lapTimes" && typeof updateLapTimesWidget === "function") {
         updateLapTimesWidget();

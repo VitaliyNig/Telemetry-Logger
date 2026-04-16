@@ -97,6 +97,7 @@
     overflow: hidden !important;
     display: flex;
     flex-direction: column;
+    contain: layout style paint;
 }
 
 .grid-stack-item-content:hover {

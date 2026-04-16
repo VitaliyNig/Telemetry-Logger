@@ -54,8 +54,7 @@ public sealed class TelemetryUdpReceiveService : BackgroundService
                 continue;
             }
 
-            var payload = received.Buffer.AsMemory().ToArray();
-            var packet = new RawTelemetryPacket(DateTimeOffset.UtcNow, received.RemoteEndPoint, payload);
+            var packet = new RawTelemetryPacket(DateTimeOffset.UtcNow, received.RemoteEndPoint, received.Buffer);
 
             try
             {

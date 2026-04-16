@@ -19,7 +19,7 @@ public sealed class TelemetryState
     public object? Get(byte packetId) =>
         _latestPackets.GetValueOrDefault(packetId);
 
-    public Dictionary<byte, object> GetAll() => new(_latestPackets);
+    public IReadOnlyDictionary<byte, object> GetAll() => _latestPackets;
 
     public void Clear() => _latestPackets.Clear();
 }

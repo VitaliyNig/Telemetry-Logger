@@ -527,6 +527,8 @@ let _tyreInfoPanel = null;
 
 function initTyreInfoTooltip() {
     document.querySelectorAll(".tyre-info-btn").forEach(btn => {
+        if (btn.dataset.tiWired) return;
+        btn.dataset.tiWired = "1";
         btn.addEventListener("mouseenter", () => openTyreInfo(btn));
         btn.addEventListener("mouseleave", closeTyreInfo);
         btn.addEventListener("focus", () => openTyreInfo(btn));
@@ -672,6 +674,8 @@ const pedalHistoryB = [];
 /** m_maxRPM from Car Status (rev limiter); 0 until first Car Status for this session. */
 let playerMaxRpm = 0;
 const RPM_SCALE_FALLBACK = 15000;
+let _lastRpmScale = 0;
+let _pedalChartRafId = 0;
 /** Absolute RPM thresholds for bar colours (vs current max RPM scale). */
 const RPM_BAR_GREEN_END = 11000;
 const RPM_BAR_GRADIENT_END = 12000;
@@ -692,11 +696,42 @@ function setHtml(id, html) {
     if (e) e.innerHTML = html;
 }
 
-function forEachTyreWidget(callback) {
-    document.querySelectorAll(".tyre-widget").forEach(callback);
-}
-
 const TYRE_CORNERS = ["RL", "RR", "FL", "FR"];
+
+/** Cached tyre-widget DOM references. Cleared on widget add/remove. */
+const _tyreWidgetCache = new Map();
+
+function getTyreWidgetNodes() {
+    for (const w of _tyreWidgetCache.keys()) {
+        if (!w.isConnected) _tyreWidgetCache.delete(w);
+    }
+    document.querySelectorAll(".tyre-widget").forEach(w => {
+        if (_tyreWidgetCache.has(w)) return;
+        const corners = new Map();
+        for (const corner of TYRE_CORNERS) {
+            const card = w.querySelector(`.tc[data-tyre-corner="${corner}"]`);
+            if (!card) continue;
+            corners.set(corner, {
+                card,
+                fill: card.querySelector(".tc-fill"),
+                nodeS: card.querySelector(".tc-ts"),
+                nodeI: card.querySelector(".tc-ti"),
+                icos: card.querySelectorAll(".tc-temps .tc-ico"),
+                psiEl: card.querySelector(".tc-psi"),
+                wearNode: card.querySelector(".tc-wear"),
+                blsNode: card.querySelector(".tc-bls"),
+            });
+        }
+        _tyreWidgetCache.set(w, {
+            corners,
+            dot: w.querySelector("[data-ti-dot]"),
+            name: w.querySelector("[data-ti-name]"),
+            rng: w.querySelector("[data-ti-range]"),
+            age: w.querySelector("[data-ti-age]"),
+        });
+    });
+    return _tyreWidgetCache;
+}
 
 function formatDeg(v) {
     if (v === undefined || v === null || v === 0) return "--";
@@ -710,63 +745,45 @@ function setTyreWidgetTemps(car) {
     if ((!inner || inner.length < 4) && (!surf || surf.length < 4)) return;
 
     const range = getCompoundTempRange(playerActualTyreCompound);
-    forEachTyreWidget(w => {
+    for (const [, wc] of getTyreWidgetNodes()) {
         for (let i = 0; i < 4; i++) {
-            const corner = TYRE_CORNERS[i];
-            const card = w.querySelector(`.tc[data-tyre-corner="${corner}"]`);
-            if (!card) continue;
+            const c = wc.corners.get(TYRE_CORNERS[i]);
+            if (!c) continue;
 
             const ts = surf?.[i];
             const ti = inner?.[i];
-
             const surfCol = tyreTempColor(ts, range);
             const innerCol = tyreTempColor(ti, range);
 
-            card.style.borderColor = surfCol || "var(--border)";
-            card.style.boxShadow = surfCol ? `0 0 8px ${tyreTempColorAlpha(ts, range, 0.3)}` : "";
-
-            const fill = card.querySelector(".tc-fill");
-            if (fill) {
-                fill.style.background = innerCol ? tyreTempColorAlpha(ti, range, 0.12) : "";
-            }
-
-            const nodeS = card.querySelector(".tc-ts");
-            const nodeI = card.querySelector(".tc-ti");
-            if (nodeS) { nodeS.textContent = formatDeg(ts); nodeS.style.color = surfCol || ""; }
-            if (nodeI) { nodeI.textContent = formatDeg(ti); nodeI.style.color = innerCol || ""; }
-
-            const icos = card.querySelectorAll(".tc-temps .tc-ico");
-            if (icos[0]) icos[0].style.color = surfCol || "var(--text-dim)";
-            if (icos[1]) icos[1].style.color = innerCol || "var(--text-dim)";
-
-            const psiEl = card.querySelector(".tc-psi");
-            if (psiEl) psiEl.textContent = press?.[i] != null ? press[i].toFixed(1) + " psi" : "-- psi";
+            c.card.style.borderColor = surfCol || "var(--border)";
+            c.card.style.boxShadow = surfCol ? `0 0 8px ${tyreTempColorAlpha(ts, range, 0.3)}` : "";
+            if (c.fill) c.fill.style.background = innerCol ? tyreTempColorAlpha(ti, range, 0.12) : "";
+            if (c.nodeS) { c.nodeS.textContent = formatDeg(ts); c.nodeS.style.color = surfCol || ""; }
+            if (c.nodeI) { c.nodeI.textContent = formatDeg(ti); c.nodeI.style.color = innerCol || ""; }
+            if (c.icos[0]) c.icos[0].style.color = surfCol || "var(--text-dim)";
+            if (c.icos[1]) c.icos[1].style.color = innerCol || "var(--text-dim)";
+            if (c.psiEl) c.psiEl.textContent = press?.[i] != null ? press[i].toFixed(1) + " psi" : "-- psi";
         }
-    });
+    }
 }
 
 function setTyreWidgetWear(car) {
     const wear = car?.tyresWear;
     const blisters = car?.tyreBlisters;
 
-    forEachTyreWidget(w => {
+    for (const [, wc] of getTyreWidgetNodes()) {
         for (let i = 0; i < 4; i++) {
-            const corner = TYRE_CORNERS[i];
-            const card = w.querySelector(`.tc[data-tyre-corner="${corner}"]`);
-            if (!card) continue;
-
-            const wearNode = card.querySelector(".tc-wear");
-            const fill = card.querySelector(".tc-fill");
-            const blsNode = card.querySelector(".tc-bls");
+            const c = wc.corners.get(TYRE_CORNERS[i]);
+            if (!c) continue;
 
             const w_ = wear?.[i];
             const pct = (w_ != null && Number.isFinite(Number(w_))) ? Math.min(100, Math.max(0, Number(w_))) : null;
 
-            if (wearNode) wearNode.textContent = pct !== null ? Math.round(pct) + "%" : "--";
-            if (fill) fill.style.height = pct !== null ? (100 - pct) + "%" : "100%";
-            if (blsNode) blsNode.textContent = blisters?.[i] != null ? `Blisters ${blisters[i]}%` : "Blisters --";
+            if (c.wearNode) c.wearNode.textContent = pct !== null ? Math.round(pct) + "%" : "--";
+            if (c.fill) c.fill.style.height = pct !== null ? (100 - pct) + "%" : "100%";
+            if (c.blsNode) c.blsNode.textContent = blisters?.[i] != null ? `Blisters ${blisters[i]}%` : "Blisters --";
         }
-    });
+    }
 }
 
 function setTyreWidgetCompoundAge(car) {
@@ -780,16 +797,12 @@ function setTyreWidgetCompoundAge(car) {
     const rangeText = `${range.min}–${range.max}°C`;
     const ageText = `${car.tyresAgeLaps} laps`;
 
-    forEachTyreWidget(w => {
-        const dot = w.querySelector("[data-ti-dot]");
-        const name = w.querySelector("[data-ti-name]");
-        const rng = w.querySelector("[data-ti-range]");
-        const age = w.querySelector("[data-ti-age]");
-        if (dot) dot.style.background = dotCol;
-        if (name) name.textContent = nameText;
-        if (rng) rng.textContent = rangeText;
-        if (age) age.textContent = ageText;
-    });
+    for (const [, wc] of getTyreWidgetNodes()) {
+        if (wc.dot) wc.dot.style.background = dotCol;
+        if (wc.name) wc.name.textContent = nameText;
+        if (wc.rng) wc.rng.textContent = rangeText;
+        if (wc.age) wc.age.textContent = ageText;
+    }
 }
 
 /** Grey track; clipped fill: green 0..11k, gradient 11k..12k, solid red 12k..max. */
@@ -1095,7 +1108,7 @@ function updateCarTelemetry(data) {
     setText("gear", gear === -1 ? "R" : gear === 0 ? "N" : gear.toString());
 
     const scale = playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK;
-    syncRpmBarSegmentWidths(scale);
+    if (scale !== _lastRpmScale) { _lastRpmScale = scale; syncRpmBarSegmentWidths(scale); }
     const rpmPct = Math.min(100, (car.engineRpm / scale) * 100);
     const rpmClip = el("rpmBarClip");
     if (rpmClip) rpmClip.style.setProperty("--rpm-pct", `${rpmPct}%`);
@@ -1117,7 +1130,9 @@ function updateCarTelemetry(data) {
     if (brakeLbl) brakeLbl.textContent = brakePct + "%";
 
     pushPedalSample(t, b);
-    updatePedalChart();
+    if (!_pedalChartRafId) {
+        _pedalChartRafId = requestAnimationFrame(() => { _pedalChartRafId = 0; updatePedalChart(); });
+    }
 
     const drsEl = el("drsIndicator");
     if (drsEl) {
@@ -1325,14 +1340,13 @@ function updateTopSpeedLeaderboard() {
 
     rows.sort((a, b) => b.speed - a.speed || a.pos - b.pos);
 
-    body.innerHTML = rows.map((r, i) => {
+    const parts = [];
+    for (let i = 0; i < rows.length; i++) {
+        const r = rows[i];
         const rowCls = r.isPlayer ? "ts-lb-row player-row" : "ts-lb-row";
-        return `<div class="${rowCls}">
-            <span class="ts-lb-rank">${i + 1}</span>
-            <span class="ts-lb-name" title="${r.name}">${r.name}</span>
-            <span class="ts-lb-speed">${formatSpeedKmh(r.speed)}</span>
-        </div>`;
-    }).join("");
+        parts.push(`<div class="${rowCls}"><span class="ts-lb-rank">${i + 1}</span><span class="ts-lb-name" title="${r.name}">${r.name}</span><span class="ts-lb-speed">${formatSpeedKmh(r.speed)}</span></div>`);
+    }
+    body.innerHTML = parts.join("");
 }
 
 function updateTopSpeedCompareWidget() {
@@ -1488,6 +1502,19 @@ function updateEvent(data, header) {
         events.unshift(entry);
         if (events.length > maxEvents) events.length = maxEvents;
     }
+
+    /* Fast path: for non-penalty events, insert at top instead of full rebuild */
+    const needsFullRender = isPenalty || code === "DTSV" || code === "SGSV" || eventFilter[code] === false;
+    if (!needsFullRender) {
+        const list = el("eventsList");
+        if (list && events.length > 1) {
+            const ph = list.querySelector(".placeholder");
+            if (ph) ph.remove();
+            list.insertAdjacentHTML("afterbegin", renderEventItem(entry, false));
+            while (list.children.length > maxEvents) list.removeChild(list.lastChild);
+            return;
+        }
+    }
     renderEvents();
 }
 
@@ -1603,22 +1630,24 @@ function updateStandings(lapDataPacket) {
     }).join("");
 }
 
+const _VISUAL_COMPOUND_INFO = {
+    16: { name: "Soft", css: "compound-soft", dot: "#ff3333" },
+    17: { name: "Medium", css: "compound-medium", dot: "#ffd700" },
+    18: { name: "Hard", css: "compound-hard", dot: "#e0e0e0" },
+    7: { name: "Inter", css: "compound-inter", dot: "#00cc00" },
+    8: { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
+    9: { name: "Dry", css: "compound-hard", dot: "#c0c0c0" },
+    10: { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
+    15: { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
+    19: { name: "Super Soft", css: "compound-soft", dot: "#ff6633" },
+    20: { name: "Soft", css: "compound-soft", dot: "#ff3333" },
+    21: { name: "Medium", css: "compound-medium", dot: "#ffd700" },
+    22: { name: "Hard", css: "compound-hard", dot: "#e0e0e0" },
+};
+const _VISUAL_COMPOUND_FALLBACK = { name: "Unknown", css: "", dot: "#888" };
+
 function getVisualCompoundInfo(visualId) {
-    const map = {
-        16: { name: "Soft", css: "compound-soft", dot: "#ff3333" },
-        17: { name: "Medium", css: "compound-medium", dot: "#ffd700" },
-        18: { name: "Hard", css: "compound-hard", dot: "#e0e0e0" },
-        7: { name: "Inter", css: "compound-inter", dot: "#00cc00" },
-        8: { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
-        9: { name: "Dry", css: "compound-hard", dot: "#c0c0c0" },
-        10: { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
-        15: { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
-        19: { name: "Super Soft", css: "compound-soft", dot: "#ff6633" },
-        20: { name: "Soft", css: "compound-soft", dot: "#ff3333" },
-        21: { name: "Medium", css: "compound-medium", dot: "#ffd700" },
-        22: { name: "Hard", css: "compound-hard", dot: "#e0e0e0" },
-    };
-    return map[visualId] || { name: `ID:${visualId}`, css: "", dot: "#888" };
+    return _VISUAL_COMPOUND_INFO[visualId] || _VISUAL_COMPOUND_FALLBACK;
 }
 
 function getCompoundAbbr(name) {
@@ -1670,15 +1699,12 @@ function updateTyreSets(data) {
         return a.wear - b.wear;
     });
 
-    let html = "";
+    const parts = [];
 
     // --- Available section ---
     if (available.length > 0) {
-        html += `<div class="tyreset-section">`;
-        html += `<div class="tyreset-section-header">`
-            + `<span class="tyreset-section-title">Available</span>`
-            + `<span class="tyreset-section-count">${available.length} set${available.length !== 1 ? "s" : ""}</span>`
-            + `</div>`;
+        parts.push(`<div class="tyreset-section">`);
+        parts.push(`<div class="tyreset-section-header"><span class="tyreset-section-title">Available</span><span class="tyreset-section-count">${available.length} set${available.length !== 1 ? "s" : ""}</span></div>`);
         for (const s of available) {
             const wearPct = s.wear;
             const wearColor = wearPct > 60 ? "var(--danger)" : wearPct > 30 ? "var(--warning)" : "var(--safe)";
@@ -1688,46 +1714,30 @@ function updateTyreSets(data) {
             const deltaText = delta !== 0 ? `${deltaSign}${(delta / 1000).toFixed(1)}s` : "—";
             const abbr = getCompoundAbbr(s.compoundInfo.name);
             const cls = s.isFitted ? "tyreset-item fitted" : "tyreset-item";
-            html += `<div class="${cls}">`;
-            html += `<span class="tyreset-badge ${s.compoundInfo.css}">${abbr}</span>`;
-            html += `<div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div>`;
-            html += `<span class="tyreset-wear-pct" style="color:${wearColor}">${wearPct}%</span>`;
-            html += `<span class="tyreset-life">${s.lifeSpan}L</span>`;
-            html += `<span class="tyreset-delta ${deltaCls}">${deltaText}</span>`;
-            if (s.isFitted) html += `<span class="tyreset-fitted-badge">ON</span>`;
-            html += `</div>`;
+            parts.push(`<div class="${cls}"><span class="tyreset-badge ${s.compoundInfo.css}">${abbr}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct" style="color:${wearColor}">${wearPct}%</span><span class="tyreset-life">${s.lifeSpan}L</span><span class="tyreset-delta ${deltaCls}">${deltaText}</span>${s.isFitted ? '<span class="tyreset-fitted-badge">ON</span>' : ""}</div>`);
         }
-        html += `</div>`;
+        parts.push(`</div>`);
     }
 
     // --- Used section ---
     if (used.length > 0) {
-        // Sort used by compound order
         used.sort((a, b) => {
             const ai = compoundOrder.indexOf(a.compoundInfo.name);
             const bi = compoundOrder.indexOf(b.compoundInfo.name);
             return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
         });
-        html += `<div class="tyreset-section tyreset-section-used">`;
-        html += `<div class="tyreset-section-header">`
-            + `<span class="tyreset-section-title">Used</span>`
-            + `<span class="tyreset-section-count">${used.length} set${used.length !== 1 ? "s" : ""}</span>`
-            + `</div>`;
+        parts.push(`<div class="tyreset-section tyreset-section-used">`);
+        parts.push(`<div class="tyreset-section-header"><span class="tyreset-section-title">Used</span><span class="tyreset-section-count">${used.length} set${used.length !== 1 ? "s" : ""}</span></div>`);
         for (const s of used) {
             const wearPct = s.wear;
             const wearColor = wearPct > 60 ? "var(--danger)" : wearPct > 30 ? "var(--warning)" : "var(--safe)";
             const abbr = getCompoundAbbr(s.compoundInfo.name);
-            html += `<div class="tyreset-item">`;
-            html += `<span class="tyreset-badge tyreset-badge-sm ${s.compoundInfo.css}">${abbr}</span>`;
-            html += `<div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div>`;
-            html += `<span class="tyreset-wear-pct">${wearPct}%</span>`;
-            html += `<span class="tyreset-life">${s.lifeSpan}L</span>`;
-            html += `</div>`;
+            parts.push(`<div class="tyreset-item"><span class="tyreset-badge tyreset-badge-sm ${s.compoundInfo.css}">${abbr}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct">${wearPct}%</span><span class="tyreset-life">${s.lifeSpan}L</span></div>`);
         }
-        html += `</div>`;
+        parts.push(`</div>`);
     }
 
-    container.innerHTML = html || '<div class="tyreset-placeholder">No tyre sets available</div>';
+    container.innerHTML = parts.length > 0 ? parts.join("") : '<div class="tyreset-placeholder">No tyre sets available</div>';
 }
 
 async function loadPitTimes() {
@@ -2217,34 +2227,32 @@ function updateGapRing() {
         const angDraw = angRaw + stack * ANG_STACK_RAD;
         const cos = Math.cos(angDraw);
         const sin = Math.sin(angDraw);
-        placed.push({ d, cos, sin });
+        const teamColor = teamAccentColor(participantTeamIds[d.idx]);
+        placed.push({ d, cos, sin, teamColor });
     }
 
-    let paths = "";
-    paths += `<circle cx="0" cy="0" r="${R_DOT}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="6" />`;
-    paths += `<line x1="0" y1="-46" x2="0" y2="-80" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" stroke-linecap="round" />`;
-    paths += `<text x="0" y="-84" class="gap-ring-sf" font-size="8" fill="rgba(255,255,255,0.4)" text-anchor="middle" dominant-baseline="auto">S/F</text>`;
+    const svgParts = [
+        `<circle cx="0" cy="0" r="${R_DOT}" fill="none" stroke="rgba(255,255,255,0.06)" stroke-width="6" />`,
+        `<line x1="0" y1="-46" x2="0" y2="-80" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" stroke-linecap="round" />`,
+        `<text x="0" y="-84" class="gap-ring-sf" font-size="8" fill="rgba(255,255,255,0.4)" text-anchor="middle" dominant-baseline="auto">S/F</text>`,
+    ];
 
     for (const { cos, sin } of placed) {
-        const x2 = cos * R_OUTER;
-        const y2 = sin * R_OUTER;
-        paths += `<line x1="0" y1="0" x2="${x2}" y2="${y2}" class="gap-ring-spoke" stroke="rgba(255,255,255,0.09)" stroke-width="0.5" />`;
+        svgParts.push(`<line x1="0" y1="0" x2="${cos * R_OUTER}" y2="${sin * R_OUTER}" class="gap-ring-spoke" stroke="rgba(255,255,255,0.09)" stroke-width="0.5" />`);
     }
 
-    for (const { d, cos, sin } of placed) {
-        const teamColor = teamAccentColor(participantTeamIds[d.idx]);
+    for (const { d, cos, sin, teamColor } of placed) {
         const cx = cos * R_DOT;
         const cy = sin * R_DOT;
         const rDotPx = d.isPlayer ? 5.5 : 4.5;
         const sw = d.isPlayer ? 1.8 : 1.1;
-        paths += `<circle cx="${cx}" cy="${cy}" r="${rDotPx}" fill="${teamColor}" fill-opacity="0.92" stroke="rgba(255,255,255,0.9)" stroke-width="${sw}" />`;
+        svgParts.push(`<circle cx="${cx}" cy="${cy}" r="${rDotPx}" fill="${teamColor}" fill-opacity="0.92" stroke="rgba(255,255,255,0.9)" stroke-width="${sw}" />`);
     }
 
-    for (const { d, cos, sin } of placed) {
+    for (const { d, cos, sin, teamColor } of placed) {
         const lapsDown = leaderLap - (d.currentLapNum || 0);
         const lapSuffix = lapsDown > 0 ? ` ${lapsDown}L` : "";
 
-        const teamColor = teamAccentColor(participantTeamIds[d.idx]);
         const isLeader = d.pos === 1;
         const outerText = formatGapRingOuterMs(d.gapLeaderMs, isLeader);
         const innerText = formatGapRingIntervalMs(d.gapAheadMs, isLeader);
@@ -2257,12 +2265,12 @@ function updateGapRing() {
         const iy = sin * R_INNER;
 
         const nameCls = d.isPlayer ? "gap-ring-txt-name gap-ring-txt-player" : "gap-ring-txt-name";
-        paths += `<text x="${ox}" y="${oy}" class="gap-ring-txt-outer" font-size="${fontOuter}">${escapeXmlText(outerText)}</text>`;
-        paths += `<text x="${mx}" y="${my}" class="${nameCls}" fill="${teamColor}" font-size="${fontName}" font-weight="600">${escapeXmlText(driverAbbrFromName(d.name) + lapSuffix)}</text>`;
-        paths += `<text x="${ix}" y="${iy}" class="gap-ring-txt-inner" font-size="${fontInner}">${escapeXmlText(innerText)}</text>`;
+        svgParts.push(`<text x="${ox}" y="${oy}" class="gap-ring-txt-outer" font-size="${fontOuter}">${escapeXmlText(outerText)}</text>`);
+        svgParts.push(`<text x="${mx}" y="${my}" class="${nameCls}" fill="${teamColor}" font-size="${fontName}" font-weight="600">${escapeXmlText(driverAbbrFromName(d.name) + lapSuffix)}</text>`);
+        svgParts.push(`<text x="${ix}" y="${iy}" class="gap-ring-txt-inner" font-size="${fontInner}">${escapeXmlText(innerText)}</text>`);
     }
 
-    if (svg) svg.innerHTML = paths;
+    if (svg) svg.innerHTML = svgParts.join("");
 
     if (!elPlayer) return;
 
@@ -2419,27 +2427,25 @@ function updateGapBoard() {
         return { text: formatTime(timeMs), cls: "" };
     }
 
-    let html = '<table class="gap-table">';
-    html += '<thead><tr><th class="gap-hdr-label">LAST ' + lapColumns.length + ' LAPS</th>';
+    const parts = ['<table class="gap-table"><thead><tr><th class="gap-hdr-label">LAST ' + lapColumns.length + ' LAPS</th>'];
     for (const lapIdx of lapColumns) {
-        html += `<th>LAP ${lapIdx + 1}</th>`;
+        parts.push(`<th>LAP ${lapIdx + 1}</th>`);
     }
-    html += '</tr></thead><tbody>';
+    parts.push('</tr></thead><tbody>');
 
     for (const driver of chosen) {
         const rowCls = driver.isPlayer ? "gap-row-player" : "";
         const posColor = driver.isPlayer ? "gap-pos-player" : "";
-        html += `<tr class="${rowCls}">`;
-        html += `<td class="gap-driver-cell"><span class="gap-pos ${posColor}">${driver.pos}</span> <span class="gap-driver-name">${driver.name}</span></td>`;
+        parts.push(`<tr class="${rowCls}"><td class="gap-driver-cell"><span class="gap-pos ${posColor}">${driver.pos}</span> <span class="gap-driver-name">${driver.name}</span></td>`);
         for (const lapIdx of lapColumns) {
             const cell = formatLapCell(driver.idx, lapIdx, driver.isPlayer);
-            html += `<td class="gap-time-cell ${cell.cls}">${cell.text}</td>`;
+            parts.push(`<td class="gap-time-cell ${cell.cls}">${cell.text}</td>`);
         }
-        html += '</tr>';
+        parts.push('</tr>');
     }
 
-    html += '</tbody></table>';
-    container.innerHTML = html;
+    parts.push('</tbody></table>');
+    container.innerHTML = parts.join("");
 }
 
 
@@ -2553,6 +2559,8 @@ function openLapTimesSetupPopover(anchor, html) {
     requestAnimationFrame(() => positionLapTimesPopover(anchor, panel));
 }
 
+let _ltExpandedBtn = null;
+
 function ensureLapTimesMenuHandlers() {
     if (_lapTimesMenuBound) return;
     _lapTimesMenuBound = true;
@@ -2562,8 +2570,8 @@ function ensureLapTimesMenuHandlers() {
             e.preventDefault();
             e.stopPropagation();
             const id = btn.dataset.ltSid;
-            const prevOpen = btn.getAttribute("aria-expanded") === "true";
-            document.querySelectorAll(".lt-setup-btn[aria-expanded='true']").forEach(b => b.setAttribute("aria-expanded", "false"));
+            const prevOpen = btn === _ltExpandedBtn;
+            if (_ltExpandedBtn) { _ltExpandedBtn.setAttribute("aria-expanded", "false"); _ltExpandedBtn = null; }
             if (prevOpen) {
                 closeLapTimesSetupPopover();
                 return;
@@ -2571,19 +2579,24 @@ function ensureLapTimesMenuHandlers() {
             const html = id ? _lapTimesSetupContent.get(id) : null;
             openLapTimesSetupPopover(btn, html || "<p>No setup data.</p>");
             btn.setAttribute("aria-expanded", "true");
+            _ltExpandedBtn = btn;
             return;
         }
-        if (!e.target.closest("#lapTimesSetupPanel")) closeLapTimesSetupPopover();
+        if (!e.target.closest("#lapTimesSetupPanel")) {
+            if (_ltExpandedBtn) { _ltExpandedBtn.setAttribute("aria-expanded", "false"); _ltExpandedBtn = null; }
+            closeLapTimesSetupPopover();
+        }
     });
     document.addEventListener("contextmenu", (e) => {
         const btn = e.target.closest(".lt-setup-btn");
         if (!btn) return;
         e.preventDefault();
-        document.querySelectorAll(".lt-setup-btn[aria-expanded='true']").forEach(b => b.setAttribute("aria-expanded", "false"));
+        if (_ltExpandedBtn) { _ltExpandedBtn.setAttribute("aria-expanded", "false"); _ltExpandedBtn = null; }
         const id = btn.dataset.ltSid;
         const html = id ? _lapTimesSetupContent.get(id) : null;
         openLapTimesSetupPopover(btn, html || "<p>No setup data.</p>");
         btn.setAttribute("aria-expanded", "true");
+        _ltExpandedBtn = btn;
     });
     window.addEventListener("resize", () => {
         const panel = el("lapTimesSetupPanel");
@@ -2610,13 +2623,13 @@ function renderLapTimesPractice(tbody, headRow) {
     const teamName = teamIdForColor >= 0 ? (TEAM_NAMES[teamIdForColor] || "") : "";
 
     const laps = hist.lapHistoryDataItems;
-    let html = "";
-    let hasRows = false;
+    _lapTimesSetupContent.clear();
+    _lapTimesSetupIdSeq = 0;
+    const parts = [];
 
     for (let i = 0; i < laps.length; i++) {
         const entry = laps[i];
         if (!entry?.lapTimeInMs) continue;
-        hasRows = true;
         const lapInvalid = (entry.lapValidBitFlags & 1) === 0;
         const rowCls = lapInvalid ? "lt-lap-invalid" : "";
         const lapTime = formatTime(entry.lapTimeInMs);
@@ -2628,7 +2641,7 @@ function renderLapTimesPractice(tbody, headRow) {
             ? formatCarSetupPopoverHtml(snapSetup)
             : buildLapTimesSetupHtml(playerCarIndex);
         const sid = registerLapTimesSetup(setupHtml);
-        html += `<tr class="${rowCls}">
+        parts.push(`<tr class="${rowCls}">
             <td>${i + 1}</td>
             <td class="lt-car-cell"><div class="lt-car-inner"><span class="lt-team-line" style="background:${tcol}"></span><div class="lt-car-meta"><span class="lt-car-name">${escapeXmlText(teamName)}</span></div>${perfIcon}</div></td>
             <td>${lapTime}</td>
@@ -2636,10 +2649,10 @@ function renderLapTimesPractice(tbody, headRow) {
             <td>${s2}</td>
             <td>${s3}</td>
             <td><button type="button" class="lt-setup-btn" data-lt-sid="${sid}" title="Setup (click or right‑click)" aria-expanded="false">⋮</button></td>
-        </tr>`;
+        </tr>`);
     }
 
-    tbody.innerHTML = hasRows ? html : '<tr><td colspan="7" class="lt-placeholder">No lap times yet (complete a lap).</td></tr>';
+    tbody.innerHTML = parts.length > 0 ? parts.join("") : '<tr><td colspan="7" class="lt-placeholder">No lap times yet (complete a lap).</td></tr>';
 }
 
 function updateTimeTrial(data) {
@@ -2691,8 +2704,10 @@ function initConnection() {
                 lastTimeTrialPacket = null;
                 lastCarSetupsPacket = null;
                 _lapTimesSetupContent.clear();
+                _lapTimesSetupIdSeq = 0;
                 _lapSetupSnapshots.clear();
                 closeLapTimesSetupPopover();
+                for (const k in sessionHistories) delete sessionHistories[k];
             }
             lastTelemetrySessionUid = uid;
         }

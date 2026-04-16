@@ -24,7 +24,7 @@ public sealed class TelemetryHub : Hub<ITelemetryClient>
         var result = new Dictionary<string, object>();
         foreach (var (key, value) in all)
         {
-            var name = ((F125PacketId)key).ToString();
+            var name = F125PacketNames.Get(key);
             result[name] = value;
         }
         return result;

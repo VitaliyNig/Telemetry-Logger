@@ -45,7 +45,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
 
     public async Task OnPacketAsync(RawTelemetryPacket packet, CancellationToken cancellationToken)
     {
-        var span = packet.Payload.AsSpan();
+        var span = packet.Payload.Span;
         if (!_headerReader.TryRead(span, out var header))
         {
             _logger.LogWarning("Short or unknown packet ({Length} bytes) from {Remote}",
@@ -60,8 +60,8 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
             return;
         }
 
-        var packetName = ((F125PacketId)header.PacketId).ToString();
-        _tracker.RecordPacket(packetName);
+        var packetName = F125PacketNames.Get(header.PacketId);
+        _tracker.RecordPacket(header.PacketId);
 
         var deserializer = _registry.Get(header.PacketId);
         if (deserializer == null)
@@ -103,7 +103,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
                 {
                     timestamp = DateTimeOffset.UtcNow.ToString("HH:mm:ss.fff"),
                     name = packetName,
-                    counts = _tracker.GetPacketCounts(),
+                    counts = _tracker.GetPacketCountsByName(),
                     total = _tracker.TotalPackets
                 });
             }
