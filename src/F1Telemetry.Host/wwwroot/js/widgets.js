@@ -17,6 +17,7 @@ const WIDGET_REGISTRY = {
     qualiStandings:   { title: "Quali Standings",    tpl: "tpl-qualiStandings",     w: 14,  h: 12,  minW: 1, minH: 1 },
     topSpeed:         { title: "Session Top Speeds",   tpl: "tpl-topSpeed",         w: 8,   h: 10,  minW: 1, minH: 1 },
     topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare",  w: 4,   h: 10,  minW: 1, minH: 1 },
+    lapTimes:         { title: "Lap Times",            tpl: "tpl-lapTimes",         w: 14,  h: 10,  minW: 4, minH: 4 },
 };
 
 /** Finer grid (2× columns, 2× rows vs v1); physical size unchanged → scale saved layouts ×2. */
@@ -308,6 +309,9 @@ function wireWidgetEvents(widgetId) {
     }
     if (widgetId === "tyres" && typeof initTyreInfoTooltip === "function") {
         initTyreInfoTooltip();
+    }
+    if (widgetId === "lapTimes" && typeof updateLapTimesWidget === "function") {
+        updateLapTimesWidget();
     }
 }
 

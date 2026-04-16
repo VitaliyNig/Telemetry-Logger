@@ -2471,3 +2471,167 @@
 .tsc-delta-up   { color: #22c55e; }
 .tsc-delta-pb   { color: #a855f7; letter-spacing: 0.5px; }
 .tsc-delta-neutral { color: var(--text-dim); }
+
+/* Lap Times (Practice / Time Trial) */
+.lap-times-card .standings-table-wrap {
+    position: relative;
+}
+
+.lap-times-table th.lt-col-lead {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.lap-times-table th.lt-col-setup {
+    width: 28px;
+    padding-left: 4px;
+    padding-right: 4px;
+}
+
+.lap-times-table td {
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+.lap-times-table .lt-car-cell {
+    font-family: inherit;
+}
+
+.lt-car-inner {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+
+.lt-team-line {
+    width: 3px;
+    align-self: stretch;
+    min-height: 18px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+
+.lt-car-meta {
+    display: flex;
+    flex-direction: column;
+    min-width: 0;
+}
+
+.lt-car-name {
+    font-weight: 600;
+    font-size: 12px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.lt-car-sub {
+    font-size: 10px;
+    color: var(--text-dim);
+}
+
+.lt-perf-ico {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+    opacity: 0.95;
+}
+
+.lt-perf-ico svg {
+    width: 14px;
+    height: 14px;
+    display: block;
+}
+
+.lt-setup-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--bg-tertiary);
+    color: var(--text-secondary);
+    cursor: pointer;
+    line-height: 1;
+    transition: background var(--transition), color var(--transition), border-color var(--transition);
+}
+
+.lt-setup-btn:hover {
+    background: var(--bg-card);
+    color: var(--text-primary);
+    border-color: var(--border-light);
+}
+
+.lt-setup-popover {
+    position: fixed;
+    z-index: 12000;
+    min-width: 220px;
+    max-width: min(320px, calc(100vw - 16px));
+    max-height: min(420px, 70vh);
+    overflow: auto;
+    padding: 10px 12px;
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.lt-setup-popover .lt-setup-title {
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+}
+
+.lt-setup-popover dl {
+    margin: 0;
+}
+
+.lt-setup-popover dt {
+    float: left;
+    clear: left;
+    width: 46%;
+    margin: 0 0 4px;
+    color: var(--text-dim);
+    font-size: 11px;
+}
+
+.lt-setup-popover dd {
+    margin: 0 0 4px 48%;
+    color: var(--text-primary);
+    font-weight: 500;
+}
+
+.lt-setup-popover .lt-setup-divider {
+    margin: 10px 0 8px;
+    border-top: 1px solid var(--border);
+}
+
+.lt-placeholder {
+    text-align: center;
+    color: var(--text-dim);
+    font-style: italic;
+    font-family: inherit;
+    padding: 12px 8px;
+}
+
+.lap-times-table tr.player-row td {
+    background: rgba(155, 63, 245, 0.06);
+}
+
+.lap-times-table .lt-time-inv {
+    opacity: 0.55;
+    text-decoration: line-through;
+}

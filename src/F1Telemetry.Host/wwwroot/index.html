@@ -426,6 +426,23 @@
         </table></div></div>
     </template>
 
+    <template id="tpl-lapTimes">
+        <div class="card lap-times-card"><h2 class="widget-title">Lap Times</h2>
+        <div class="lap-times-wrap standings-table-wrap">
+            <table class="standings-table lap-times-table">
+                <thead id="lapTimesHead"><tr id="lapTimesHeadRow">
+                    <th class="lt-col-lead">#</th>
+                    <th>Car</th>
+                    <th>Lap</th>
+                    <th>S1</th><th>S2</th><th>S3</th>
+                    <th class="lt-col-setup" aria-label="Setup"></th>
+                </tr></thead>
+                <tbody id="lapTimesBody"></tbody>
+            </table>
+            <div id="lapTimesSetupPanel" class="lt-setup-popover" hidden></div>
+        </div></div>
+    </template>
+
     <script src="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-all.js"></script>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/microsoft-signalr/8.0.7/signalr.min.js"></script>
     <script src="/js/app.js"></script>

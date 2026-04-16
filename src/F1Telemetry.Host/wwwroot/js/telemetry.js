@@ -639,6 +639,13 @@ let lastSessionPacket = null;
 /** Max lapDistance (m) seen this session — fallback when trackLength missing */
 let gapRingObservedMaxLapDist = 0;
 const sessionHistories = {};
+/** Last full Car Setups packet (all cars) — used by Lap Times setup popover. */
+let lastCarSetupsPacket = null;
+/** Time Trial packet (session / personal / rival rows). */
+let lastTimeTrialPacket = null;
+let _lapTimesSetupIdSeq = 0;
+const _lapTimesSetupContent = new Map();
+let _lapTimesMenuBound = false;
 const GAP_BOARD_LAPS = 4;
 
 /** Max speed (km/h) seen this session per car index (Car Telemetry). */
@@ -938,6 +945,8 @@ function updateSession(data) {
     } else {
         setText("timeLeft", "--");
     }
+
+    updateLapTimesWidget();
 }
 
 const WEATHER_ICONS = {
@@ -1167,14 +1176,17 @@ function updateCarStatus(data) {
 }
 
 function updateCarSetups(data) {
+    lastCarSetupsPacket = data;
     const setup = data.carSetupData?.[playerCarIndex];
     const diffEl = el("diffOnThrottleValue");
-    if (!diffEl) return;
-    if (!setup || setup.onThrottle === undefined || setup.onThrottle === null) {
-        diffEl.textContent = "--";
-        return;
+    if (diffEl) {
+        if (!setup || setup.onThrottle === undefined || setup.onThrottle === null) {
+            diffEl.textContent = "--";
+        } else {
+            diffEl.textContent = `${setup.onThrottle}%`;
+        }
     }
-    diffEl.textContent = `${setup.onThrottle}%`;
+    updateLapTimesWidget();
 }
 
 function updateLapData(data) {
@@ -1202,6 +1214,7 @@ function updateLapData(data) {
     updatePitPredictor();
     updateGapBoard();
     updateGapRing();
+    updateLapTimesWidget();
 }
 
 function updateCarDamage(data) {
@@ -1230,6 +1243,7 @@ function updateParticipants(data) {
     }
     updateTopSpeedWidgets();
     updateGapRing();
+    updateLapTimesWidget();
 }
 
 function formatSpeedKmh(v) {
@@ -1830,6 +1844,7 @@ function updateSessionHistory(data) {
     sessionHistories[data.carIdx] = data;
     updateGapBoard();
     updateQualiStandings();
+    updateLapTimesWidget();
 }
 
 function getQualiDriverStatus(ld) {
@@ -2198,9 +2213,9 @@ function updateGapRing() {
     paths += `<text x="0" y="-84" class="gap-ring-sf" font-size="8" fill="rgba(255,255,255,0.4)" text-anchor="middle" dominant-baseline="auto">S/F</text>`;
 
     for (const { cos, sin } of placed) {
-        const cx = cos * R_DOT;
-        const cy = sin * R_DOT;
-        paths += `<line x1="0" y1="0" x2="${cx}" y2="${cy}" class="gap-ring-spoke" stroke="rgba(255,255,255,0.09)" stroke-width="0.5" />`;
+        const x2 = cos * R_OUTER;
+        const y2 = sin * R_OUTER;
+        paths += `<line x1="0" y1="0" x2="${x2}" y2="${y2}" class="gap-ring-spoke" stroke="rgba(255,255,255,0.09)" stroke-width="0.5" />`;
     }
 
     for (const { d, cos, sin } of placed) {
@@ -2414,6 +2429,339 @@ function updateGapBoard() {
     container.innerHTML = html;
 }
 
+function isPracticeSessionType() {
+    const t = lastSessionPacket?.sessionType ?? 0;
+    return t >= 1 && t <= 4;
+}
+
+function isTimeTrialSessionType() {
+    const t = lastSessionPacket?.sessionType ?? 0;
+    if (t === 18) return true;
+    return lastSessionPacket?.gameMode === 5 || lastSessionPacket?.ruleSet === 2;
+}
+
+function lapTimesWidgetMode() {
+    if (isTimeTrialSessionType()) return "tt";
+    if (isPracticeSessionType()) return "practice";
+    return null;
+}
+
+function getBestLapHistoryEntryForTable(carIdx) {
+    const hist = sessionHistories[carIdx];
+    if (!hist?.lapHistoryDataItems?.length || !hist.bestLapTimeLapNum) return null;
+    const idx = hist.bestLapTimeLapNum - 1;
+    return hist.lapHistoryDataItems[idx] || null;
+}
+
+function sectorMsFromHistoryEntry(entry, sectorNum) {
+    if (!entry) return 0;
+    if (sectorNum === 1) return (entry.sector1TimeMinutesPart || 0) * 60000 + (entry.sector1TimeMsPart || 0);
+    if (sectorNum === 2) return (entry.sector2TimeMinutesPart || 0) * 60000 + (entry.sector2TimeMsPart || 0);
+    return (entry.sector3TimeMinutesPart || 0) * 60000 + (entry.sector3TimeMsPart || 0);
+}
+
+function assistOnOff(v) {
+    return v === 0 ? "Off" : "On";
+}
+
+function equalPerfTooltipAndIcon(equalB) {
+    const isEqual = equalB === 1;
+    const title = isEqual ? "Equal car performance" : "Realistic car performance";
+    const svg = isEqual
+        ? '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M12 3v18M5 8h14M5 16h14"/><path d="M8 8l2-3h4l2 3M8 16l2 3h4l2-3"/></svg>'
+        : '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 14l3-7h10l3 7"/><circle cx="8" cy="17" r="2"/><circle cx="16" cy="17" r="2"/><path d="M7 7l1-3h8l1 3"/></svg>';
+    return `<span class="lt-perf-ico" title="${title}">${svg}</span>`;
+}
+
+function formatCarSetupPopoverHtml(setup) {
+    if (!setup) {
+        return '<div class="lt-setup-title">Setup</div><p>No car setup data.</p>';
+    }
+    const n = (v, d) => (v !== undefined && v !== null && Number.isFinite(Number(v))) ? Number(v).toFixed(d) : "—";
+    const b = (v) => (v !== undefined && v !== null) ? String(v) : "—";
+    let rows = [
+        ["Front wing", b(setup.frontWing)],
+        ["Rear wing", b(setup.rearWing)],
+        ["On throttle", setup.onThrottle != null ? `${setup.onThrottle}%` : "—"],
+        ["Off throttle", setup.offThrottle != null ? `${setup.offThrottle}%` : "—"],
+        ["Front camber", n(setup.frontCamber, 2) + "°"],
+        ["Rear camber", n(setup.rearCamber, 2) + "°"],
+        ["Front toe", n(setup.frontToe, 2) + "°"],
+        ["Rear toe", n(setup.rearToe, 2) + "°"],
+        ["Front suspension", b(setup.frontSuspension)],
+        ["Rear suspension", b(setup.rearSuspension)],
+        ["Front ARB", b(setup.frontAntiRollBar)],
+        ["Rear ARB", b(setup.rearAntiRollBar)],
+        ["Front ride height", b(setup.frontSuspensionHeight)],
+        ["Rear ride height", b(setup.rearSuspensionHeight)],
+        ["Brake pressure", b(setup.brakePressure)],
+        ["Brake bias", b(setup.brakeBias)],
+        ["Engine braking", b(setup.engineBraking)],
+        ["RL pressure", n(setup.rearLeftTyrePressure, 1) + " psi"],
+        ["RR pressure", n(setup.rearRightTyrePressure, 1) + " psi"],
+        ["FL pressure", n(setup.frontLeftTyrePressure, 1) + " psi"],
+        ["FR pressure", n(setup.frontRightTyrePressure, 1) + " psi"],
+        ["Ballast", b(setup.ballast)],
+        ["Fuel load", n(setup.fuelLoad, 2)],
+    ];
+    let html = '<div class="lt-setup-title">Car setup</div><dl>';
+    for (const [k, v] of rows) {
+        html += `<dt>${k}</dt><dd>${v}</dd>`;
+    }
+    html += "</dl>";
+    return html;
+}
+
+function formatTimeTrialAssistsHtml(ds) {
+    if (!ds) return "";
+    const custom = ds.customSetup === 1 ? "Custom" : "Preset / default";
+    let h = '<div class="lt-setup-divider"></div><div class="lt-setup-title">Session options</div><dl>';
+    h += `<dt>Performance</dt><dd>${ds.equalCarPerformance === 1 ? "Equal" : "Realistic"}</dd>`;
+    h += `<dt>Setup</dt><dd>${custom}</dd>`;
+    h += `<dt>Traction control</dt><dd>${assistOnOff(ds.tractionControl)}</dd>`;
+    h += `<dt>Gearbox</dt><dd>${assistOnOff(ds.gearboxAssist)}</dd>`;
+    h += `<dt>ABS</dt><dd>${assistOnOff(ds.antiLockBrakes)}</dd>`;
+    h += `<dt>Valid lap</dt><dd>${ds.valid === 1 ? "Yes" : "No"}</dd>`;
+    h += "</dl>";
+    return h;
+}
+
+function buildLapTimesSetupHtml(carIdx, ttDataset) {
+    const setups = lastCarSetupsPacket?.carSetupData;
+    const setup = (carIdx != null && carIdx >= 0 && carIdx <= 21) ? setups?.[carIdx] : null;
+    let html = formatCarSetupPopoverHtml(setup);
+    if (ttDataset) html += formatTimeTrialAssistsHtml(ttDataset);
+    return html;
+}
+
+function registerLapTimesSetup(html) {
+    const id = "lt" + (++_lapTimesSetupIdSeq);
+    _lapTimesSetupContent.set(id, html);
+    return id;
+}
+
+function closeLapTimesSetupPopover() {
+    const panel = el("lapTimesSetupPanel");
+    if (panel) {
+        panel.hidden = true;
+        panel.innerHTML = "";
+    }
+}
+
+function positionLapTimesPopover(anchor, panel) {
+    const r = anchor.getBoundingClientRect();
+    const pw = Math.min(320, panel.offsetWidth || 280);
+    let left = r.left;
+    if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+    if (left < 8) left = 8;
+    let top = r.bottom + 6;
+    const ph = panel.offsetHeight || 200;
+    if (top + ph > window.innerHeight - 8) top = Math.max(8, r.top - ph - 6);
+    panel.style.left = left + "px";
+    panel.style.top = top + "px";
+}
+
+function openLapTimesSetupPopover(anchor, html) {
+    const panel = el("lapTimesSetupPanel");
+    if (!panel || !html) return;
+    panel.innerHTML = `<div class="lt-setup-panel-inner">${html}</div>`;
+    panel.hidden = false;
+    requestAnimationFrame(() => positionLapTimesPopover(anchor, panel));
+}
+
+function ensureLapTimesMenuHandlers() {
+    if (_lapTimesMenuBound) return;
+    _lapTimesMenuBound = true;
+    document.addEventListener("click", (e) => {
+        const btn = e.target.closest(".lt-setup-btn");
+        if (btn) {
+            e.preventDefault();
+            e.stopPropagation();
+            const id = btn.dataset.ltSid;
+            const prevOpen = btn.getAttribute("aria-expanded") === "true";
+            document.querySelectorAll(".lt-setup-btn[aria-expanded='true']").forEach(b => b.setAttribute("aria-expanded", "false"));
+            if (prevOpen) {
+                closeLapTimesSetupPopover();
+                return;
+            }
+            const html = id ? _lapTimesSetupContent.get(id) : null;
+            openLapTimesSetupPopover(btn, html || "<p>No setup data.</p>");
+            btn.setAttribute("aria-expanded", "true");
+            return;
+        }
+        if (!e.target.closest("#lapTimesSetupPanel")) closeLapTimesSetupPopover();
+    });
+    document.addEventListener("contextmenu", (e) => {
+        const btn = e.target.closest(".lt-setup-btn");
+        if (!btn) return;
+        e.preventDefault();
+        document.querySelectorAll(".lt-setup-btn[aria-expanded='true']").forEach(b => b.setAttribute("aria-expanded", "false"));
+        const id = btn.dataset.ltSid;
+        const html = id ? _lapTimesSetupContent.get(id) : null;
+        openLapTimesSetupPopover(btn, html || "<p>No setup data.</p>");
+        btn.setAttribute("aria-expanded", "true");
+    });
+    window.addEventListener("resize", () => {
+        const panel = el("lapTimesSetupPanel");
+        const open = document.querySelector(".lt-setup-btn[aria-expanded='true']");
+        if (panel && !panel.hidden && open) positionLapTimesPopover(open, panel);
+    });
+}
+
+function renderLapTimesPractice(tbody, headRow) {
+    if (!lastLapDataPacket?.lapDataItems) {
+        tbody.innerHTML = '<tr><td colspan="7" class="lt-placeholder">Waiting for lap data…</td></tr>';
+        return;
+    }
+    if (headRow) {
+        headRow.innerHTML = '<th class="lt-col-lead">#</th><th>Car</th><th>Lap</th><th>S1</th><th>S2</th><th>S3</th><th class="lt-col-setup"></th>';
+    }
+
+    const eq = lastSessionPacket?.equalCarPerformance;
+    const perfIcon = equalPerfTooltipAndIcon(eq);
+
+    const items = lastLapDataPacket.lapDataItems;
+    const rows = [];
+    for (let i = 0; i < items.length; i++) {
+        const ld = items[i];
+        if (ld.resultStatus < 2) continue;
+        const entry = getBestLapHistoryEntryForTable(i);
+        const bestMs = entry?.lapTimeInMs || 0;
+        if (!bestMs) continue;
+        const lapInvalid = entry && (entry.lapValidBitFlags & 1) === 0;
+        const rawTid = participantTeamIds[i];
+        const teamIdForColor = (typeof rawTid === "number" && rawTid >= 0) ? rawTid : -1;
+        const tcol = teamAccentColor(teamIdForColor);
+        const name = participantNames[i] || (teamIdForColor >= 0 ? TEAM_NAMES[teamIdForColor] : "") || `Car ${i}`;
+        const sub = teamIdForColor >= 0 ? (TEAM_NAMES[teamIdForColor] || "") : "";
+
+        rows.push({
+            i,
+            pos: ld.carPosition,
+            name,
+            sub,
+            tcol,
+            bestMs,
+            s1: sectorMsFromHistoryEntry(entry, 1),
+            s2: sectorMsFromHistoryEntry(entry, 2),
+            s3: sectorMsFromHistoryEntry(entry, 3),
+            lapInvalid,
+            isPlayer: i === playerCarIndex,
+        });
+    }
+
+    rows.sort((a, b) => {
+        if (a.bestMs && b.bestMs) return a.bestMs - b.bestMs;
+        if (a.bestMs) return -1;
+        if (b.bestMs) return 1;
+        return a.pos - b.pos;
+    });
+
+    tbody.innerHTML = rows.map((r, idx) => {
+        const tCls = r.lapInvalid ? " lt-time-inv" : "";
+        const tLap = r.lapInvalid ? formatTime(r.bestMs) + " (inv.)" : formatTime(r.bestMs);
+        const setupHtml = buildLapTimesSetupHtml(r.i, null);
+        const sid = registerLapTimesSetup(setupHtml);
+        const rowCls = r.isPlayer ? "player-row" : "";
+        return `<tr class="${rowCls}">
+            <td>${idx + 1}</td>
+            <td class="lt-car-cell"><div class="lt-car-inner"><span class="lt-team-line" style="background:${r.tcol}"></span><div class="lt-car-meta"><span class="lt-car-name">${escapeXmlText(r.name)}</span><span class="lt-car-sub">${escapeXmlText(r.sub)}</span></div>${perfIcon}</div></td>
+            <td class="${tCls}">${tLap}</td>
+            <td class="${tCls}">${formatTime(r.s1)}</td>
+            <td class="${tCls}">${formatTime(r.s2)}</td>
+            <td class="${tCls}">${formatTime(r.s3)}</td>
+            <td><button type="button" class="lt-setup-btn" data-lt-sid="${sid}" title="Setup (click or right‑click)" aria-expanded="false">⋮</button></td>
+        </tr>`;
+    }).join("");
+
+    if (rows.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="7" class="lt-placeholder">No valid lap times yet (complete a lap).</td></tr>';
+    }
+}
+
+function renderLapTimesTimeTrial(tbody, headRow) {
+    if (!lastTimeTrialPacket) {
+        tbody.innerHTML = '<tr><td colspan="7" class="lt-placeholder">Waiting for Time Trial packet…</td></tr>';
+        return;
+    }
+    if (headRow) {
+        headRow.innerHTML = '<th class="lt-col-lead">Type</th><th>Car</th><th>Lap</th><th>S1</th><th>S2</th><th>S3</th><th class="lt-col-setup"></th>';
+    }
+
+    const p = lastTimeTrialPacket;
+    const sets = [
+        { label: "Session best", ds: p.playerSessionBestDataSet ?? p.PlayerSessionBestDataSet },
+        { label: "Personal best", ds: p.personalBestDataSet ?? p.PersonalBestDataSet },
+        { label: "Rival", ds: p.rivalDataSet ?? p.RivalDataSet },
+    ];
+
+    const rows = [];
+    for (const { label, ds } of sets) {
+        if (!ds) continue;
+        const lapMs = ds.lapTimeInMs || 0;
+        const carIdx = (typeof ds.carIdx === "number" && ds.carIdx >= 0 && ds.carIdx <= 21) ? ds.carIdx : -1;
+        const teamId = ds.teamId != null ? ds.teamId : 0;
+        const tcol = teamAccentColor(teamId);
+        const name = (carIdx >= 0 && participantNames[carIdx])
+            ? participantNames[carIdx]
+            : (TEAM_NAMES[teamId] || (carIdx >= 0 ? `Car ${carIdx}` : "—"));
+        const sub = TEAM_NAMES[teamId] || "";
+        const invalid = ds.valid !== 1 || !lapMs;
+        rows.push({ label, ds, lapMs, carIdx, tcol, name, sub, invalid });
+    }
+
+    tbody.innerHTML = rows.map((r) => {
+        const tCls = r.invalid ? " lt-time-inv" : "";
+        const tLap = r.invalid ? "--" : formatTime(r.lapMs);
+        const s1 = r.invalid ? "--" : formatTime(r.ds.sector1TimeInMs);
+        const s2 = r.invalid ? "--" : formatTime(r.ds.sector2TimeInMs);
+        const s3 = r.invalid ? "--" : formatTime(r.ds.sector3TimeInMs);
+        const perfIcon = equalPerfTooltipAndIcon(r.ds.equalCarPerformance);
+        const setupHtml = buildLapTimesSetupHtml(r.carIdx, r.ds);
+        const sid = registerLapTimesSetup(setupHtml);
+        const isPlayer = r.carIdx === playerCarIndex;
+        const rowCls = isPlayer ? "player-row" : "";
+        return `<tr class="${rowCls}">
+            <td>${escapeXmlText(r.label)}</td>
+            <td class="lt-car-cell"><div class="lt-car-inner"><span class="lt-team-line" style="background:${r.tcol}"></span><div class="lt-car-meta"><span class="lt-car-name">${escapeXmlText(r.name)}</span><span class="lt-car-sub">${escapeXmlText(r.sub)}</span></div>${perfIcon}</div></td>
+            <td class="${tCls}">${tLap}</td>
+            <td class="${tCls}">${s1}</td>
+            <td class="${tCls}">${s2}</td>
+            <td class="${tCls}">${s3}</td>
+            <td><button type="button" class="lt-setup-btn" data-lt-sid="${sid}" title="Setup (click or right‑click)" aria-expanded="false">⋮</button></td>
+        </tr>`;
+    }).join("");
+}
+
+function updateTimeTrial(data) {
+    lastTimeTrialPacket = data;
+    updateLapTimesWidget();
+}
+
+function updateLapTimesWidget() {
+    ensureLapTimesMenuHandlers();
+    const tbody = document.getElementById("lapTimesBody");
+    if (!tbody) return;
+
+    const mode = lapTimesWidgetMode();
+    const headRow = document.getElementById("lapTimesHeadRow");
+
+    if (!mode) {
+        if (headRow) {
+            headRow.innerHTML = '<th class="lt-col-lead">#</th><th>Car</th><th>Lap</th><th>S1</th><th>S2</th><th>S3</th><th class="lt-col-setup"></th>';
+        }
+        tbody.innerHTML = '<tr><td colspan="7" class="lt-placeholder">Shown in Practice and Time Trial.</td></tr>';
+        return;
+    }
+
+    if (mode === "tt") {
+        renderLapTimesTimeTrial(tbody, headRow);
+        return;
+    }
+
+    renderLapTimesPractice(tbody, headRow);
+}
+
 const PACKET_HANDLERS = {
     Session: updateSession,
     CarTelemetry: updateCarTelemetry,
@@ -2425,6 +2773,7 @@ const PACKET_HANDLERS = {
     Event: updateEvent,
     TyreSets: updateTyreSets,
     SessionHistory: updateSessionHistory,
+    TimeTrial: updateTimeTrial,
 };
 
 function initConnection() {
@@ -2447,6 +2796,10 @@ function initConnection() {
                 pinnedPenalties = [];
                 renderEvents();
                 resetTopSpeedSessionState();
+                lastTimeTrialPacket = null;
+                lastCarSetupsPacket = null;
+                _lapTimesSetupContent.clear();
+                closeLapTimesSetupPopover();
             }
             lastTelemetrySessionUid = uid;
         }
