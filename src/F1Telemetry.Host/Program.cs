@@ -6,6 +6,7 @@ using F1Telemetry.F125;
 using F1Telemetry.F125.Protocol;
 using F1Telemetry.Host.Hubs;
 using F1Telemetry.Host.Ingress;
+using F1Telemetry.Host.Logging;
 using F1Telemetry.Host.Serialization;
 using F1Telemetry.Ingress;
 using F1Telemetry.State;
@@ -39,6 +40,8 @@ static class Program
 
         builder.Services.AddF125Protocol();
         builder.Services.AddSingleton<TelemetryState>();
+        builder.Services.AddSingleton<LapSetupStore>();
+        builder.Services.AddSingleton<SessionLogger>();
         builder.Services.AddSingleton<DebugPacketTracker>();
         builder.Services.AddSingleton<ITelemetryIngress, TelemetryPipelineIngress>();
         builder.Services.AddTelemetryUdpListener();
@@ -71,6 +74,10 @@ static class Program
         var app = builder.Build();
 
         app.Services.GetRequiredService<DebugPacketTracker>().PacketNameResolver = F125PacketNames.Get;
+
+        var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
+        lifetime.ApplicationStopping.Register(() =>
+            app.Services.GetRequiredService<SessionLogger>().Flush());
 
         app.UseResponseCompression();
         app.UseDefaultFiles();
@@ -262,6 +269,82 @@ static class Program
             tracker.Reset();
             return Results.Ok(new { reset = true });
         });
+
+        // --- Sessions (History) ---
+
+        app.MapGet("/api/sessions", () =>
+        {
+            var logsDir = Path.Combine(AppContext.BaseDirectory, "Logs");
+            if (!Directory.Exists(logsDir))
+                return Results.Ok(Array.Empty<object>());
+
+            var weekends = new List<object>();
+
+            foreach (var dir in Directory.GetDirectories(logsDir).OrderByDescending(d => d))
+            {
+                var folder = Path.GetFileName(dir);
+                var files = Directory.GetFiles(dir, "*.json");
+                if (files.Length == 0) continue;
+
+                int? trackId = null;
+                string? trackName = null;
+                byte? gameYear = null;
+                var sessions = new List<object>();
+
+                foreach (var file in files.OrderBy(f => f))
+                {
+                    try
+                    {
+                        using var stream = System.IO.File.OpenRead(file);
+                        using var doc = JsonDocument.Parse(stream);
+                        var meta = doc.RootElement.GetProperty("meta");
+
+                        trackId ??= meta.GetProperty("trackId").GetInt32();
+                        trackName ??= meta.GetProperty("trackName").GetString();
+                        if (!gameYear.HasValue && meta.TryGetProperty("gameYear", out var gy))
+                            gameYear = gy.GetByte();
+
+                        sessions.Add(new
+                        {
+                            slug = Path.GetFileNameWithoutExtension(file),
+                            typeName = meta.GetProperty("sessionTypeName").GetString(),
+                            savedAt = meta.GetProperty("savedAt").GetString(),
+                        });
+                    }
+                    catch { /* skip corrupt files */ }
+                }
+
+                if (sessions.Count > 0)
+                {
+                    weekends.Add(new
+                    {
+                        folder,
+                        trackId,
+                        trackName,
+                        gameYear,
+                        sessions,
+                    });
+                }
+            }
+
+            return Results.Ok(weekends);
+        });
+
+        app.MapPost("/api/sessions/open-folder", (OpenFolderRequest req) =>
+        {
+            if (string.IsNullOrWhiteSpace(req.Folder))
+                return Results.BadRequest(new { error = "folder is required" });
+
+            // Sanitize: only allow folder name, no path traversal
+            var safeName = Path.GetFileName(req.Folder);
+            var fullPath = Path.Combine(AppContext.BaseDirectory, "Logs", safeName);
+
+            if (!Directory.Exists(fullPath))
+                return Results.NotFound(new { error = "folder not found" });
+
+            System.Diagnostics.Process.Start("explorer.exe", fullPath);
+            return Results.Ok(new { opened = true });
+        });
     }
 }
 
@@ -270,6 +353,8 @@ record SettingsUpdateRequest(
     int UdpListenPort,
     int WebPort,
     bool DebugMode);
+
+record OpenFolderRequest(string Folder);
 
 record PitTimeUpdateRequest(
     string? TrackName,

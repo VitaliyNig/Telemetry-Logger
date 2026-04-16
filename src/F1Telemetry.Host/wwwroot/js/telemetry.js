@@ -647,8 +647,8 @@ let gapRingObservedMaxLapDist = 0;
 const sessionHistories = {};
 /** Last full Car Setups packet (all cars) — used by Lap Times setup popover. */
 let lastCarSetupsPacket = null;
-/** Per-lap setup snapshots: Map<lapIndex, setupObject> */
-const _lapSetupSnapshots = new Map();
+/** Per-lap setup snapshots received from backend: { lapIndex: setupObject } */
+let _lapSetupSnapshots = {};
 /** Time Trial packet (session / personal / rival rows). */
 let lastTimeTrialPacket = null;
 let _lapTimesSetupIdSeq = 0;
@@ -1218,13 +1218,6 @@ function updateLapData(data) {
     const ln = car.currentLapNum;
     if (ln !== undefined && ln !== null && ln !== playerLapPeakForLapNum) {
         if (playerLapPeakSpeed > 0) playerLastLapPeakSpeed = playerLapPeakSpeed;
-        /* Snapshot car setup for the completed lap (lapIndex = ln - 2 because
-           lapHistoryDataItems is 0-based and ln just incremented to the new lap) */
-        const completedLapIdx = ln - 2;
-        if (completedLapIdx >= 0) {
-            const curSetup = lastCarSetupsPacket?.carSetupData?.[playerCarIndex];
-            if (curSetup) _lapSetupSnapshots.set(completedLapIdx, structuredClone(curSetup));
-        }
         playerLapPeakForLapNum = ln;
         playerLapPeakSpeed = 0;
         updateTopSpeedWidgets();
@@ -2636,14 +2629,14 @@ function renderLapTimesPractice(tbody, headRow) {
         const s1 = formatTime(sectorMsFromHistoryEntry(entry, 1));
         const s2 = formatTime(sectorMsFromHistoryEntry(entry, 2));
         const s3 = formatTime(sectorMsFromHistoryEntry(entry, 3));
-        const snapSetup = _lapSetupSnapshots.get(i);
+        const snapSetup = _lapSetupSnapshots[i];
         const setupHtml = snapSetup
             ? formatCarSetupPopoverHtml(snapSetup)
             : buildLapTimesSetupHtml(playerCarIndex);
         const sid = registerLapTimesSetup(setupHtml);
         parts.push(`<tr class="${rowCls}">
             <td>${i + 1}</td>
-            <td class="lt-car-cell"><div class="lt-car-inner"><span class="lt-team-line" style="background:${tcol}"></span><div class="lt-car-meta"><span class="lt-car-name">${escapeXmlText(teamName)}</span></div>${perfIcon}</div></td>
+            <td class="lt-car-cell"><div class="lt-car-inner"><div class="lt-car-meta"><span class="lt-car-name">${escapeXmlText(teamName)}</span></div>${perfIcon}</div></td>
             <td>${lapTime}</td>
             <td>${s1}</td>
             <td>${s2}</td>
@@ -2705,7 +2698,7 @@ function initConnection() {
                 lastCarSetupsPacket = null;
                 _lapTimesSetupContent.clear();
                 _lapTimesSetupIdSeq = 0;
-                _lapSetupSnapshots.clear();
+                _lapSetupSnapshots = {};
                 closeLapTimesSetupPopover();
                 for (const k in sessionHistories) delete sessionHistories[k];
             }
@@ -2719,6 +2712,13 @@ function initConnection() {
             } else {
                 handler(data);
             }
+        }
+    });
+
+    connection.on("ReceiveSetupSnapshot", (carIndex, lapIndex, setup) => {
+        if (carIndex === playerCarIndex) {
+            _lapSetupSnapshots[lapIndex] = setup;
+            updateLapTimesWidget();
         }
     });
 
@@ -2766,6 +2766,15 @@ function requestCurrentState(connection) {
             }
         })
         .catch(err => console.warn("Failed to get current state:", err));
+
+    connection.invoke("GetSetupSnapshots", playerCarIndex)
+        .then(snapshots => {
+            if (snapshots) {
+                _lapSetupSnapshots = snapshots;
+                updateLapTimesWidget();
+            }
+        })
+        .catch(err => console.warn("Failed to get setup snapshots:", err));
 }
 
 document.addEventListener("DOMContentLoaded", async () => {

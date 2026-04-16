@@ -11,10 +11,12 @@ namespace F1Telemetry.Host.Hubs;
 public sealed class TelemetryHub : Hub<ITelemetryClient>
 {
     private readonly TelemetryState _state;
+    private readonly LapSetupStore _lapSetupStore;
 
-    public TelemetryHub(TelemetryState state)
+    public TelemetryHub(TelemetryState state, LapSetupStore lapSetupStore)
     {
         _state = state;
+        _lapSetupStore = lapSetupStore;
     }
 
     /// <summary>Client can request current state snapshot on connect.</summary>
@@ -28,5 +30,13 @@ public sealed class TelemetryHub : Hub<ITelemetryClient>
             result[name] = value;
         }
         return result;
+    }
+
+    /// <summary>Client can request all setup snapshots for a car on connect/reconnect.</summary>
+    public Dictionary<int, object>? GetSetupSnapshots(byte carIndex)
+    {
+        var snapshots = _lapSetupStore.GetSnapshots(carIndex);
+        if (snapshots == null || snapshots.Count == 0) return null;
+        return new Dictionary<int, object>(snapshots);
     }
 }

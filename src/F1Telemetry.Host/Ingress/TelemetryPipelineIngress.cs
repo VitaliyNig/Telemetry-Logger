@@ -1,10 +1,12 @@
 using F1Telemetry.Config;
 using F1Telemetry.Debug;
+using F1Telemetry.F125.Packets;
 using F1Telemetry.F125.Protocol;
 using F1Telemetry.Ingress;
 using F1Telemetry.State;
 using F1Telemetry.Telemetry;
 using F1Telemetry.Host.Hubs;
+using F1Telemetry.Host.Logging;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -20,6 +22,8 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
     private readonly IPacketHeaderReader _headerReader;
     private readonly PacketDeserializerRegistry _registry;
     private readonly TelemetryState _state;
+    private readonly LapSetupStore _lapSetupStore;
+    private readonly SessionLogger _sessionLogger;
     private readonly DebugPacketTracker _tracker;
     private readonly IHubContext<TelemetryHub, ITelemetryClient> _hubContext;
     private readonly IOptionsMonitor<AppSettings> _appSettings;
@@ -29,6 +33,8 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         IPacketHeaderReader headerReader,
         PacketDeserializerRegistry registry,
         TelemetryState state,
+        LapSetupStore lapSetupStore,
+        SessionLogger sessionLogger,
         DebugPacketTracker tracker,
         IHubContext<TelemetryHub, ITelemetryClient> hubContext,
         IOptionsMonitor<AppSettings> appSettings,
@@ -37,6 +43,8 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         _headerReader = headerReader;
         _registry = registry;
         _state = state;
+        _lapSetupStore = lapSetupStore;
+        _sessionLogger = sessionLogger;
         _tracker = tracker;
         _hubContext = hubContext;
         _appSettings = appSettings;
@@ -85,6 +93,65 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
             return;
 
         _state.Update(header.PacketId, deserialized);
+        _sessionLogger.ProcessPacket(header, header.PacketId, deserialized);
+
+        if (header.PacketId == (byte)F125PacketId.LapData && deserialized is LapDataPacket lapDataPacket)
+        {
+            var carIdx = header.PlayerCarIndex;
+            if (carIdx < lapDataPacket.LapDataItems.Length)
+            {
+                var result = _lapSetupStore.OnLapData(
+                    header.SessionUid,
+                    carIdx,
+                    lapDataPacket.LapDataItems[carIdx].CurrentLapNum,
+                    idx =>
+                    {
+                        var setups = _state.Get<CarSetupsPacket>((byte)F125PacketId.CarSetups);
+                        if (setups?.CarSetupData == null || idx >= setups.CarSetupData.Length)
+                            return null;
+                        var src = setups.CarSetupData[idx];
+                        return new CarSetupData
+                        {
+                            FrontWing = src.FrontWing,
+                            RearWing = src.RearWing,
+                            OnThrottle = src.OnThrottle,
+                            OffThrottle = src.OffThrottle,
+                            FrontCamber = src.FrontCamber,
+                            RearCamber = src.RearCamber,
+                            FrontToe = src.FrontToe,
+                            RearToe = src.RearToe,
+                            FrontSuspension = src.FrontSuspension,
+                            RearSuspension = src.RearSuspension,
+                            FrontAntiRollBar = src.FrontAntiRollBar,
+                            RearAntiRollBar = src.RearAntiRollBar,
+                            FrontSuspensionHeight = src.FrontSuspensionHeight,
+                            RearSuspensionHeight = src.RearSuspensionHeight,
+                            BrakePressure = src.BrakePressure,
+                            BrakeBias = src.BrakeBias,
+                            EngineBraking = src.EngineBraking,
+                            RearLeftTyrePressure = src.RearLeftTyrePressure,
+                            RearRightTyrePressure = src.RearRightTyrePressure,
+                            FrontLeftTyrePressure = src.FrontLeftTyrePressure,
+                            FrontRightTyrePressure = src.FrontRightTyrePressure,
+                            Ballast = src.Ballast,
+                            FuelLoad = src.FuelLoad,
+                        };
+                    });
+
+                if (result.HasValue)
+                {
+                    try
+                    {
+                        await _hubContext.Clients.All.ReceiveSetupSnapshot(
+                            carIdx, result.Value.LapIndex, result.Value.Setup);
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Failed to broadcast setup snapshot");
+                    }
+                }
+            }
+        }
 
         try
         {

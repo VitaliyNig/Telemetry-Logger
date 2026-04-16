@@ -74,6 +74,96 @@
         panels.forEach(function (p) {
             p.classList.toggle('active', p.id === 'panel-' + tabId);
         });
+        if (tabId === 'history') loadHistorySessions();
+    }
+
+    // --- History ---
+    // TRACK_FLAG_MAP is defined in telemetry.js and available globally
+    var _historyLoaded = false;
+
+    function loadHistorySessions() {
+        var container = document.getElementById('historySessionList');
+        if (!container) return;
+
+        // Show loading only on first load
+        if (!_historyLoaded) {
+            container.innerHTML = '<div class="history-empty"><p>Loading...</p></div>';
+        }
+
+        fetch('/api/sessions')
+            .then(function (r) { return r.json(); })
+            .then(function (weekends) {
+                _historyLoaded = true;
+                if (!weekends || weekends.length === 0) {
+                    container.innerHTML =
+                        '<div class="history-empty">' +
+                            '<div class="placeholder-icon">&#128202;</div>' +
+                            '<h2>No Sessions</h2>' +
+                            '<p>Recorded sessions will appear here after completing a session.</p>' +
+                        '</div>';
+                    return;
+                }
+
+                var html = '<div class="history-grid">';
+                weekends.forEach(function (w) {
+                    var flagCode = (typeof TRACK_FLAG_MAP !== 'undefined' && w.trackId != null)
+                        ? TRACK_FLAG_MAP[w.trackId] : null;
+                    var flagHtml = flagCode
+                        ? '<img class="history-card-flag" src="/assets/flags/' + flagCode + '.svg" alt="' + flagCode + '" width="32" height="20">'
+                        : '';
+                    var gameLabel = w.gameYear ? 'F1 ' + w.gameYear : '';
+
+                    var tags = '';
+                    var firstDate = '';
+                    if (w.sessions && w.sessions.length > 0) {
+                        w.sessions.forEach(function (s) {
+                            tags += '<span class="history-tag">' + escapeHtml(s.typeName || s.slug) + '</span>';
+                        });
+                        firstDate = formatSessionDate(w.sessions[0].savedAt);
+                    }
+
+                    html += '<div class="history-card" data-folder="' + escapeHtml(w.folder) + '">' +
+                        '<div class="history-card-header">' +
+                            '<div class="history-card-title">' + flagHtml + '<span>' + escapeHtml(w.trackName || w.folder) + '</span></div>' +
+                            (gameLabel ? '<span class="history-card-game">' + gameLabel + '</span>' : '') +
+                        '</div>' +
+                        '<div class="history-card-tags">' + tags + '</div>' +
+                        '<div class="history-card-date">' + firstDate + '</div>' +
+                    '</div>';
+                });
+                html += '</div>';
+                container.innerHTML = html;
+
+                // Click handler — open folder
+                container.querySelectorAll('.history-card').forEach(function (card) {
+                    card.addEventListener('click', function () {
+                        var folder = card.dataset.folder;
+                        if (!folder) return;
+                        fetch('/api/sessions/open-folder', {
+                            method: 'POST',
+                            headers: { 'Content-Type': 'application/json' },
+                            body: JSON.stringify({ folder: folder })
+                        });
+                    });
+                });
+            })
+            .catch(function () {
+                container.innerHTML = '<div class="history-empty"><p>Failed to load sessions.</p></div>';
+            });
+    }
+
+    function formatSessionDate(isoStr) {
+        if (!isoStr) return '';
+        try {
+            var d = new Date(isoStr);
+            return d.toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }) +
+                ', ' + d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+        } catch (e) { return isoStr; }
+    }
+
+    function escapeHtml(str) {
+        if (!str) return '';
+        return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
     }
 
     // --- Settings ---
