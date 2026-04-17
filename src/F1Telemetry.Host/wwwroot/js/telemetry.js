@@ -411,7 +411,9 @@ const SESSION_FIELDS = [
     { id: "flags", name: "Flags" },
 ];
 const SESSION_FIELD_VIS_KEY = "f1telemetry_session_fields_v1";
+const SESSION_FIELD_ORDER_KEY = "f1telemetry_session_field_order_v1";
 let sessionFieldVisibility = loadSessionFieldVisibility();
+let sessionFieldOrder = loadSessionFieldOrder();
 let _sessionSettingsPanel = null;
 
 function loadSessionFieldVisibility() {
@@ -433,10 +435,48 @@ function saveSessionFieldVisibility() {
     localStorage.setItem(SESSION_FIELD_VIS_KEY, JSON.stringify(sessionFieldVisibility));
 }
 
+function loadSessionFieldOrder() {
+    const defaultIds = SESSION_FIELDS.map(f => f.id);
+    try {
+        const raw = localStorage.getItem(SESSION_FIELD_ORDER_KEY);
+        if (raw) {
+            const saved = JSON.parse(raw);
+            if (Array.isArray(saved)) {
+                const known = new Set(defaultIds);
+                const seen = new Set();
+                const result = [];
+                for (const id of saved) {
+                    if (known.has(id) && !seen.has(id)) { result.push(id); seen.add(id); }
+                }
+                for (const id of defaultIds) if (!seen.has(id)) result.push(id);
+                return result;
+            }
+        }
+    } catch (_) { /* ignore */ }
+    return defaultIds;
+}
+
+function saveSessionFieldOrder() {
+    localStorage.setItem(SESSION_FIELD_ORDER_KEY, JSON.stringify(sessionFieldOrder));
+}
+
 function applySessionFieldVisibility() {
     document.querySelectorAll("[data-session-field]").forEach(box => {
         const field = box.dataset.sessionField;
         box.hidden = sessionFieldVisibility[field] === false;
+    });
+}
+
+function applySessionFieldOrder() {
+    document.querySelectorAll(".session-grid").forEach(grid => {
+        const boxes = new Map();
+        grid.querySelectorAll(":scope > [data-session-field]").forEach(b => {
+            boxes.set(b.dataset.sessionField, b);
+        });
+        for (const id of sessionFieldOrder) {
+            const b = boxes.get(id);
+            if (b) grid.appendChild(b);
+        }
     });
 }
 
@@ -448,6 +488,7 @@ function closeSessionSettingsPanel() {
 }
 
 function initSessionSettings() {
+    applySessionFieldOrder();
     applySessionFieldVisibility();
 
     const btn = document.getElementById("btnSessionSettings");
@@ -459,51 +500,77 @@ function initSessionSettings() {
         if (_sessionSettingsPanel) { closeSessionSettingsPanel(); return; }
 
         const panel = document.createElement("div");
-        panel.className = "event-filter-panel";
+        panel.className = "event-filter-panel session-settings-panel";
         _sessionSettingsPanel = panel;
-
-        let html = '<div class="event-filter-actions">'
-            + '<button class="event-filter-action-btn" data-ss-action="all">All</button>'
-            + '<button class="event-filter-action-btn" data-ss-action="none">None</button></div>';
-        for (const f of SESSION_FIELDS) {
-            const checked = sessionFieldVisibility[f.id] !== false ? "checked" : "";
-            html += `<label class="event-filter-item"><input type="checkbox" data-session-field-id="${f.id}" ${checked}>${f.name}</label>`;
-        }
-        panel.innerHTML = html;
+        renderSessionSettingsPanel(panel);
 
         const rect = btn.getBoundingClientRect();
         panel.style.top = (rect.bottom + 4) + "px";
-        panel.style.left = Math.max(4, rect.right - 220) + "px";
+        panel.style.left = Math.max(4, rect.right - 240) + "px";
 
         document.body.appendChild(panel);
         panel.addEventListener("click", (ev) => ev.stopPropagation());
-
-        panel.querySelectorAll("input[data-session-field-id]").forEach(cb => {
-            cb.addEventListener("change", () => {
-                sessionFieldVisibility[cb.dataset.sessionFieldId] = cb.checked;
-                saveSessionFieldVisibility();
-                applySessionFieldVisibility();
-            });
-        });
-
-        panel.querySelector('[data-ss-action="all"]')?.addEventListener("click", () => {
-            for (const f of SESSION_FIELDS) sessionFieldVisibility[f.id] = true;
-            panel.querySelectorAll("input[data-session-field-id]").forEach(cb => { cb.checked = true; });
-            saveSessionFieldVisibility();
-            applySessionFieldVisibility();
-        });
-        panel.querySelector('[data-ss-action="none"]')?.addEventListener("click", () => {
-            for (const f of SESSION_FIELDS) sessionFieldVisibility[f.id] = false;
-            panel.querySelectorAll("input[data-session-field-id]").forEach(cb => { cb.checked = false; });
-            saveSessionFieldVisibility();
-            applySessionFieldVisibility();
-        });
     });
 
     document.addEventListener("click", (e) => {
         if (_sessionSettingsPanel && !_sessionSettingsPanel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
             closeSessionSettingsPanel();
         }
+    });
+}
+
+function renderSessionSettingsPanel(panel) {
+    const nameById = new Map(SESSION_FIELDS.map(f => [f.id, f.name]));
+    let html = '<div class="event-filter-actions">'
+        + '<button class="event-filter-action-btn" data-ss-action="all">All</button>'
+        + '<button class="event-filter-action-btn" data-ss-action="none">None</button></div>';
+    sessionFieldOrder.forEach((id, i) => {
+        const checked = sessionFieldVisibility[id] !== false ? "checked" : "";
+        const upDisabled = i === 0 ? "disabled" : "";
+        const downDisabled = i === sessionFieldOrder.length - 1 ? "disabled" : "";
+        html += `<div class="event-filter-item session-settings-row">
+            <label class="session-settings-label"><input type="checkbox" data-session-field-id="${id}" ${checked}>${nameById.get(id) || id}</label>
+            <div class="session-settings-order">
+                <button class="session-settings-arrow" data-ss-move="up" data-ss-id="${id}" ${upDisabled} aria-label="Move up">▲</button>
+                <button class="session-settings-arrow" data-ss-move="down" data-ss-id="${id}" ${downDisabled} aria-label="Move down">▼</button>
+            </div>
+        </div>`;
+    });
+    panel.innerHTML = html;
+
+    panel.querySelectorAll("input[data-session-field-id]").forEach(cb => {
+        cb.addEventListener("change", () => {
+            sessionFieldVisibility[cb.dataset.sessionFieldId] = cb.checked;
+            saveSessionFieldVisibility();
+            applySessionFieldVisibility();
+        });
+    });
+
+    panel.querySelectorAll("button[data-ss-move]").forEach(b => {
+        b.addEventListener("click", () => {
+            const id = b.dataset.ssId;
+            const dir = b.dataset.ssMove === "up" ? -1 : 1;
+            const i = sessionFieldOrder.indexOf(id);
+            const j = i + dir;
+            if (i < 0 || j < 0 || j >= sessionFieldOrder.length) return;
+            [sessionFieldOrder[i], sessionFieldOrder[j]] = [sessionFieldOrder[j], sessionFieldOrder[i]];
+            saveSessionFieldOrder();
+            applySessionFieldOrder();
+            renderSessionSettingsPanel(panel);
+        });
+    });
+
+    panel.querySelector('[data-ss-action="all"]')?.addEventListener("click", () => {
+        for (const f of SESSION_FIELDS) sessionFieldVisibility[f.id] = true;
+        saveSessionFieldVisibility();
+        applySessionFieldVisibility();
+        renderSessionSettingsPanel(panel);
+    });
+    panel.querySelector('[data-ss-action="none"]')?.addEventListener("click", () => {
+        for (const f of SESSION_FIELDS) sessionFieldVisibility[f.id] = false;
+        saveSessionFieldVisibility();
+        applySessionFieldVisibility();
+        renderSessionSettingsPanel(panel);
     });
 }
 
