@@ -384,6 +384,7 @@ function initWidgets() {
         float: true,
         removable: false,
         disableResize: false,
+        resizable: { handles: "all" },
     }, "#dashboardGrid");
 
     const autoSwitchCbEarly = document.getElementById("autoSwitchPreset");

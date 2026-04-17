@@ -116,11 +116,57 @@
 
 .ui-resizable-handle {
     opacity: 0;
-    transition: opacity 0.2s;
+    transition: opacity 0.2s, background-color 0.2s;
 }
 
 .grid-stack-item:hover .ui-resizable-handle {
     opacity: 0.6;
+}
+
+/* Edge resize handles — give them grabbable hit areas and a subtle line on hover */
+.grid-stack-item > .ui-resizable-n,
+.grid-stack-item > .ui-resizable-s {
+    left: 8px;
+    right: 8px;
+    width: auto;
+    height: 8px;
+}
+.grid-stack-item > .ui-resizable-n { top: -2px; cursor: n-resize; }
+.grid-stack-item > .ui-resizable-s { bottom: -2px; cursor: s-resize; }
+
+.grid-stack-item > .ui-resizable-e,
+.grid-stack-item > .ui-resizable-w {
+    top: 8px;
+    bottom: 8px;
+    height: auto;
+    width: 8px;
+}
+.grid-stack-item > .ui-resizable-e { right: -2px; cursor: e-resize; }
+.grid-stack-item > .ui-resizable-w { left: -2px; cursor: w-resize; }
+
+.grid-stack-item > .ui-resizable-ne,
+.grid-stack-item > .ui-resizable-nw,
+.grid-stack-item > .ui-resizable-sw {
+    width: 14px;
+    height: 14px;
+    background: none;
+}
+.grid-stack-item > .ui-resizable-ne { top: -2px; right: -2px; cursor: ne-resize; }
+.grid-stack-item > .ui-resizable-nw { top: -2px; left: -2px; cursor: nw-resize; }
+.grid-stack-item > .ui-resizable-sw { bottom: -2px; left: -2px; cursor: sw-resize; }
+
+.grid-stack-item:hover > .ui-resizable-n,
+.grid-stack-item:hover > .ui-resizable-s,
+.grid-stack-item:hover > .ui-resizable-e,
+.grid-stack-item:hover > .ui-resizable-w {
+    background: var(--accent-blue);
+    opacity: 0.25;
+}
+.grid-stack-item > .ui-resizable-n:hover,
+.grid-stack-item > .ui-resizable-s:hover,
+.grid-stack-item > .ui-resizable-e:hover,
+.grid-stack-item > .ui-resizable-w:hover {
+    opacity: 0.65;
 }
 
 /* Widget chrome */
