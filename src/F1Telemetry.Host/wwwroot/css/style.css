@@ -1810,8 +1810,9 @@
 }
 
 .tyreset-delta {
-    font-size: 12px;
-    min-width: 44px;
+    font-size: 15px;
+    font-weight: 700;
+    min-width: 56px;
     text-align: right;
 }
 
