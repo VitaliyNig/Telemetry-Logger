@@ -209,13 +209,13 @@
     <template id="tpl-session">
         <div class="card"><h2 class="widget-title">Session</h2>
         <div class="session-grid">
-            <div class="stat-box"><span class="stat-label">Track</span><span class="stat-value stat-value-track"><img id="trackFlag" class="track-flag" src="" alt="" hidden><span id="trackName">--</span></span></div>
-            <div class="stat-box"><span class="stat-label">Session</span><span class="stat-value" id="sessionType">--</span></div>
-            <div class="stat-box"><span class="stat-label">Weather</span><span class="stat-value" id="weather">--</span></div>
-            <div class="stat-box"><span class="stat-label">Track Temp</span><span class="stat-value" id="trackTemp">--</span></div>
-            <div class="stat-box"><span class="stat-label">Air Temp</span><span class="stat-value" id="airTemp">--</span></div>
-            <div class="stat-box"><span class="stat-label" id="sessionProgressLabel">Time</span><span class="stat-value" id="sessionProgressValue">--</span></div>
-            <div class="stat-box"><span class="stat-label">Flags</span><span class="stat-value flag-rect" id="flagIndicator" data-flag="none">--</span></div>
+            <div class="stat-box" data-session-field="track"><span class="stat-label">Track</span><span class="stat-value stat-value-track"><img id="trackFlag" class="track-flag" src="" alt="" hidden><span id="trackName">--</span></span></div>
+            <div class="stat-box" data-session-field="session"><span class="stat-label">Session</span><span class="stat-value" id="sessionType">--</span></div>
+            <div class="stat-box" data-session-field="weather"><span class="stat-label">Weather</span><span class="stat-value" id="weather">--</span></div>
+            <div class="stat-box" data-session-field="trackTemp"><span class="stat-label">Track Temp</span><span class="stat-value" id="trackTemp">--</span></div>
+            <div class="stat-box" data-session-field="airTemp"><span class="stat-label">Air Temp</span><span class="stat-value" id="airTemp">--</span></div>
+            <div class="stat-box" data-session-field="progress"><span class="stat-label" id="sessionProgressLabel">Time</span><span class="stat-value" id="sessionProgressValue">--</span></div>
+            <div class="stat-box" data-session-field="flags"><span class="stat-label">Flags</span><span class="stat-value flag-rect" id="flagIndicator" data-flag="none">--</span></div>
         </div></div>
     </template>
 

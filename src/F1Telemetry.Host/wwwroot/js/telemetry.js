@@ -401,6 +401,112 @@ function closeEventFilterPanel() {
     }
 }
 
+const SESSION_FIELDS = [
+    { id: "track", name: "Track" },
+    { id: "session", name: "Session" },
+    { id: "weather", name: "Weather" },
+    { id: "trackTemp", name: "Track Temp" },
+    { id: "airTemp", name: "Air Temp" },
+    { id: "progress", name: "Time / Laps" },
+    { id: "flags", name: "Flags" },
+];
+const SESSION_FIELD_VIS_KEY = "f1telemetry_session_fields_v1";
+let sessionFieldVisibility = loadSessionFieldVisibility();
+let _sessionSettingsPanel = null;
+
+function loadSessionFieldVisibility() {
+    const defaults = {};
+    for (const f of SESSION_FIELDS) defaults[f.id] = true;
+    try {
+        const raw = localStorage.getItem(SESSION_FIELD_VIS_KEY);
+        if (raw) {
+            const saved = JSON.parse(raw);
+            for (const f of SESSION_FIELDS) {
+                if (saved[f.id] === false) defaults[f.id] = false;
+            }
+        }
+    } catch (_) { /* ignore */ }
+    return defaults;
+}
+
+function saveSessionFieldVisibility() {
+    localStorage.setItem(SESSION_FIELD_VIS_KEY, JSON.stringify(sessionFieldVisibility));
+}
+
+function applySessionFieldVisibility() {
+    document.querySelectorAll("[data-session-field]").forEach(box => {
+        const field = box.dataset.sessionField;
+        box.hidden = sessionFieldVisibility[field] === false;
+    });
+}
+
+function closeSessionSettingsPanel() {
+    if (_sessionSettingsPanel) {
+        _sessionSettingsPanel.remove();
+        _sessionSettingsPanel = null;
+    }
+}
+
+function initSessionSettings() {
+    applySessionFieldVisibility();
+
+    const btn = document.getElementById("btnSessionSettings");
+    if (!btn || btn.dataset.bound === "1") return;
+    btn.dataset.bound = "1";
+
+    btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (_sessionSettingsPanel) { closeSessionSettingsPanel(); return; }
+
+        const panel = document.createElement("div");
+        panel.className = "event-filter-panel";
+        _sessionSettingsPanel = panel;
+
+        let html = '<div class="event-filter-actions">'
+            + '<button class="event-filter-action-btn" data-ss-action="all">All</button>'
+            + '<button class="event-filter-action-btn" data-ss-action="none">None</button></div>';
+        for (const f of SESSION_FIELDS) {
+            const checked = sessionFieldVisibility[f.id] !== false ? "checked" : "";
+            html += `<label class="event-filter-item"><input type="checkbox" data-session-field-id="${f.id}" ${checked}>${f.name}</label>`;
+        }
+        panel.innerHTML = html;
+
+        const rect = btn.getBoundingClientRect();
+        panel.style.top = (rect.bottom + 4) + "px";
+        panel.style.left = Math.max(4, rect.right - 220) + "px";
+
+        document.body.appendChild(panel);
+        panel.addEventListener("click", (ev) => ev.stopPropagation());
+
+        panel.querySelectorAll("input[data-session-field-id]").forEach(cb => {
+            cb.addEventListener("change", () => {
+                sessionFieldVisibility[cb.dataset.sessionFieldId] = cb.checked;
+                saveSessionFieldVisibility();
+                applySessionFieldVisibility();
+            });
+        });
+
+        panel.querySelector('[data-ss-action="all"]')?.addEventListener("click", () => {
+            for (const f of SESSION_FIELDS) sessionFieldVisibility[f.id] = true;
+            panel.querySelectorAll("input[data-session-field-id]").forEach(cb => { cb.checked = true; });
+            saveSessionFieldVisibility();
+            applySessionFieldVisibility();
+        });
+        panel.querySelector('[data-ss-action="none"]')?.addEventListener("click", () => {
+            for (const f of SESSION_FIELDS) sessionFieldVisibility[f.id] = false;
+            panel.querySelectorAll("input[data-session-field-id]").forEach(cb => { cb.checked = false; });
+            saveSessionFieldVisibility();
+            applySessionFieldVisibility();
+        });
+    });
+
+    document.addEventListener("click", (e) => {
+        if (_sessionSettingsPanel && !_sessionSettingsPanel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+            closeSessionSettingsPanel();
+        }
+    });
+}
+
 let _pitTimesPanel = null;
 let _pitTimesPanelDocCloseBound = false;
 
