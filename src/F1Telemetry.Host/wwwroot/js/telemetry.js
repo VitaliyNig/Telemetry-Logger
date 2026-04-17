@@ -1600,15 +1600,13 @@ function updateTopSpeedCompareWidget() {
 
     const thisLapDeltaEl = el("topSpeedThisLapDelta");
     if (thisLapDeltaEl) {
-        if (thisLap > 0 && lastLap > 0) {
-            const delta = Math.round(thisLap - lastLap);
+        let delta = null;
+        if (thisLap > 0 && lastLap > 0) delta = Math.round(thisLap - lastLap);
+        else if (thisLap > 0 && sessionBest > 0) delta = Math.round(thisLap - sessionBest);
+
+        if (delta !== null) {
             const sign = delta >= 0 ? "+" : "";
-            thisLapDeltaEl.textContent = sign + delta + " vs last";
-            thisLapDeltaEl.className = "tsc-delta " + (delta >= 0 ? "tsc-delta-up" : "tsc-delta-down");
-        } else if (thisLap > 0 && sessionBest > 0) {
-            const delta = Math.round(thisLap - sessionBest);
-            const sign = delta >= 0 ? "+" : "";
-            thisLapDeltaEl.textContent = sign + delta + " vs best";
+            thisLapDeltaEl.textContent = sign + delta;
             thisLapDeltaEl.className = "tsc-delta " + (delta >= 0 ? "tsc-delta-up" : "tsc-delta-down");
         } else {
             thisLapDeltaEl.textContent = "";

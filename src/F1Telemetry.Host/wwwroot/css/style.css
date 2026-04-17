@@ -2525,15 +2525,14 @@
     font-size: clamp(9px, 0.95cqw + 0.55cqh, 13px);
     font-family: var(--font-mono);
     font-weight: 600;
-    min-height: 14px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
     color: var(--text-dim);
     white-space: nowrap;
-    max-width: 100%;
+    padding: 1px 5px;
+    border-radius: 3px;
+    line-height: 1;
+    align-self: center;
 }
+.tsc-delta:empty { display: none; }
 
 .tsc-delta-down { color: #ef4444; }
 .tsc-delta-up   { color: #22c55e; }
