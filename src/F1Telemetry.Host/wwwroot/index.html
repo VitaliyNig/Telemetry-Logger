@@ -308,13 +308,48 @@
     </template>
 
     <template id="tpl-carStatus">
-        <div class="card"><h2 class="widget-title">Car Status</h2>
-        <div class="status-grid">
-            <div class="stat-box"><span class="stat-label">Fuel</span><span class="stat-value" id="fuelRemaining">--</span></div>
-            <div class="stat-box"><span class="stat-label">Fuel Laps</span><span class="stat-value" id="fuelLaps">--</span></div>
-            <div class="stat-box"><span class="stat-label">ERS Deploy</span><span class="stat-value" id="ersMode">--</span></div>
-            <div class="stat-box"><span class="stat-label">ERS Store</span><div class="ers-bar-bg"><div class="ers-bar-fill" id="ersBar"></div></div></div>
-        </div></div>
+        <div class="card cs-card"><h2 class="widget-title">Fuel &amp; ERS</h2>
+        <div class="cs-grid">
+            <section class="cs-section cs-fuel">
+                <header class="cs-section-head">
+                    <span class="cs-section-label">FUEL</span>
+                    <span class="cs-badge" id="csFuelMix" data-mix="0">--</span>
+                </header>
+                <div class="cs-fuel-delta" id="csFuelDeltaBox" hidden>
+                    <span class="cs-micro-label">Δ vs target</span>
+                    <span class="cs-big-value" id="csFuelDelta">--</span>
+                </div>
+                <div class="cs-fuel-metrics">
+                    <div class="cs-stat">
+                        <span class="cs-micro-label">In tank</span>
+                        <span class="cs-value" id="csFuelTank">--</span>
+                    </div>
+                    <div class="cs-stat">
+                        <span class="cs-micro-label">Laps</span>
+                        <span class="cs-value" id="csFuelLaps">--</span>
+                    </div>
+                </div>
+            </section>
+            <section class="cs-section cs-ers">
+                <header class="cs-section-head">
+                    <span class="cs-section-label">ERS</span>
+                    <span class="cs-badge" id="csErsMode" data-mode="0">--</span>
+                </header>
+                <div class="cs-ers-row">
+                    <div class="cs-row-head"><span class="cs-micro-label">Store</span><span class="cs-bar-value" id="csErsStoreVal">--</span></div>
+                    <div class="cs-bar cs-bar-store"><div class="cs-bar-fill" id="csErsStoreBar"></div></div>
+                </div>
+                <div class="cs-ers-row">
+                    <div class="cs-row-head"><span class="cs-micro-label">Deploy / lap</span><span class="cs-bar-value" id="csErsDeployVal">--</span></div>
+                    <div class="cs-bar cs-bar-thin"><div class="cs-bar-fill cs-bar-deploy" id="csErsDeployBar"></div></div>
+                </div>
+                <div class="cs-ers-row">
+                    <div class="cs-row-head"><span class="cs-micro-label">Harvest / lap</span><span class="cs-bar-value" id="csErsHarvestVal">--</span></div>
+                    <div class="cs-bar cs-bar-thin"><div class="cs-bar-fill cs-bar-harvest" id="csErsHarvestBar"></div></div>
+                </div>
+            </section>
+        </div>
+        </div>
     </template>
 
     <template id="tpl-lapData">

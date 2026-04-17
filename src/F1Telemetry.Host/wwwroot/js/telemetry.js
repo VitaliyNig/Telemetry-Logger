@@ -187,8 +187,6 @@ function tyreTempColorAlpha(temp, range, alpha) {
     return `rgba(${r},${g},${b},${alpha})`;
 }
 
-const ERS_MODES = { 0: "None", 1: "Medium", 2: "Hotlap", 3: "Overtake" };
-
 /** m_fuelMix — Car Status */
 const FUEL_MIX_NAMES = { 0: "Lean", 1: "Standard", 2: "Rich", 3: "Max" };
 
@@ -1434,21 +1432,71 @@ function updateCarStatus(data) {
                 : "--";
     }
 
-    const fuelRem = el("fuelRemaining");
-    if (fuelRem) fuelRem.textContent = car.fuelInTank.toFixed(1) + " kg";
-    const fuelLaps = el("fuelLaps");
-    if (fuelLaps) fuelLaps.textContent = car.fuelRemainingLaps.toFixed(1) + " laps";
-    const ersMode = el("ersMode");
-    if (ersMode) ersMode.textContent = ERS_MODES[car.ersDeployMode] || "--";
-
-    const ersBar = el("ersBar");
-    if (ersBar) {
-        const maxErs = 4000000;
-        const ersPct = Math.min(100, (car.ersStoreEnergy / maxErs) * 100);
-        ersBar.style.width = ersPct + "%";
-    }
+    updateFuelErsWidget(car);
 
     setTyreWidgetCompoundAge(car);
+}
+
+const FUEL_MIX_BADGE  = { 0: "LEAN", 1: "STD", 2: "RICH", 3: "MAX" };
+const ERS_MODE_BADGE  = { 0: "NONE", 1: "MED",  2: "HOT",  3: "OVER" };
+const MAX_ERS_J = 4_000_000;
+
+function updateFuelErsWidget(car) {
+    if (!car) return;
+
+    const mixEl = el("csFuelMix");
+    if (mixEl) {
+        mixEl.textContent = FUEL_MIX_BADGE[car.fuelMix] || "--";
+        mixEl.dataset.mix = String(car.fuelMix ?? 0);
+    }
+
+    const fuelInTank = Number(car.fuelInTank) || 0;
+    const fuelRemLaps = Number(car.fuelRemainingLaps) || 0;
+    setText("csFuelTank", fuelInTank.toFixed(1) + " kg");
+    setText("csFuelLaps", fuelRemLaps.toFixed(1) + " L");
+
+    const sType = lastSessionPacket?.sessionType ?? 0;
+    const isRace = sType === 15 || sType === 16 || sType === 17;
+    const totalLaps = lastSessionPacket?.totalLaps ?? 0;
+    const curLap = lastLapDataPacket?.lapDataItems?.[playerCarIndex]?.currentLapNum ?? 0;
+    const deltaBox = el("csFuelDeltaBox");
+    const deltaEl = el("csFuelDelta");
+    const showDelta = isRace && totalLaps > 0 && curLap > 0 && Number.isFinite(fuelRemLaps);
+    if (deltaBox) deltaBox.hidden = !showDelta;
+    if (showDelta && deltaEl) {
+        const delta = fuelRemLaps - (totalLaps - curLap);
+        const sign = delta >= 0 ? "+" : "";
+        deltaEl.textContent = sign + delta.toFixed(2);
+        let cls;
+        if (delta < -0.3) cls = "cs-delta-crit";
+        else if (delta > 0) cls = "cs-delta-up";
+        else cls = "cs-delta-warn";
+        deltaEl.className = "cs-big-value " + cls;
+    }
+
+    const ersModeEl = el("csErsMode");
+    if (ersModeEl) {
+        ersModeEl.textContent = ERS_MODE_BADGE[car.ersDeployMode] || "--";
+        ersModeEl.dataset.mode = String(car.ersDeployMode ?? 0);
+    }
+
+    const storeJ = Math.max(0, Number(car.ersStoreEnergy) || 0);
+    const storePct = Math.max(0, Math.min(100, (storeJ / MAX_ERS_J) * 100));
+    const storeBar = el("csErsStoreBar");
+    if (storeBar) storeBar.style.width = storePct + "%";
+    setText("csErsStoreVal", storePct.toFixed(0) + "% · " + (storeJ / 1_000_000).toFixed(2) + " MJ");
+
+    const deployJ = Math.max(0, Number(car.ersDeployedThisLap) || 0);
+    const deployPct = Math.max(0, Math.min(100, (deployJ / MAX_ERS_J) * 100));
+    const deployBar = el("csErsDeployBar");
+    if (deployBar) deployBar.style.width = deployPct + "%";
+    setText("csErsDeployVal", (deployJ / 1_000_000).toFixed(2) + " / 4.00 MJ");
+
+    const harvestJ = Math.max(0, (Number(car.ersHarvestedThisLapMguK) || 0) + (Number(car.ersHarvestedThisLapMguH) || 0));
+    const harvestPct = Math.max(0, Math.min(100, (harvestJ / MAX_ERS_J) * 100));
+    const harvestBar = el("csErsHarvestBar");
+    if (harvestBar) harvestBar.style.width = harvestPct + "%";
+    setText("csErsHarvestVal", harvestPct.toFixed(0) + "% · " + (harvestJ / 1_000_000).toFixed(2) + " MJ");
 }
 
 function updateCarSetups(data) {
