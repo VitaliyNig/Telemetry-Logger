@@ -121,19 +121,32 @@ const COMPOUND_DOT_COLORS = {
     19: "#ff3333", 20: "#ffd700", 21: "#e0e0e0", 22: "#e0e0e0",
 };
 
+/* Per-compound temperature zones (°C), derived from in-game grip curves:
+ *   T < cold           → undercool   (blue)
+ *   cold ≤ T < pLo     → warming up  (green)
+ *   pLo ≤ T ≤ pHi      → perfect     (purple, ~100% grip)
+ *   pHi < T ≤ hot      → overheat    (yellow)
+ *   T > hot            → critical    (red)
+ */
 const ACTUAL_COMPOUND_TEMP = {
-    20: { min: 90, opt: 100, max: 115 },
-    19: { min: 85, opt: 95, max: 115 },
-    18: { min: 80, opt: 90, max: 105 },
-    17: { min: 75, opt: 85, max: 100 },
-    16: { min: 70, opt: 80, max: 90 },
-    22: { min: 65, opt: 75, max: 85 },
-    7:  { min: 60, opt: 70, max: 80 },
-    8:  { min: 50, opt: 60, max: 70 },
+    20: { cold: 90, perfectLow: 100, perfectHigh: 110, hot: 125 },  // C1
+    19: { cold: 85, perfectLow: 90,  perfectHigh: 100, hot: 115 },  // C2
+    18: { cold: 75, perfectLow: 80,  perfectHigh: 100, hot: 115 },  // C3
+    17: { cold: 70, perfectLow: 80,  perfectHigh: 90,  hot: 105 },  // C4
+    16: { cold: 60, perfectLow: 70,  perfectHigh: 90,  hot: 100 },  // C5
+    22: { cold: 50, perfectLow: 60,  perfectHigh: 80,  hot: 95  },  // C6
+    7:  { cold: 50, perfectLow: 60,  perfectHigh: 70,  hot: 80  },  // Inter
+    8:  { cold: 45, perfectLow: 50,  perfectHigh: 60,  hot: 75  },  // Wet
 };
-const ACTUAL_COMPOUND_TEMP_DEFAULT = { min: 80, opt: 90, max: 105 };
+const ACTUAL_COMPOUND_TEMP_DEFAULT = { cold: 70, perfectLow: 80, perfectHigh: 100, hot: 115 };
 
-const TEMP_COLORS = { cold: "#00a6ff", normal: "#22c55e", hot: "#eab308", critical: "#ef4444" };
+const TEMP_COLORS = {
+    cold: "#00a6ff",
+    normal: "#22c55e",
+    perfect: "#b85cff",
+    hot: "#eab308",
+    critical: "#ef4444",
+};
 
 function getCompoundTempRange(actualCompoundId) {
     return ACTUAL_COMPOUND_TEMP[actualCompoundId] || ACTUAL_COMPOUND_TEMP_DEFAULT;
@@ -143,9 +156,10 @@ function tyreTempColor(temp, range) {
     if (!range) range = ACTUAL_COMPOUND_TEMP_DEFAULT;
     const t = Number(temp);
     if (!Number.isFinite(t) || t <= 0) return null;
-    if (t < range.min) return TEMP_COLORS.cold;
-    if (t < range.opt) return TEMP_COLORS.normal;
-    if (t <= range.max) return TEMP_COLORS.hot;
+    if (t < range.cold) return TEMP_COLORS.cold;
+    if (t < range.perfectLow) return TEMP_COLORS.normal;
+    if (t <= range.perfectHigh) return TEMP_COLORS.perfect;
+    if (t <= range.hot) return TEMP_COLORS.hot;
     return TEMP_COLORS.critical;
 }
 
@@ -718,10 +732,11 @@ function openTyreInfo(anchor) {
         `<div class="tip-scale">` +
         `<span class="tip-zone" style="background:#00a6ff">Cold</span>` +
         `<span class="tip-zone" style="background:#22c55e">Normal</span>` +
+        `<span class="tip-zone" style="background:#b85cff">Perfect</span>` +
         `<span class="tip-zone" style="background:#eab308">Hot</span>` +
         `<span class="tip-zone" style="background:#ef4444">Overheat</span>` +
         `</div>` +
-        `<div class="tip-desc">< min&ensp;·&ensp;min – opt&ensp;·&ensp;opt – max&ensp;·&ensp;> max</div></div>`;
+        `<div class="tip-desc">Undercool · Warming · 100% grip · Slight overheat · Critical</div></div>`;
 
     document.body.appendChild(panel);
     _tyreInfoPanel = panel;
@@ -963,7 +978,7 @@ function setTyreWidgetCompoundAge(car) {
     const range = getCompoundTempRange(car.actualTyreCompound);
 
     const nameText = actual ? `${actual}` : visual;
-    const rangeText = `${range.min}–${range.max}°C`;
+    const rangeText = `${range.perfectLow}–${range.perfectHigh}°C`;
     const ageText = `${car.tyresAgeLaps} laps`;
 
     for (const [, wc] of getTyreWidgetNodes()) {
