@@ -245,6 +245,43 @@
         el.addEventListener('change', autoSaveSettings);
     });
 
+    var btnAutoConfigureUdp = document.getElementById('btnAutoConfigureUdp');
+    var autoConfigureStatus = document.getElementById('autoConfigureStatus');
+    if (btnAutoConfigureUdp) {
+        btnAutoConfigureUdp.addEventListener('click', function () {
+            btnAutoConfigureUdp.disabled = true;
+            if (autoConfigureStatus) {
+                autoConfigureStatus.hidden = false;
+                autoConfigureStatus.textContent = 'Applying…';
+                autoConfigureStatus.className = 'auto-configure-status is-pending';
+            }
+            fetch('/api/game/configure-udp', { method: 'POST' })
+                .then(function (res) {
+                    return res.json().then(function (body) { return { ok: res.ok, body: body }; });
+                })
+                .then(function (r) {
+                    if (autoConfigureStatus) {
+                        if (r.ok) {
+                            autoConfigureStatus.textContent = 'Applied: ' + r.body.ip + ':' + r.body.port;
+                            autoConfigureStatus.className = 'auto-configure-status is-ok';
+                        } else {
+                            autoConfigureStatus.textContent = (r.body && (r.body.error || r.body.detail)) || 'Failed';
+                            autoConfigureStatus.className = 'auto-configure-status is-err';
+                        }
+                    }
+                })
+                .catch(function (err) {
+                    if (autoConfigureStatus) {
+                        autoConfigureStatus.textContent = 'Error: ' + err.message;
+                        autoConfigureStatus.className = 'auto-configure-status is-err';
+                    }
+                })
+                .finally(function () {
+                    btnAutoConfigureUdp.disabled = false;
+                });
+        });
+    }
+
     // --- SignalR ---
     function initSignalR() {
         if (connection) return;
