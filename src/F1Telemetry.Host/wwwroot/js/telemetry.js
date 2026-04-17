@@ -1446,21 +1446,309 @@ function updateLapData(data) {
         updateTopSpeedWidgets();
     }
 
-    setText("position", car.carPosition || "--");
-    setText("currentLap", car.currentLapNum || "--");
-    setText("currentLapTime", formatTime(car.currentLapTimeInMs));
-    setText("lastLapTime", formatTime(car.lastLapTimeInMs));
-    setText("sector1", formatSectorTime(car.sector1TimeMsPart, car.sector1TimeMinutesPart));
-    setText("sector2", formatSectorTime(car.sector2TimeMsPart, car.sector2TimeMinutesPart));
-
     updateSessionProgress();
     updatePitStopTimer(car);
+    updateLapDataWidget(car);
     updateStandings(data);
     updateQualiStandings();
     updatePitPredictor();
     updateGapBoard();
     updateGapRing();
     updateLapTimesWidget();
+}
+
+const LAP_DATA_REF_KEY = "f1telemetry_lap_data_ref_v1";
+const LD_RECENT_LAPS = 5;
+let lapDataRef = (localStorage.getItem(LAP_DATA_REF_KEY) === "best") ? "best" : "previous";
+let _lapDataLegendPanel = null;
+
+function initLapDataWidget() {
+    const btn = document.getElementById("btnLapDataRef");
+    if (btn && btn.dataset.ldWired !== "1") {
+        btn.dataset.ldWired = "1";
+        updateLapDataRefButton();
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            lapDataRef = lapDataRef === "previous" ? "best" : "previous";
+            localStorage.setItem(LAP_DATA_REF_KEY, lapDataRef);
+            updateLapDataRefButton();
+            const car = lastLapDataPacket?.lapDataItems?.[playerCarIndex];
+            if (car) updateLapDataWidget(car);
+        });
+    }
+    const legendBtn = document.getElementById("btnLapDataLegend");
+    if (legendBtn && legendBtn.dataset.ldWired !== "1") {
+        legendBtn.dataset.ldWired = "1";
+        legendBtn.addEventListener("mouseenter", () => openLapDataLegend(legendBtn));
+        legendBtn.addEventListener("mouseleave", closeLapDataLegend);
+        legendBtn.addEventListener("focus", () => openLapDataLegend(legendBtn));
+        legendBtn.addEventListener("blur", closeLapDataLegend);
+    }
+    updateLapDataRefButton();
+}
+
+function updateLapDataRefButton() {
+    const lbl = document.getElementById("ldRefLabel");
+    if (lbl) lbl.textContent = lapDataRef === "best" ? "vs Best" : "vs Prev";
+}
+
+function openLapDataLegend(anchor) {
+    closeLapDataLegend();
+    const panel = document.createElement("div");
+    panel.className = "tyre-info-panel";
+    panel.innerHTML =
+        '<div class="tip-section"><div class="tip-title">Split colors</div>' +
+        '<div class="tip-row"><span class="ld-swatch ld-pb"></span><span>Personal best</span></div>' +
+        '<div class="tip-row"><span class="ld-swatch ld-up"></span><span>Faster than reference</span></div>' +
+        '<div class="tip-row"><span class="ld-swatch ld-down"></span><span>Slower than reference</span></div>' +
+        '<div class="tip-row"><span class="ld-swatch ld-active"></span><span>Current sector</span></div></div>' +
+        '<div class="tip-section"><div class="tip-title">Reference</div>' +
+        '<div class="tip-desc">Toggle Previous Lap ↔ Personal Best via the button next to the legend.</div></div>' +
+        '<div class="tip-section"><div class="tip-title">Invalid lap</div>' +
+        '<div class="tip-desc">Invalid laps (m_currentLapInvalid) are excluded from personal bests.</div></div>';
+    document.body.appendChild(panel);
+    _lapDataLegendPanel = panel;
+    const r = anchor.getBoundingClientRect();
+    const pw = panel.offsetWidth;
+    let left = r.right - pw;
+    if (left < 4) left = 4;
+    if (left + pw > window.innerWidth - 4) left = window.innerWidth - pw - 4;
+    panel.style.left = left + "px";
+    panel.style.top = (r.bottom + 6) + "px";
+}
+
+function closeLapDataLegend() {
+    if (_lapDataLegendPanel) {
+        _lapDataLegendPanel.remove();
+        _lapDataLegendPanel = null;
+    }
+}
+
+function formatLdDelta(deltaMs) {
+    if (deltaMs == null || !Number.isFinite(deltaMs)) return "";
+    const sign = deltaMs >= 0 ? "+" : "−";
+    const abs = Math.abs(deltaMs) / 1000;
+    return sign + abs.toFixed(3);
+}
+
+function ldDeltaClass(deltaMs) {
+    if (deltaMs == null || !Number.isFinite(deltaMs)) return "";
+    if (deltaMs < 0) return "ld-delta-up";
+    if (deltaMs > 0) return "ld-delta-down";
+    return "ld-delta-neutral";
+}
+
+function ldSectorClass(currentMs, refMs, pbMs, isPB) {
+    if (!currentMs) return "ld-none";
+    if (isPB) return "ld-pb";
+    if (refMs && currentMs < refMs) return "ld-up";
+    if (refMs && currentMs > refMs) return "ld-down";
+    return "";
+}
+
+function ldLapValid(bitFlags) { return (bitFlags & 1) === 1; }
+
+function ldGetSectorBest(hist, sector) {
+    if (!hist || !hist.lapHistoryDataItems) return 0;
+    const lapNum = sector === 1 ? hist.bestSector1LapNum
+                 : sector === 2 ? hist.bestSector2LapNum
+                 : hist.bestSector3LapNum;
+    if (!lapNum) return 0;
+    const entry = hist.lapHistoryDataItems[lapNum - 1];
+    if (!entry) return 0;
+    return sectorMsFromHistoryEntry(entry, sector);
+}
+
+function ldGetBestLapMs(hist) {
+    if (!hist || !hist.lapHistoryDataItems || !hist.bestLapTimeLapNum) return 0;
+    const entry = hist.lapHistoryDataItems[hist.bestLapTimeLapNum - 1];
+    return entry?.lapTimeInMs || 0;
+}
+
+function ldGetPrevLapEntry(hist, currentLapNum) {
+    if (!hist || !hist.lapHistoryDataItems) return null;
+    const idx = currentLapNum - 2;
+    if (idx < 0 || idx >= hist.lapHistoryDataItems.length) return null;
+    return hist.lapHistoryDataItems[idx];
+}
+
+function predictLapFinishMs(car, pbS1, pbS2, pbS3) {
+    if (!car) return 0;
+    const sector = car.sector;
+    const elapsed = car.currentLapTimeInMs || 0;
+    const s1Done = (car.sector1TimeMinutesPart || 0) * 60000 + (car.sector1TimeMsPart || 0);
+    const s2Done = (car.sector2TimeMinutesPart || 0) * 60000 + (car.sector2TimeMsPart || 0);
+
+    if (sector === 0) {
+        if (!pbS1 || !pbS2 || !pbS3) return 0;
+        return Math.max(pbS1, elapsed) + pbS2 + pbS3;
+    }
+    if (sector === 1) {
+        if (!pbS2 || !pbS3) return 0;
+        const elapsedS2 = Math.max(elapsed - s1Done, 0);
+        return s1Done + Math.max(pbS2, elapsedS2) + pbS3;
+    }
+    if (sector === 2) {
+        if (!pbS3) return 0;
+        const done = s1Done + s2Done;
+        const elapsedS3 = Math.max(elapsed - done, 0);
+        return done + Math.max(pbS3, elapsedS3);
+    }
+    return 0;
+}
+
+function renderLdSector(num, currentMs, refMs, pbMs, lapValid) {
+    const valEl = el("ldS" + num);
+    const deltaEl = el("ldS" + num + "Delta");
+    if (valEl) {
+        valEl.textContent = currentMs > 0 ? formatLapClock(currentMs) : "--";
+        const cls = ldSectorClass(
+            currentMs,
+            refMs,
+            pbMs,
+            lapValid && pbMs > 0 && currentMs === pbMs
+        );
+        valEl.className = "ld-sector-time " + cls;
+    }
+    if (deltaEl) {
+        if (currentMs > 0 && refMs > 0) {
+            const d = currentMs - refMs;
+            deltaEl.textContent = formatLdDelta(d);
+            deltaEl.className = "ld-delta " + ldDeltaClass(d);
+        } else {
+            deltaEl.textContent = "";
+            deltaEl.className = "ld-delta";
+        }
+    }
+}
+
+function renderLdRecent(hist, currentLapNum, pbS1, pbS2, pbS3) {
+    const list = el("ldRecentList");
+    if (!list) return;
+    if (!hist || !hist.lapHistoryDataItems || currentLapNum < 2) {
+        list.innerHTML = '<div class="ld-recent-empty">No completed laps yet</div>';
+        return;
+    }
+    const completedUpTo = Math.min(currentLapNum - 1, hist.lapHistoryDataItems.length);
+    const from = Math.max(0, completedUpTo - LD_RECENT_LAPS);
+
+    let prevS1 = 0, prevS2 = 0, prevS3 = 0;
+    if (from > 0) {
+        const prevEntry = hist.lapHistoryDataItems[from - 1];
+        if (prevEntry) {
+            prevS1 = sectorMsFromHistoryEntry(prevEntry, 1);
+            prevS2 = sectorMsFromHistoryEntry(prevEntry, 2);
+            prevS3 = sectorMsFromHistoryEntry(prevEntry, 3);
+        }
+    }
+
+    let html = "";
+    for (let i = from; i < completedUpTo; i++) {
+        const entry = hist.lapHistoryDataItems[i];
+        if (!entry) continue;
+        const lapNum = i + 1;
+        const valid = ldLapValid(entry.lapValidBitFlags);
+        const s1 = sectorMsFromHistoryEntry(entry, 1);
+        const s2 = sectorMsFromHistoryEntry(entry, 2);
+        const s3 = sectorMsFromHistoryEntry(entry, 3);
+
+        const c1 = ldSectorClass(s1, prevS1, pbS1, valid && pbS1 > 0 && s1 === pbS1);
+        const c2 = ldSectorClass(s2, prevS2, pbS2, valid && pbS2 > 0 && s2 === pbS2);
+        const c3 = ldSectorClass(s3, prevS3, pbS3, valid && pbS3 > 0 && s3 === pbS3);
+
+        const lapTime = entry.lapTimeInMs;
+        const lapTimeTxt = lapTime > 0 ? formatLapClock(lapTime) : "--";
+        const invCls = valid ? "" : " ld-recent-invalid";
+
+        html += `<div class="ld-recent-row${invCls}">` +
+            `<span class="ld-recent-lap">L${lapNum}</span>` +
+            `<span class="ld-recent-sq ${c1}" title="S1"></span>` +
+            `<span class="ld-recent-sq ${c2}" title="S2"></span>` +
+            `<span class="ld-recent-sq ${c3}" title="S3"></span>` +
+            `<span class="ld-recent-time">${lapTimeTxt}</span>` +
+            `</div>`;
+
+        prevS1 = s1; prevS2 = s2; prevS3 = s3;
+    }
+    list.innerHTML = html;
+}
+
+function updateLapDataWidget(car) {
+    if (!car) return;
+    const container = document.querySelector(".lap-data-card");
+    if (!container) return;
+
+    const hist = sessionHistories[playerCarIndex];
+    const currentLapNum = car.currentLapNum || 0;
+
+    const prev = ldGetPrevLapEntry(hist, currentLapNum);
+    const prevS1 = prev ? sectorMsFromHistoryEntry(prev, 1) : 0;
+    const prevS2 = prev ? sectorMsFromHistoryEntry(prev, 2) : 0;
+    const prevS3 = prev ? sectorMsFromHistoryEntry(prev, 3) : 0;
+    const prevLapMs = prev ? prev.lapTimeInMs : 0;
+
+    const pbS1 = ldGetSectorBest(hist, 1);
+    const pbS2 = ldGetSectorBest(hist, 2);
+    const pbS3 = ldGetSectorBest(hist, 3);
+    const pbLapMs = ldGetBestLapMs(hist);
+
+    const refS1 = lapDataRef === "best" ? pbS1 : prevS1;
+    const refS2 = lapDataRef === "best" ? pbS2 : prevS2;
+    const refS3 = lapDataRef === "best" ? pbS3 : prevS3;
+    const refLap = lapDataRef === "best" ? pbLapMs : prevLapMs;
+
+    const lastLapMs = car.lastLapTimeInMs || prevLapMs;
+    const lastLapEntry = prev;
+    const lastS1 = lastLapEntry ? sectorMsFromHistoryEntry(lastLapEntry, 1) : 0;
+    const lastS2 = lastLapEntry ? sectorMsFromHistoryEntry(lastLapEntry, 2) : 0;
+    const lastS3 = lastLapEntry ? sectorMsFromHistoryEntry(lastLapEntry, 3) : 0;
+    const lastLapValid = lastLapEntry ? ldLapValid(lastLapEntry.lapValidBitFlags) : true;
+
+    const lastLapEl = el("ldLastLap");
+    if (lastLapEl) {
+        lastLapEl.textContent = lastLapMs > 0 ? formatLapClock(lastLapMs) : "--";
+        lastLapEl.className = "ld-time ld-last-time " + ldSectorClass(
+            lastLapMs,
+            refLap,
+            pbLapMs,
+            lastLapValid && pbLapMs > 0 && lastLapMs === pbLapMs
+        );
+    }
+
+    const lastLapDeltaEl = el("ldLastLapDelta");
+    if (lastLapDeltaEl) {
+        if (lastLapMs > 0 && refLap > 0) {
+            const d = lastLapMs - refLap;
+            lastLapDeltaEl.textContent = formatLdDelta(d);
+            lastLapDeltaEl.className = "ld-delta " + ldDeltaClass(d);
+        } else {
+            lastLapDeltaEl.textContent = "";
+            lastLapDeltaEl.className = "ld-delta";
+        }
+    }
+
+    renderLdSector(1, lastS1, refS1, pbS1, lastLapValid);
+    renderLdSector(2, lastS2, refS2, pbS2, lastLapValid);
+    renderLdSector(3, lastS3, refS3, pbS3, lastLapValid);
+
+    container.querySelectorAll(".ld-sector").forEach(s => s.classList.remove("ld-sector-active"));
+    const curSector = car.sector;
+    if (curSector >= 0 && curSector <= 2) {
+        const activeEl = container.querySelector(`.ld-sector[data-ld-sector="${curSector + 1}"]`);
+        if (activeEl) activeEl.classList.add("ld-sector-active");
+    }
+
+    setText("ldCurLap", formatLapClock(car.currentLapTimeInMs || 0));
+    const invBadge = el("ldInvalidBadge");
+    if (invBadge) invBadge.hidden = car.currentLapInvalid !== 1;
+
+    const predictedEl = el("ldPredicted");
+    if (predictedEl) {
+        const p = predictLapFinishMs(car, pbS1, pbS2, pbS3);
+        predictedEl.textContent = p > 0 ? formatLapClock(p) : "--";
+    }
+
+    renderLdRecent(hist, currentLapNum, pbS1, pbS2, pbS3);
 }
 
 const pitStopHistory = [];
@@ -2164,6 +2452,10 @@ function updateSessionHistory(data) {
     updateGapBoard();
     updateQualiStandings();
     updateLapTimesWidget();
+    if (data.carIdx === playerCarIndex) {
+        const car = lastLapDataPacket?.lapDataItems?.[playerCarIndex];
+        if (car) updateLapDataWidget(car);
+    }
 }
 
 function getQualiDriverStatus(ld) {
