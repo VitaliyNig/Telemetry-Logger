@@ -8,7 +8,8 @@
     var connection = null;
     var consoleEntries = [];
     var MAX_CONSOLE = 2000;
-    var lastSavedSettingsSnapshot = null;
+    var initialWebPort = null;
+    var autoSaveTimer = null;
 
     // --- DOM refs ---
     var tabNav = document.getElementById('tabNav');
@@ -18,11 +19,10 @@
     var udpListenIp = document.getElementById('udpListenIp');
     var udpListenPort = document.getElementById('udpListenPort');
     var webPort = document.getElementById('webPort');
+    var webPortRestartBadge = document.getElementById('webPortRestartBadge');
     var debugModeToggle = document.getElementById('debugMode');
     var autoSwitchPreset = document.getElementById('autoSwitchPreset');
     var enableSessionLogging = document.getElementById('enableSessionLogging');
-    var btnSave = document.getElementById('btnSaveSettings');
-    var saveStatus = document.getElementById('saveStatus');
 
     var totalPacketsEl = document.getElementById('totalPackets');
     var packetCountsList = document.getElementById('packetCountsList');
@@ -32,28 +32,11 @@
     var btnDownloadLog = document.getElementById('btnDownloadLog');
     var btnResetStats = document.getElementById('btnResetStats');
 
-    function getSettingsSnapshot() {
-        return {
-            udpListenIp: udpListenIp ? udpListenIp.value.trim() : '',
-            udpListenPort: udpListenPort ? parseInt(udpListenPort.value, 10) : 0,
-            webPort: webPort ? parseInt(webPort.value, 10) : 0,
-            debugMode: !!(debugModeToggle && debugModeToggle.checked),
-            autoSwitchPreset: !!(autoSwitchPreset && autoSwitchPreset.checked),
-            enableSessionLogging: !!(enableSessionLogging && enableSessionLogging.checked)
-        };
-    }
-
-    function snapshotsEqual(a, b) {
-        return JSON.stringify(a) === JSON.stringify(b);
-    }
-
-    function updateSettingsDirtyState() {
-        if (!btnSave) return;
-        if (lastSavedSettingsSnapshot === null) {
-            btnSave.classList.remove('btn-settings-dirty');
-            return;
-        }
-        btnSave.classList.toggle('btn-settings-dirty', !snapshotsEqual(lastSavedSettingsSnapshot, getSettingsSnapshot()));
+    function updateWebPortRestartBadge() {
+        if (!webPortRestartBadge || !webPort) return;
+        var current = parseInt(webPort.value, 10);
+        var needs = initialWebPort !== null && Number.isFinite(current) && current !== initialWebPort;
+        webPortRestartBadge.hidden = !needs;
     }
 
     function syncDashboardTogglesFromStorage() {
@@ -178,21 +161,50 @@
                 udpListenIp.value = data.udpListenIp;
                 udpListenPort.value = data.udpListenPort;
                 webPort.value = data.webPort;
+                initialWebPort = parseInt(data.webPort, 10);
                 debugModeToggle.checked = data.debugMode;
                 if (enableSessionLogging) enableSessionLogging.checked = data.enableSessionLogging;
                 setDebugMode(data.debugMode);
                 syncDashboardTogglesFromStorage();
-                lastSavedSettingsSnapshot = getSettingsSnapshot();
-                updateSettingsDirtyState();
+                updateWebPortRestartBadge();
                 if (typeof window.applyDashboardLayoutLock === 'function') {
                     window.applyDashboardLayoutLock();
                 }
             })
             .catch(function (err) {
                 console.error('Failed to load settings:', err);
-                lastSavedSettingsSnapshot = getSettingsSnapshot();
-                updateSettingsDirtyState();
             });
+    }
+
+    function autoSaveSettings() {
+        if (autoSaveTimer) clearTimeout(autoSaveTimer);
+        autoSaveTimer = setTimeout(function () {
+            autoSaveTimer = null;
+            var body = {
+                udpListenIp: udpListenIp.value.trim(),
+                udpListenPort: parseInt(udpListenPort.value, 10),
+                webPort: parseInt(webPort.value, 10),
+                debugMode: debugModeToggle.checked,
+                enableSessionLogging: !!(enableSessionLogging && enableSessionLogging.checked)
+            };
+
+            fetch('/api/settings', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(body)
+            })
+                .then(function (r) { return r.json(); })
+                .then(function () {
+                    localStorage.setItem(AUTO_SWITCH_KEY, autoSwitchPreset && autoSwitchPreset.checked ? 'true' : 'false');
+                    if (typeof window.applyDashboardLayoutLock === 'function') {
+                        window.applyDashboardLayoutLock();
+                    }
+                    updateWebPortRestartBadge();
+                })
+                .catch(function (err) {
+                    console.error('Failed to save settings:', err);
+                });
+        }, 400);
     }
 
     function setDebugMode(enabled) {
@@ -214,59 +226,23 @@
 
     debugModeToggle.addEventListener('change', function () {
         setDebugMode(this.checked);
-        updateSettingsDirtyState();
+        autoSaveSettings();
     });
 
     if (autoSwitchPreset) {
-        autoSwitchPreset.addEventListener('change', updateSettingsDirtyState);
+        autoSwitchPreset.addEventListener('change', autoSaveSettings);
     }
     if (enableSessionLogging) {
-        enableSessionLogging.addEventListener('change', updateSettingsDirtyState);
+        enableSessionLogging.addEventListener('change', autoSaveSettings);
     }
 
-    function wireSettingsInputsDirty() {
-        [udpListenIp, udpListenPort, webPort].forEach(function (el) {
-            if (!el) return;
-            el.addEventListener('input', updateSettingsDirtyState);
-            el.addEventListener('change', updateSettingsDirtyState);
+    [udpListenIp, udpListenPort, webPort].forEach(function (el) {
+        if (!el) return;
+        el.addEventListener('input', function () {
+            if (el === webPort) updateWebPortRestartBadge();
+            autoSaveSettings();
         });
-    }
-    wireSettingsInputsDirty();
-
-    btnSave.addEventListener('click', function () {
-        var body = {
-            udpListenIp: udpListenIp.value.trim(),
-            udpListenPort: parseInt(udpListenPort.value, 10),
-            webPort: parseInt(webPort.value, 10),
-            debugMode: debugModeToggle.checked,
-            enableSessionLogging: !!(enableSessionLogging && enableSessionLogging.checked)
-        };
-
-        saveStatus.textContent = 'Saving...';
-        saveStatus.style.color = 'var(--text-secondary)';
-
-        fetch('/api/settings', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(body)
-        })
-            .then(function (r) { return r.json(); })
-            .then(function (data) {
-                localStorage.setItem(AUTO_SWITCH_KEY, autoSwitchPreset && autoSwitchPreset.checked ? 'true' : 'false');
-                lastSavedSettingsSnapshot = getSettingsSnapshot();
-                updateSettingsDirtyState();
-                if (typeof window.applyDashboardLayoutLock === 'function') {
-                    window.applyDashboardLayoutLock();
-                }
-                saveStatus.textContent = data.message || 'Saved!';
-                saveStatus.style.color = 'var(--green)';
-                setTimeout(function () { saveStatus.textContent = ''; }, 4000);
-            })
-            .catch(function (err) {
-                saveStatus.textContent = 'Error saving settings';
-                saveStatus.style.color = 'var(--red)';
-                console.error(err);
-            });
+        el.addEventListener('change', autoSaveSettings);
     });
 
     // --- SignalR ---
