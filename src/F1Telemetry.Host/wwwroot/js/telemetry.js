@@ -1073,6 +1073,7 @@ function updateSession(data) {
             pedalHistoryT.length = 0;
             pedalHistoryB.length = 0;
             gapRingObservedMaxLapDist = 0;
+            resetPitStopHistory();
         }
         lastSessionLinkId = linkId;
     }
@@ -1453,12 +1454,93 @@ function updateLapData(data) {
     setText("sector2", formatSectorTime(car.sector2TimeMsPart, car.sector2TimeMinutesPart));
 
     updateSessionProgress();
+    updatePitStopTimer(car);
     updateStandings(data);
     updateQualiStandings();
     updatePitPredictor();
     updateGapBoard();
     updateGapRing();
     updateLapTimesWidget();
+}
+
+const pitStopHistory = [];
+let _pitLaneActivePrev = false;
+let _pitLaneMaxLaneMs = 0;
+let _pitLaneMaxStallMs = 0;
+let _pitLaneEntryLap = 0;
+
+function formatPitTimeMs(ms) {
+    if (!ms || ms <= 0) return "--";
+    return (ms / 1000).toFixed(2) + "s";
+}
+
+function resetPitStopHistory() {
+    pitStopHistory.length = 0;
+    _pitLaneActivePrev = false;
+    _pitLaneMaxLaneMs = 0;
+    _pitLaneMaxStallMs = 0;
+    _pitLaneEntryLap = 0;
+    const laneEl = el("pitTimerLaneNow");
+    const stallEl = el("pitTimerStallNow");
+    const statusEl = el("pitTimerStatusNow");
+    if (laneEl) laneEl.textContent = "--";
+    if (stallEl) stallEl.textContent = "--";
+    if (statusEl) statusEl.textContent = "--";
+    renderPitStopHistory();
+}
+
+function updatePitStopTimer(car) {
+    if (!car) return;
+
+    const active = car.pitLaneTimerActive === 1;
+    const laneMs = car.pitLaneTimeInLaneInMs || 0;
+    const stallMs = car.pitStopTimerInMs || 0;
+    const lap = car.currentLapNum || 0;
+
+    const laneEl = el("pitTimerLaneNow");
+    const stallEl = el("pitTimerStallNow");
+    const statusEl = el("pitTimerStatusNow");
+
+    if (active) {
+        if (!_pitLaneActivePrev) _pitLaneEntryLap = lap;
+        if (laneMs > _pitLaneMaxLaneMs) _pitLaneMaxLaneMs = laneMs;
+        if (stallMs > _pitLaneMaxStallMs) _pitLaneMaxStallMs = stallMs;
+
+        if (laneEl) laneEl.textContent = formatPitTimeMs(laneMs);
+        if (stallEl) stallEl.textContent = formatPitTimeMs(stallMs);
+        if (statusEl) statusEl.textContent = car.pitStatus === 1 ? "Pitting" : "In Pit Lane";
+    } else {
+        if (_pitLaneActivePrev && (_pitLaneMaxLaneMs > 0 || _pitLaneMaxStallMs > 0)) {
+            pitStopHistory.push({
+                lap: _pitLaneEntryLap || lap,
+                laneMs: _pitLaneMaxLaneMs,
+                stallMs: _pitLaneMaxStallMs,
+            });
+            renderPitStopHistory();
+        }
+        _pitLaneMaxLaneMs = 0;
+        _pitLaneMaxStallMs = 0;
+
+        if (laneEl) laneEl.textContent = "--";
+        if (stallEl) stallEl.textContent = "--";
+        if (statusEl) statusEl.textContent = "--";
+    }
+
+    _pitLaneActivePrev = active;
+}
+
+function renderPitStopHistory() {
+    const body = el("pitTimerHistoryBody");
+    if (!body) return;
+    if (pitStopHistory.length === 0) {
+        body.innerHTML = '<tr class="pit-timer-empty"><td colspan="4">No pit stops yet</td></tr>';
+        return;
+    }
+    let html = "";
+    pitStopHistory.forEach((r, i) => {
+        html += `<tr><td>${i + 1}</td><td>${r.lap || "--"}</td><td>${formatPitTimeMs(r.laneMs)}</td><td>${formatPitTimeMs(r.stallMs)}</td></tr>`;
+    });
+    body.innerHTML = html;
 }
 
 function updateCarDamage(data) {

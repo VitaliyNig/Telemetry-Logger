@@ -18,6 +18,7 @@ const WIDGET_REGISTRY = {
     topSpeed:         { title: "Session Top Speeds",   tpl: "tpl-topSpeed",         w: 8,   h: 10,  minW: 1, minH: 1 },
     topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare",  w: 4,   h: 10,  minW: 1, minH: 1 },
     lapTimes:         { title: "Lap Times",            tpl: "tpl-lapTimes",         w: 14,  h: 10,  minW: 4, minH: 4 },
+    pitStopTimer:     { title: "Pit Stop Timer",       tpl: "tpl-pitStopTimer",     w: 6,   h: 8,   minW: 1, minH: 1 },
 };
 
 /** Finer grid (2× columns, 2× rows vs v1); physical size unchanged → scale saved layouts ×2. */

@@ -432,6 +432,24 @@
         </table></div></div>
     </template>
 
+    <template id="tpl-pitStopTimer">
+        <div class="card pit-timer-card"><h2 class="widget-title">Pit Stop Timer</h2>
+        <div class="pit-timer-live">
+            <div class="stat-box"><span class="stat-label">Pit Lane</span><span class="stat-value" id="pitTimerLaneNow">--</span></div>
+            <div class="stat-box"><span class="stat-label">Pit Stall</span><span class="stat-value" id="pitTimerStallNow">--</span></div>
+            <div class="stat-box"><span class="stat-label">Status</span><span class="stat-value" id="pitTimerStatusNow">--</span></div>
+        </div>
+        <div class="pit-timer-history-wrap">
+            <table class="pit-timer-history">
+                <thead><tr><th class="pit-timer-col-num">#</th><th>Lap</th><th>Lane</th><th>Stall</th></tr></thead>
+                <tbody id="pitTimerHistoryBody">
+                    <tr class="pit-timer-empty"><td colspan="4">No pit stops yet</td></tr>
+                </tbody>
+            </table>
+        </div>
+        </div>
+    </template>
+
     <template id="tpl-lapTimes">
         <div class="card lap-times-card"><h2 class="widget-title">Lap Times</h2>
         <div class="lap-times-wrap standings-table-wrap">

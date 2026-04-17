@@ -2897,3 +2897,58 @@
     margin: 0;
     color: var(--text-dim);
 }
+
+/* Pit Stop Timer */
+.pit-timer-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.pit-timer-card .widget-title { flex: 0 0 auto; }
+
+.pit-timer-live {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+    gap: 10px;
+    padding: 0 12px 8px;
+    flex: 0 0 auto;
+}
+
+.pit-timer-history-wrap {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+}
+
+.pit-timer-history {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+.pit-timer-history th {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: 0;
+    background: var(--bg-card);
+}
+.pit-timer-history td {
+    padding: 6px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-family: var(--font-mono);
+}
+.pit-timer-history th.pit-timer-col-num,
+.pit-timer-history td:first-child {
+    width: 1%;
+    color: var(--text-dim);
+}
+.pit-timer-history tr.pit-timer-empty td {
+    color: var(--text-dim);
+    text-align: center;
+    font-style: italic;
+}
