@@ -121,6 +121,23 @@ const COMPOUND_DOT_COLORS = {
     19: "#ff3333", 20: "#ffd700", 21: "#e0e0e0", 22: "#e0e0e0",
 };
 
+/* Per-lap wear rate (%) per actual compound — from in-game wear rates. */
+const COMPOUND_WEAR_RATE_PCT = {
+    20: 0.85,  // C1
+    19: 1.06,  // C2
+    18: 1.31,  // C3
+    17: 1.64,  // C4
+    16: 2.14,  // C5
+    22: 2.90,  // C6
+    7:  0.97,  // Inter
+    8:  0.97,  // Wet
+};
+
+function getCompoundWearRate(actualCompoundId) {
+    const v = COMPOUND_WEAR_RATE_PCT[actualCompoundId];
+    return v != null ? v : null;
+}
+
 /* Per-compound temperature zones (°C), derived from in-game grip curves:
  *   T < cold           → undercool   (blue)
  *   cold ≤ T < pLo     → warming up  (green)
@@ -2272,6 +2289,15 @@ function getCompoundAbbr(name) {
     return map[name] || (name[0] || "?");
 }
 
+function getActualCompoundBadgeText(actualId, fallbackVisualName) {
+    const n = ACTUAL_COMPOUNDS[actualId];
+    if (n === "Inter") return "I";
+    if (n === "Wet" || n === "W") return "W";
+    if (n === "Dry") return "D";
+    if (n && /^C[0-9]$/.test(n)) return n;
+    return getCompoundAbbr(fallbackVisualName || "");
+}
+
 function updateTyreSets(data) {
     if (data.carIdx !== playerCarIndex) return;
 
@@ -2293,12 +2319,15 @@ function updateTyreSets(data) {
     const fittedEl = el("fittedCompound");
     if (fittedEl && fittedSet) {
         const info = fittedSet.compoundInfo;
-        const abbr = getCompoundAbbr(info.name);
+        const badgeTxt = getActualCompoundBadgeText(fittedSet.actualTyreCompound, info.name);
         const wearColor = fittedSet.wear > 60 ? "var(--danger)" : fittedSet.wear > 30 ? "var(--warning)" : "var(--safe)";
-        fittedEl.innerHTML = `<span class="tyreset-badge ${info.css}">${abbr}</span>`
+        const wrate = getCompoundWearRate(fittedSet.actualTyreCompound);
+        const wrateText = wrate != null ? `${wrate.toFixed(2)}%/L` : "";
+        fittedEl.innerHTML = `<span class="tyreset-badge ${info.css}">${badgeTxt}</span>`
             + `<span>${info.name}</span>`
             + `<span style="color:${wearColor}">${fittedSet.wear}% worn</span>`
-            + `<span style="color:var(--text-dim)">${fittedSet.lifeSpan}L left</span>`;
+            + `<span style="color:var(--text-dim)">${fittedSet.lifeSpan}L left</span>`
+            + (wrateText ? `<span class="tyreset-wear-rate" title="Wear per lap">${wrateText}</span>` : "");
     }
 
     const container = el("tyreSetGroups");
@@ -2329,9 +2358,11 @@ function updateTyreSets(data) {
             const deltaSign = delta > 0 ? "+" : "";
             const deltaCls = delta > 0 ? "positive" : delta < 0 ? "negative" : "zero";
             const deltaText = delta !== 0 ? `${deltaSign}${(delta / 1000).toFixed(1)}s` : "—";
-            const abbr = getCompoundAbbr(s.compoundInfo.name);
+            const badgeTxt = getActualCompoundBadgeText(s.actualTyreCompound, s.compoundInfo.name);
+            const wrate = getCompoundWearRate(s.actualTyreCompound);
+            const wrateText = wrate != null ? `${wrate.toFixed(2)}%/L` : "—";
             const cls = s.isFitted ? "tyreset-item fitted" : "tyreset-item";
-            parts.push(`<div class="${cls}"><span class="tyreset-badge ${s.compoundInfo.css}">${abbr}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct" style="color:${wearColor}">${wearPct}%</span><span class="tyreset-life">${s.lifeSpan}L</span><span class="tyreset-delta ${deltaCls}">${deltaText}</span>${s.isFitted ? '<span class="tyreset-fitted-badge">ON</span>' : ""}</div>`);
+            parts.push(`<div class="${cls}"><span class="tyreset-badge ${s.compoundInfo.css}">${badgeTxt}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct" style="color:${wearColor}">${wearPct}%</span><span class="tyreset-life">${s.lifeSpan}L</span><span class="tyreset-wear-rate" title="Wear per lap">${wrateText}</span><span class="tyreset-delta ${deltaCls}">${deltaText}</span>${s.isFitted ? '<span class="tyreset-fitted-badge">ON</span>' : ""}</div>`);
         }
         parts.push(`</div>`);
     }
@@ -2348,8 +2379,8 @@ function updateTyreSets(data) {
         for (const s of used) {
             const wearPct = s.wear;
             const wearColor = wearPct > 60 ? "var(--danger)" : wearPct > 30 ? "var(--warning)" : "var(--safe)";
-            const abbr = getCompoundAbbr(s.compoundInfo.name);
-            parts.push(`<div class="tyreset-item"><span class="tyreset-badge tyreset-badge-sm ${s.compoundInfo.css}">${abbr}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct">${wearPct}%</span><span class="tyreset-life">${s.lifeSpan}L</span></div>`);
+            const badgeTxt = getActualCompoundBadgeText(s.actualTyreCompound, s.compoundInfo.name);
+            parts.push(`<div class="tyreset-item"><span class="tyreset-badge tyreset-badge-sm ${s.compoundInfo.css}">${badgeTxt}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct">${wearPct}%</span><span class="tyreset-life">${s.lifeSpan}L</span></div>`);
         }
         parts.push(`</div>`);
     }
