@@ -1868,10 +1868,8 @@ function resetPitStopHistory() {
     _pitLaneEntryLap = 0;
     const laneEl = el("pitTimerLaneNow");
     const stallEl = el("pitTimerStallNow");
-    const statusEl = el("pitTimerStatusNow");
     if (laneEl) laneEl.textContent = "--";
     if (stallEl) stallEl.textContent = "--";
-    if (statusEl) statusEl.textContent = "--";
     renderPitStopHistory();
 }
 
@@ -1885,7 +1883,6 @@ function updatePitStopTimer(car) {
 
     const laneEl = el("pitTimerLaneNow");
     const stallEl = el("pitTimerStallNow");
-    const statusEl = el("pitTimerStatusNow");
 
     if (active) {
         if (!_pitLaneActivePrev) _pitLaneEntryLap = lap;
@@ -1894,7 +1891,6 @@ function updatePitStopTimer(car) {
 
         if (laneEl) laneEl.textContent = formatPitTimeMs(laneMs);
         if (stallEl) stallEl.textContent = formatPitTimeMs(stallMs);
-        if (statusEl) statusEl.textContent = car.pitStatus === 1 ? "Pitting" : "In Pit Lane";
     } else {
         if (_pitLaneActivePrev && (_pitLaneMaxLaneMs > 0 || _pitLaneMaxStallMs > 0)) {
             pitStopHistory.push({
