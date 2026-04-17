@@ -467,6 +467,25 @@
     color: var(--text-primary);
 }
 
+.flag-rect {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: flex-start;
+    padding: 2px 10px;
+    border-radius: 4px;
+    border: 1px solid var(--border);
+    background: transparent;
+    color: var(--text-dim);
+    min-width: 56px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+.flag-rect[data-flag="yellow"] { background: var(--accent-yellow); color: #0f1117; border-color: var(--accent-yellow); }
+.flag-rect[data-flag="blue"]   { background: var(--accent-blue);   color: #0f1117; border-color: var(--accent-blue); }
+.flag-rect[data-flag="red"]    { background: var(--semantic-red);  color: #fff;    border-color: var(--semantic-red); }
+.flag-rect[data-flag="green"]  { background: var(--accent-green);  color: #0f1117; border-color: var(--accent-green); }
+
 .stat-value.big {
     font-size: 32px;
     color: var(--accent-brand);

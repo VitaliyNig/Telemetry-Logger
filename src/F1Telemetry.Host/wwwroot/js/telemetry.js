@@ -95,10 +95,6 @@ const WEATHER_NAMES = {
     3: "Light Rain 🌧", 4: "Heavy Rain 🌧️", 5: "Storm ⛈"
 };
 
-const SAFETY_CAR_STATUS = {
-    0: "None", 1: "Full SC", 2: "VSC", 3: "Formation"
-};
-
 // m_actualTyreCompound — пакет Car Status (разное для F1 Modern / Classic / F2)
 const TYRE_COMPOUNDS = {
     16: "C5", 17: "C4", 18: "C3", 19: "C2", 20: "C1", 21: "C0", 22: "C6",
@@ -953,10 +949,46 @@ function updateSession(data) {
 
     updateWeatherForecast(data);
 
-    setText("safetyCarStatus", SAFETY_CAR_STATUS[data.safetyCarStatus] || "None");
-
+    updateFlagIndicator();
     updateSessionProgress();
     updateLapTimesWidget();
+}
+
+function updateFlagIndicator() {
+    const indicator = el("flagIndicator");
+    if (!indicator) return;
+
+    const data = lastSessionPacket;
+    if (!data) {
+        indicator.textContent = "--";
+        indicator.dataset.flag = "none";
+        return;
+    }
+
+    const sc = data.safetyCarStatus;
+    const zones = data.marshalZones || [];
+    const numZones = data.numMarshalZones || 0;
+
+    let hasRed = false, hasYellow = false, hasBlue = false, hasGreen = false;
+    for (let i = 0; i < numZones && i < zones.length; i++) {
+        const f = zones[i]?.zoneFlag;
+        if (f === 4) hasRed = true;
+        else if (f === 3) hasYellow = true;
+        else if (f === 2) hasBlue = true;
+        else if (f === 1) hasGreen = true;
+    }
+
+    let label = "--", color = "none";
+    if (hasRed) { label = "RED"; color = "red"; }
+    else if (sc === 1) { label = "SC"; color = "yellow"; }
+    else if (sc === 2) { label = "VSC"; color = "yellow"; }
+    else if (hasYellow) { label = "YELLOW"; color = "yellow"; }
+    else if (sc === 3) { label = "FORMATION"; color = "green"; }
+    else if (hasBlue) { label = "BLUE"; color = "blue"; }
+    else if (hasGreen) { label = "GREEN"; color = "green"; }
+
+    indicator.textContent = label;
+    indicator.dataset.flag = color;
 }
 
 function updateSessionProgress() {
