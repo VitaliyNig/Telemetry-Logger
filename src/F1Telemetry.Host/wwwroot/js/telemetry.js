@@ -954,18 +954,35 @@ function updateSession(data) {
     updateWeatherForecast(data);
 
     setText("safetyCarStatus", SAFETY_CAR_STATUS[data.safetyCarStatus] || "None");
-    setText("totalLaps", data.totalLaps > 0 ? data.totalLaps : "--");
 
-    const timeLeftSec = data.sessionTimeLeft;
-    if (timeLeftSec > 0) {
-        const m = Math.floor(timeLeftSec / 60);
-        const s = timeLeftSec % 60;
-        setText("timeLeft", `${m}:${String(s).padStart(2, "0")}`);
-    } else {
-        setText("timeLeft", "--");
-    }
-
+    updateSessionProgress();
     updateLapTimesWidget();
+}
+
+function updateSessionProgress() {
+    const labelEl = el("sessionProgressLabel");
+    const valueEl = el("sessionProgressValue");
+    if (!labelEl || !valueEl) return;
+
+    const sType = lastSessionPacket?.sessionType ?? 0;
+    const isRaceSession = sType === 15 || sType === 16 || sType === 17;
+
+    if (isRaceSession) {
+        const lap = lastLapDataPacket?.lapDataItems?.[playerCarIndex]?.currentLapNum ?? 0;
+        const totalLaps = lastSessionPacket?.totalLaps ?? 0;
+        labelEl.textContent = "Laps";
+        valueEl.textContent = lap > 0 && totalLaps > 0 ? `${lap}/${totalLaps}` : "--";
+    } else {
+        const timeLeftSec = lastSessionPacket?.sessionTimeLeft ?? 0;
+        labelEl.textContent = "Time";
+        if (timeLeftSec > 0) {
+            const m = Math.floor(timeLeftSec / 60);
+            const s = timeLeftSec % 60;
+            valueEl.textContent = `${m}:${String(s).padStart(2, "0")}`;
+        } else {
+            valueEl.textContent = "--";
+        }
+    }
 }
 
 const WEATHER_ICONS = {
@@ -1230,6 +1247,7 @@ function updateLapData(data) {
     setText("sector1", formatSectorTime(car.sector1TimeMsPart, car.sector1TimeMinutesPart));
     setText("sector2", formatSectorTime(car.sector2TimeMsPart, car.sector2TimeMinutesPart));
 
+    updateSessionProgress();
     updateStandings(data);
     updateQualiStandings();
     updatePitPredictor();
