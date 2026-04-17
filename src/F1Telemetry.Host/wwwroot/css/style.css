@@ -2985,14 +2985,9 @@
     color: var(--text-primary);
 }
 
-.ld-sector-active {
-    border-color: var(--accent-blue);
-    background: rgba(0, 166, 255, 0.08);
-    animation: ld-sector-pulse 1.4s infinite ease-in-out;
-}
-@keyframes ld-sector-pulse {
-    0%, 100% { box-shadow: 0 0 0 0 rgba(0, 166, 255, 0.0); }
-    50%      { box-shadow: 0 0 0 3px rgba(0, 166, 255, 0.18); }
+.ld-sector-active .ld-sector-label {
+    color: var(--accent-yellow);
+    animation: sector-pulse 0.8s infinite;
 }
 
 .ld-pb   { color: #b85cff; }
@@ -3092,7 +3087,7 @@
 .ld-swatch.ld-pb   { background: #b85cff; }
 .ld-swatch.ld-up   { background: var(--accent-green); }
 .ld-swatch.ld-down { background: var(--accent-yellow); }
-.ld-swatch.ld-active { background: rgba(0, 166, 255, 0.25); border: 1px solid var(--accent-blue); }
+.ld-swatch.ld-active { background: var(--accent-yellow); animation: sector-pulse 0.8s infinite; }
 
 /* Pit Stop Timer */
 .pit-timer-card {
