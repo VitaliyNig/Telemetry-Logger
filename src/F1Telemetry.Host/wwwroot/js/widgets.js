@@ -7,7 +7,7 @@ const WIDGET_REGISTRY = {
     tyreSets:     { title: "Available Tyre Sets",  tpl: "tpl-tyreSets",     w: 12,  h: 6,   minW: 1,    minH: 1 },
     pitPredictor: { title: "Pit Stop Predictor",   tpl: "tpl-pitPredictor", w: 6,   h: 6,   minW: 1,    minH: 1 },
     carStatus:    { title: "Car Status",           tpl: "tpl-carStatus",    w: 6,   h: 4,   minW: 1,    minH: 1 },
-    lapData:      { title: "Lap Data",             tpl: "tpl-lapData",      w: 6,   h: 11,  minW: 3,    minH: 6 },
+    lapData:      { title: "Lap Data",             tpl: "tpl-lapData",      w: 6,   h: 8,   minW: 3,    minH: 5 },
     damage:       { title: "Damage",               tpl: "tpl-damage",       w: 4,   h: 6,   minW: 1,    minH: 1 },
     events:       { title: "Events",               tpl: "tpl-events",       w: 8,   h: 6,   minW: 1,    minH: 1 },
     standings:    { title: "Standings",            tpl: "tpl-standings",    w: 12,  h: 10,  minW: 1,    minH: 1 },

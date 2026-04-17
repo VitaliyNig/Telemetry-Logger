@@ -1622,55 +1622,73 @@ function renderLdSector(num, currentMs, refMs, pbMs, lapValid) {
     }
 }
 
-function renderLdRecent(hist, currentLapNum, pbS1, pbS2, pbS3) {
-    const list = el("ldRecentList");
-    if (!list) return;
+function renderLdMiniStrips(hist, currentLapNum, pbLapMs, pbS1, pbS2, pbS3) {
+    const lapEl = el("ldMiniLap");
+    const s1El  = el("ldMiniS1");
+    const s2El  = el("ldMiniS2");
+    const s3El  = el("ldMiniS3");
+
+    const clear = () => {
+        if (lapEl) lapEl.innerHTML = "";
+        if (s1El)  s1El.innerHTML  = "";
+        if (s2El)  s2El.innerHTML  = "";
+        if (s3El)  s3El.innerHTML  = "";
+    };
+
     if (!hist || !hist.lapHistoryDataItems || currentLapNum < 2) {
-        list.innerHTML = '<div class="ld-recent-empty">No completed laps yet</div>';
+        clear();
         return;
     }
+
     const completedUpTo = Math.min(currentLapNum - 1, hist.lapHistoryDataItems.length);
     const from = Math.max(0, completedUpTo - LD_RECENT_LAPS);
 
-    let prevS1 = 0, prevS2 = 0, prevS3 = 0;
+    let prevLap = 0, prevS1 = 0, prevS2 = 0, prevS3 = 0;
     if (from > 0) {
         const prevEntry = hist.lapHistoryDataItems[from - 1];
         if (prevEntry) {
+            prevLap = prevEntry.lapTimeInMs || 0;
             prevS1 = sectorMsFromHistoryEntry(prevEntry, 1);
             prevS2 = sectorMsFromHistoryEntry(prevEntry, 2);
             prevS3 = sectorMsFromHistoryEntry(prevEntry, 3);
         }
     }
 
-    let html = "";
+    let htmlLap = "", htmlS1 = "", htmlS2 = "", htmlS3 = "";
     for (let i = from; i < completedUpTo; i++) {
         const entry = hist.lapHistoryDataItems[i];
         if (!entry) continue;
         const lapNum = i + 1;
         const valid = ldLapValid(entry.lapValidBitFlags);
+        const lapMs = entry.lapTimeInMs || 0;
         const s1 = sectorMsFromHistoryEntry(entry, 1);
         const s2 = sectorMsFromHistoryEntry(entry, 2);
         const s3 = sectorMsFromHistoryEntry(entry, 3);
 
-        const c1 = ldSectorClass(s1, prevS1, pbS1, valid && pbS1 > 0 && s1 === pbS1);
-        const c2 = ldSectorClass(s2, prevS2, pbS2, valid && pbS2 > 0 && s2 === pbS2);
-        const c3 = ldSectorClass(s3, prevS3, pbS3, valid && pbS3 > 0 && s3 === pbS3);
+        const refLap = lapDataRef === "best" ? pbLapMs : prevLap;
+        const refS1  = lapDataRef === "best" ? pbS1    : prevS1;
+        const refS2  = lapDataRef === "best" ? pbS2    : prevS2;
+        const refS3  = lapDataRef === "best" ? pbS3    : prevS3;
 
-        const lapTime = entry.lapTimeInMs;
-        const lapTimeTxt = lapTime > 0 ? formatLapClock(lapTime) : "--";
-        const invCls = valid ? "" : " ld-recent-invalid";
+        const cLap = ldSectorClass(lapMs, refLap, pbLapMs, valid && pbLapMs > 0 && lapMs === pbLapMs);
+        const cS1  = ldSectorClass(s1,    refS1,  pbS1,    valid && pbS1    > 0 && s1    === pbS1);
+        const cS2  = ldSectorClass(s2,    refS2,  pbS2,    valid && pbS2    > 0 && s2    === pbS2);
+        const cS3  = ldSectorClass(s3,    refS3,  pbS3,    valid && pbS3    > 0 && s3    === pbS3);
 
-        html += `<div class="ld-recent-row${invCls}">` +
-            `<span class="ld-recent-lap">L${lapNum}</span>` +
-            `<span class="ld-recent-sq ${c1}" title="S1"></span>` +
-            `<span class="ld-recent-sq ${c2}" title="S2"></span>` +
-            `<span class="ld-recent-sq ${c3}" title="S3"></span>` +
-            `<span class="ld-recent-time">${lapTimeTxt}</span>` +
-            `</div>`;
+        const invCls = valid ? "" : " ld-mini-invalid";
+        const title = `L${lapNum}`;
+        htmlLap += `<span class="ld-mini-sq ${cLap}${invCls}" title="${title}"></span>`;
+        htmlS1  += `<span class="ld-mini-sq ${cS1}${invCls}"  title="${title}"></span>`;
+        htmlS2  += `<span class="ld-mini-sq ${cS2}${invCls}"  title="${title}"></span>`;
+        htmlS3  += `<span class="ld-mini-sq ${cS3}${invCls}"  title="${title}"></span>`;
 
-        prevS1 = s1; prevS2 = s2; prevS3 = s3;
+        prevLap = lapMs; prevS1 = s1; prevS2 = s2; prevS3 = s3;
     }
-    list.innerHTML = html;
+
+    if (lapEl) lapEl.innerHTML = htmlLap;
+    if (s1El)  s1El.innerHTML  = htmlS1;
+    if (s2El)  s2El.innerHTML  = htmlS2;
+    if (s3El)  s3El.innerHTML  = htmlS3;
 }
 
 function updateLapDataWidget(car) {
@@ -1748,7 +1766,7 @@ function updateLapDataWidget(car) {
         predictedEl.textContent = p > 0 ? formatLapClock(p) : "--";
     }
 
-    renderLdRecent(hist, currentLapNum, pbS1, pbS2, pbS3);
+    renderLdMiniStrips(hist, currentLapNum, pbLapMs, pbS1, pbS2, pbS3);
 }
 
 const pitStopHistory = [];
