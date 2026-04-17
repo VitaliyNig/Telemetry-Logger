@@ -6,8 +6,8 @@ const WIDGET_REGISTRY = {
     tyres:        { title: "Tyres",                tpl: "tpl-tyres",        w: 5,   h: 12,  minW: 1,    minH: 1 },
     tyreSets:     { title: "Available Tyre Sets",  tpl: "tpl-tyreSets",     w: 12,  h: 6,   minW: 1,    minH: 1 },
     pitPredictor: { title: "Pit Stop Predictor",   tpl: "tpl-pitPredictor", w: 6,   h: 6,   minW: 1,    minH: 1 },
-    carStatus:    { title: "Car Status",           tpl: "tpl-carStatus",    w: 6,   h: 4,   minW: 1,    minH: 1 },
-    lapData:      { title: "Lap Data",             tpl: "tpl-lapData",      w: 6,   h: 6,   minW: 1,    minH: 1 },
+    fuelErs:      { title: "Fuel & ERS",           tpl: "tpl-fuelErs",      w: 6,   h: 7,   minW: 2,    minH: 4 },
+    lapData:      { title: "Lap Data",             tpl: "tpl-lapData",      w: 6,   h: 8,   minW: 3,    minH: 5 },
     damage:       { title: "Damage",               tpl: "tpl-damage",       w: 4,   h: 6,   minW: 1,    minH: 1 },
     events:       { title: "Events",               tpl: "tpl-events",       w: 8,   h: 6,   minW: 1,    minH: 1 },
     standings:    { title: "Standings",            tpl: "tpl-standings",    w: 12,  h: 10,  minW: 1,    minH: 1 },
@@ -18,11 +18,10 @@ const WIDGET_REGISTRY = {
     topSpeed:         { title: "Session Top Speeds",   tpl: "tpl-topSpeed",         w: 8,   h: 10,  minW: 1, minH: 1 },
     topSpeedCompare:  { title: "Top Speed Comparison", tpl: "tpl-topSpeedCompare",  w: 4,   h: 10,  minW: 1, minH: 1 },
     lapTimes:         { title: "Lap Times",            tpl: "tpl-lapTimes",         w: 14,  h: 10,  minW: 4, minH: 4 },
+    pitStopTimer:     { title: "Pit Stop Timer",       tpl: "tpl-pitStopTimer",     w: 6,   h: 8,   minW: 1, minH: 1 },
 };
 
-/** Finer grid (2× columns, 2× rows vs v1); physical size unchanged → scale saved layouts ×2. */
 const PRESETS_STORAGE_KEY = "f1telemetry_presets_v2";
-const PRESETS_STORAGE_KEY_V1 = "f1telemetry_presets_v1";
 const GRID_COLUMNS = 24;
 const GRID_CELL_HEIGHT_PX = 30;
 const ACTIVE_PRESET_KEY = "f1telemetry_active_preset_v1";
@@ -50,10 +49,14 @@ function makeWidgetHtml(widgetId) {
     let headerExtra = "";
     if (widgetId === "events") {
         headerExtra = `<button class="event-filter-toggle" id="btnEventFilter" title="Filter events"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button>`;
+    } else if (widgetId === "session") {
+        headerExtra = `<button class="event-filter-toggle" id="btnSessionSettings" title="Visible fields"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>`;
     } else if (widgetId === "pitPredictor") {
         headerExtra = `<button type="button" class="pit-times-toggle" id="btnPitTimesSettings" title="Pit times for all tracks"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>`;
     } else if (widgetId === "tyres") {
         headerExtra = `<button class="tyre-info-btn" title="Legend &amp; temperature scale">?</button>`;
+    } else if (widgetId === "lapData") {
+        headerExtra = `<button class="event-filter-toggle ld-ref-toggle" id="btnLapDataRef" title="Reference: previous lap vs personal best"><span id="ldRefLabel">vs Prev</span></button><button class="tyre-info-btn ld-legend-btn" id="btnLapDataLegend" title="Legend">?</button>`;
     }
     return `<div class="widget-wrapper" data-widget-id="${widgetId}">
         <div class="widget-header">
@@ -118,40 +121,12 @@ function layoutsEqual(a, b) {
     return true;
 }
 
-function scaleLayoutToFinerGrid(layout, factor) {
-    if (!Array.isArray(layout)) return [];
-    return layout.map(item => ({
-        ...item,
-        x: Math.round(item.x * factor),
-        y: Math.round(item.y * factor),
-        w: Math.round(item.w * factor),
-        h: Math.round(item.h * factor),
-    }));
-}
-
-function migratePresetsV1ToV2(presetsV1) {
-    const out = {};
-    for (const [name, layout] of Object.entries(presetsV1)) {
-        out[name] = scaleLayoutToFinerGrid(layout, 2);
-    }
-    return out;
-}
-
 function loadAllPresets() {
     try {
-        const rawV2 = localStorage.getItem(PRESETS_STORAGE_KEY);
-        if (rawV2) {
-            const parsed = JSON.parse(rawV2);
+        const raw = localStorage.getItem(PRESETS_STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
             if (parsed && typeof parsed === "object") return parsed;
-        }
-        const rawV1 = localStorage.getItem(PRESETS_STORAGE_KEY_V1);
-        if (rawV1) {
-            const v1 = JSON.parse(rawV1);
-            if (v1 && typeof v1 === "object") {
-                const migrated = migratePresetsV1ToV2(v1);
-                localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(migrated));
-                return migrated;
-            }
         }
     } catch (_) { /* ignore */ }
     return {};
@@ -304,6 +279,9 @@ function wireWidgetEvents(widgetId) {
     if (widgetId === "events" && typeof initEventFilter === "function") {
         initEventFilter();
     }
+    if (widgetId === "session" && typeof initSessionSettings === "function") {
+        initSessionSettings();
+    }
     if (widgetId === "pitPredictor" && typeof initPitTimesPanel === "function") {
         initPitTimesPanel();
     }
@@ -313,6 +291,9 @@ function wireWidgetEvents(widgetId) {
     }
     if (widgetId === "lapTimes" && typeof updateLapTimesWidget === "function") {
         updateLapTimesWidget();
+    }
+    if (widgetId === "lapData" && typeof initLapDataWidget === "function") {
+        initLapDataWidget();
     }
 }
 
@@ -379,6 +360,7 @@ function initWidgets() {
         float: true,
         removable: false,
         disableResize: false,
+        resizable: { handles: "all" },
     }, "#dashboardGrid");
 
     const autoSwitchCbEarly = document.getElementById("autoSwitchPreset");

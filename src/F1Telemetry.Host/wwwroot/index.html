@@ -117,7 +117,10 @@
                     <h3>Web Server</h3>
                     <div class="setting-row">
                         <label for="webPort">Web Port</label>
-                        <input type="number" id="webPort" value="5000" min="1" max="65535">
+                        <div class="setting-input-row">
+                            <input type="number" id="webPort" value="5000" min="1" max="65535">
+                            <span class="restart-badge" id="webPortRestartBadge" hidden title="Restart the app to apply this change">Restart required</span>
+                        </div>
                         <span class="setting-hint">Local web server port. <strong>Requires restart</strong> on change.</span>
                     </div>
                 </div>
@@ -160,12 +163,6 @@
 
             </div>
             </div>
-            <footer class="settings-footer" id="settingsFooter">
-                <div class="settings-footer-inner">
-                    <button type="button" class="btn btn-secondary" id="btnSaveSettings">Save Settings</button>
-                    <span class="save-status" id="saveStatus"></span>
-                </div>
-            </footer>
         </section>
 
         <!-- Debug Tab -->
@@ -209,14 +206,13 @@
     <template id="tpl-session">
         <div class="card"><h2 class="widget-title">Session</h2>
         <div class="session-grid">
-            <div class="stat-box"><span class="stat-label">Track</span><span class="stat-value stat-value-track"><img id="trackFlag" class="track-flag" src="" alt="" hidden><span id="trackName">--</span></span></div>
-            <div class="stat-box"><span class="stat-label">Session</span><span class="stat-value" id="sessionType">--</span></div>
-            <div class="stat-box"><span class="stat-label">Weather</span><span class="stat-value" id="weather">--</span></div>
-            <div class="stat-box"><span class="stat-label">Track Temp</span><span class="stat-value" id="trackTemp">--</span></div>
-            <div class="stat-box"><span class="stat-label">Air Temp</span><span class="stat-value" id="airTemp">--</span></div>
-            <div class="stat-box"><span class="stat-label">Time Left</span><span class="stat-value" id="timeLeft">--</span></div>
-            <div class="stat-box"><span class="stat-label">Safety Car</span><span class="stat-value" id="safetyCarStatus">--</span></div>
-            <div class="stat-box"><span class="stat-label">Laps</span><span class="stat-value" id="totalLaps">--</span></div>
+            <div class="stat-box" data-session-field="track"><span class="stat-label">Track</span><span class="stat-value stat-value-track"><img id="trackFlag" class="track-flag" src="" alt="" hidden><span id="trackName">--</span></span></div>
+            <div class="stat-box" data-session-field="session"><span class="stat-label">Session</span><span class="stat-value" id="sessionType">--</span></div>
+            <div class="stat-box" data-session-field="weather"><span class="stat-label">Weather</span><span class="stat-value" id="weather">--</span></div>
+            <div class="stat-box" data-session-field="trackTemp"><span class="stat-label">Track Temp</span><span class="stat-value" id="trackTemp">--</span></div>
+            <div class="stat-box" data-session-field="airTemp"><span class="stat-label">Air Temp</span><span class="stat-value" id="airTemp">--</span></div>
+            <div class="stat-box" data-session-field="progress"><span class="stat-label" id="sessionProgressLabel">Time</span><span class="stat-value" id="sessionProgressValue">--</span></div>
+            <div class="stat-box" data-session-field="flags"><span class="stat-label">Flags</span><span class="stat-value flag-rect" id="flagIndicator" data-flag="none">--</span></div>
         </div></div>
     </template>
 
@@ -308,26 +304,87 @@
         </div></div>
     </template>
 
-    <template id="tpl-carStatus">
-        <div class="card"><h2 class="widget-title">Car Status</h2>
-        <div class="status-grid">
-            <div class="stat-box"><span class="stat-label">Fuel</span><span class="stat-value" id="fuelRemaining">--</span></div>
-            <div class="stat-box"><span class="stat-label">Fuel Laps</span><span class="stat-value" id="fuelLaps">--</span></div>
-            <div class="stat-box"><span class="stat-label">ERS Deploy</span><span class="stat-value" id="ersMode">--</span></div>
-            <div class="stat-box"><span class="stat-label">ERS Store</span><div class="ers-bar-bg"><div class="ers-bar-fill" id="ersBar"></div></div></div>
-        </div></div>
+    <template id="tpl-fuelErs">
+        <div class="card cs-card"><h2 class="widget-title">Fuel &amp; ERS</h2>
+        <div class="cs-grid">
+            <section class="cs-section cs-fuel">
+                <header class="cs-section-head">
+                    <span class="cs-section-label">FUEL</span>
+                    <span class="cs-badge" id="csFuelMix" data-mix="0">--</span>
+                </header>
+                <div class="cs-fuel-delta" id="csFuelDeltaBox" hidden>
+                    <span class="cs-micro-label">Δ vs target</span>
+                    <span class="cs-big-value" id="csFuelDelta">--</span>
+                </div>
+                <div class="cs-fuel-metrics">
+                    <div class="cs-stat">
+                        <span class="cs-micro-label">In tank</span>
+                        <span class="cs-value" id="csFuelTank">--</span>
+                    </div>
+                    <div class="cs-stat">
+                        <span class="cs-micro-label">Laps</span>
+                        <span class="cs-value" id="csFuelLaps">--</span>
+                    </div>
+                </div>
+            </section>
+            <section class="cs-section cs-ers">
+                <header class="cs-section-head">
+                    <span class="cs-section-label">ERS</span>
+                    <span class="cs-badge" id="csErsMode" data-mode="0">--</span>
+                </header>
+                <div class="cs-ers-row">
+                    <div class="cs-row-head"><span class="cs-micro-label">Store</span><span class="cs-bar-value" id="csErsStoreVal">--</span></div>
+                    <div class="cs-bar cs-bar-store"><div class="cs-bar-fill" id="csErsStoreBar"></div></div>
+                </div>
+                <div class="cs-ers-row">
+                    <div class="cs-row-head"><span class="cs-micro-label">Deploy / lap</span><span class="cs-bar-value" id="csErsDeployVal">--</span></div>
+                    <div class="cs-bar cs-bar-thin"><div class="cs-bar-fill cs-bar-deploy" id="csErsDeployBar"></div></div>
+                </div>
+                <div class="cs-ers-row">
+                    <div class="cs-row-head"><span class="cs-micro-label">Harvest / lap</span><span class="cs-bar-value" id="csErsHarvestVal">--</span></div>
+                    <div class="cs-bar cs-bar-thin"><div class="cs-bar-fill cs-bar-harvest" id="csErsHarvestBar"></div></div>
+                </div>
+            </section>
+        </div>
+        </div>
     </template>
 
     <template id="tpl-lapData">
-        <div class="card"><h2 class="widget-title">Lap Data</h2>
-        <div class="lap-grid">
-            <div class="stat-box"><span class="stat-label">Position</span><span class="stat-value big" id="position">--</span></div>
-            <div class="stat-box"><span class="stat-label">Current Lap</span><span class="stat-value" id="currentLap">--</span></div>
-            <div class="stat-box"><span class="stat-label">Current Time</span><span class="stat-value" id="currentLapTime">--</span></div>
-            <div class="stat-box"><span class="stat-label">Last Lap</span><span class="stat-value" id="lastLapTime">--</span></div>
-            <div class="stat-box"><span class="stat-label">Sector 1</span><span class="stat-value" id="sector1">--</span></div>
-            <div class="stat-box"><span class="stat-label">Sector 2</span><span class="stat-value" id="sector2">--</span></div>
-        </div></div>
+        <div class="card lap-data-card"><h2 class="widget-title">Lap Data</h2>
+        <div class="ld-last-block">
+            <div class="ld-last-head">
+                <span class="ld-label">Last Lap</span>
+                <span class="ld-delta" id="ldLastLapDelta"></span>
+            </div>
+            <div class="ld-time ld-last-time" id="ldLastLap">--</div>
+            <div class="ld-mini-strip" id="ldMiniLap"></div>
+        </div>
+        <div class="ld-sectors">
+            <div class="ld-sector" data-ld-sector="1">
+                <div class="ld-sector-head"><span class="ld-sector-label">S1</span><span class="ld-delta" id="ldS1Delta"></span></div>
+                <div class="ld-sector-time" id="ldS1">--</div>
+                <div class="ld-mini-strip" id="ldMiniS1"></div>
+            </div>
+            <div class="ld-sector" data-ld-sector="2">
+                <div class="ld-sector-head"><span class="ld-sector-label">S2</span><span class="ld-delta" id="ldS2Delta"></span></div>
+                <div class="ld-sector-time" id="ldS2">--</div>
+                <div class="ld-mini-strip" id="ldMiniS2"></div>
+            </div>
+            <div class="ld-sector" data-ld-sector="3">
+                <div class="ld-sector-head"><span class="ld-sector-label">S3</span><span class="ld-delta" id="ldS3Delta"></span></div>
+                <div class="ld-sector-time" id="ldS3">--</div>
+                <div class="ld-mini-strip" id="ldMiniS3"></div>
+            </div>
+        </div>
+        <div class="ld-current-block">
+            <div class="ld-current-head">
+                <span class="ld-label">Current Lap</span>
+                <span class="ld-invalid-badge" id="ldInvalidBadge" hidden>INV</span>
+            </div>
+            <div class="ld-time ld-current-time" id="ldCurLap">--</div>
+            <div class="ld-predicted"><span class="ld-predicted-label">est. finish</span> <span id="ldPredicted">--</span></div>
+        </div>
+        </div>
     </template>
 
     <template id="tpl-damage">
@@ -409,8 +466,8 @@
                 <div class="tsc-value-row">
                     <span class="tsc-metric" id="topSpeedLastLapPeak">--</span>
                     <span class="tsc-unit">km/h</span>
+                    <span class="tsc-delta" id="topSpeedLastLapDelta"></span>
                 </div>
-                <div class="tsc-delta" id="topSpeedLastLapDelta"></div>
             </div>
             <div class="tsc-sep tsc-sep-between" aria-hidden="true"></div>
             <div class="tsc-block tsc-block-live">
@@ -418,8 +475,8 @@
                 <div class="tsc-value-row">
                     <span class="tsc-metric tsc-live-val" id="topSpeedLapPeak">--</span>
                     <span class="tsc-unit">km/h</span>
+                    <span class="tsc-delta" id="topSpeedThisLapDelta"></span>
                 </div>
-                <div class="tsc-delta" id="topSpeedThisLapDelta"></div>
             </div>
         </div>
         </div></div>
@@ -431,6 +488,24 @@
             <thead><tr><th>Pos</th><th>Driver</th><th>Best Lap</th><th>Gap</th><th>Delta</th><th>Status</th><th class="qs-sector-hdr">S1</th><th class="qs-sector-hdr">S2</th><th class="qs-sector-hdr">S3</th></tr></thead>
             <tbody id="qualiStandingsBody"></tbody>
         </table></div></div>
+    </template>
+
+    <template id="tpl-pitStopTimer">
+        <div class="card pit-timer-card"><h2 class="widget-title">Pit Stop Timer</h2>
+        <div class="pit-timer-live">
+            <div class="stat-box"><span class="stat-label">Pit Lane</span><span class="stat-value" id="pitTimerLaneNow">--</span></div>
+            <div class="stat-box"><span class="stat-label">Pit Stall</span><span class="stat-value" id="pitTimerStallNow">--</span></div>
+            <div class="stat-box"><span class="stat-label">Status</span><span class="stat-value" id="pitTimerStatusNow">--</span></div>
+        </div>
+        <div class="pit-timer-history-wrap">
+            <table class="pit-timer-history">
+                <thead><tr><th class="pit-timer-col-num">#</th><th>Lap</th><th>Lane</th><th>Stall</th></tr></thead>
+                <tbody id="pitTimerHistoryBody">
+                    <tr class="pit-timer-empty"><td colspan="4">No pit stops yet</td></tr>
+                </tbody>
+            </table>
+        </div>
+        </div>
     </template>
 
     <template id="tpl-lapTimes">

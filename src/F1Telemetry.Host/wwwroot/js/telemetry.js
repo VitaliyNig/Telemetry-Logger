@@ -95,10 +95,6 @@ const WEATHER_NAMES = {
     3: "Light Rain 🌧", 4: "Heavy Rain 🌧️", 5: "Storm ⛈"
 };
 
-const SAFETY_CAR_STATUS = {
-    0: "None", 1: "Full SC", 2: "VSC", 3: "Formation"
-};
-
 // m_actualTyreCompound — пакет Car Status (разное для F1 Modern / Classic / F2)
 const TYRE_COMPOUNDS = {
     16: "C5", 17: "C4", 18: "C3", 19: "C2", 20: "C1", 21: "C0", 22: "C6",
@@ -125,19 +121,49 @@ const COMPOUND_DOT_COLORS = {
     19: "#ff3333", 20: "#ffd700", 21: "#e0e0e0", 22: "#e0e0e0",
 };
 
-const ACTUAL_COMPOUND_TEMP = {
-    20: { min: 90, opt: 100, max: 115 },
-    19: { min: 85, opt: 95, max: 115 },
-    18: { min: 80, opt: 90, max: 105 },
-    17: { min: 75, opt: 85, max: 100 },
-    16: { min: 70, opt: 80, max: 90 },
-    22: { min: 65, opt: 75, max: 85 },
-    7:  { min: 60, opt: 70, max: 80 },
-    8:  { min: 50, opt: 60, max: 70 },
+/* Per-lap wear rate (%) per actual compound — from in-game wear rates. */
+const COMPOUND_WEAR_RATE_PCT = {
+    20: 0.85,  // C1
+    19: 1.06,  // C2
+    18: 1.31,  // C3
+    17: 1.64,  // C4
+    16: 2.14,  // C5
+    22: 2.90,  // C6
+    7:  0.97,  // Inter
+    8:  0.97,  // Wet
 };
-const ACTUAL_COMPOUND_TEMP_DEFAULT = { min: 80, opt: 90, max: 105 };
 
-const TEMP_COLORS = { cold: "#00a6ff", normal: "#22c55e", hot: "#eab308", critical: "#ef4444" };
+function getCompoundWearRate(actualCompoundId) {
+    const v = COMPOUND_WEAR_RATE_PCT[actualCompoundId];
+    return v != null ? v : null;
+}
+
+/* Per-compound temperature zones (°C), derived from in-game grip curves:
+ *   T < cold           → undercool   (blue)
+ *   cold ≤ T < pLo     → warming up  (green)
+ *   pLo ≤ T ≤ pHi      → perfect     (purple, ~100% grip)
+ *   pHi < T ≤ hot      → overheat    (yellow)
+ *   T > hot            → critical    (red)
+ */
+const ACTUAL_COMPOUND_TEMP = {
+    20: { cold: 90, perfectLow: 100, perfectHigh: 110, hot: 125 },  // C1
+    19: { cold: 85, perfectLow: 90,  perfectHigh: 100, hot: 115 },  // C2
+    18: { cold: 75, perfectLow: 80,  perfectHigh: 100, hot: 115 },  // C3
+    17: { cold: 70, perfectLow: 80,  perfectHigh: 90,  hot: 105 },  // C4
+    16: { cold: 60, perfectLow: 70,  perfectHigh: 90,  hot: 100 },  // C5
+    22: { cold: 50, perfectLow: 60,  perfectHigh: 80,  hot: 95  },  // C6
+    7:  { cold: 50, perfectLow: 60,  perfectHigh: 70,  hot: 80  },  // Inter
+    8:  { cold: 45, perfectLow: 50,  perfectHigh: 60,  hot: 75  },  // Wet
+};
+const ACTUAL_COMPOUND_TEMP_DEFAULT = { cold: 70, perfectLow: 80, perfectHigh: 100, hot: 115 };
+
+const TEMP_COLORS = {
+    cold: "#00a6ff",
+    normal: "#22c55e",
+    perfect: "#b85cff",
+    hot: "#eab308",
+    critical: "#ef4444",
+};
 
 function getCompoundTempRange(actualCompoundId) {
     return ACTUAL_COMPOUND_TEMP[actualCompoundId] || ACTUAL_COMPOUND_TEMP_DEFAULT;
@@ -147,9 +173,10 @@ function tyreTempColor(temp, range) {
     if (!range) range = ACTUAL_COMPOUND_TEMP_DEFAULT;
     const t = Number(temp);
     if (!Number.isFinite(t) || t <= 0) return null;
-    if (t < range.min) return TEMP_COLORS.cold;
-    if (t < range.opt) return TEMP_COLORS.normal;
-    if (t <= range.max) return TEMP_COLORS.hot;
+    if (t < range.cold) return TEMP_COLORS.cold;
+    if (t < range.perfectLow) return TEMP_COLORS.normal;
+    if (t <= range.perfectHigh) return TEMP_COLORS.perfect;
+    if (t <= range.hot) return TEMP_COLORS.hot;
     return TEMP_COLORS.critical;
 }
 
@@ -159,8 +186,6 @@ function tyreTempColorAlpha(temp, range, alpha) {
     const r = parseInt(hex.slice(1,3),16), g = parseInt(hex.slice(3,5),16), b = parseInt(hex.slice(5,7),16);
     return `rgba(${r},${g},${b},${alpha})`;
 }
-
-const ERS_MODES = { 0: "None", 1: "Medium", 2: "Hotlap", 3: "Overtake" };
 
 /** m_fuelMix — Car Status */
 const FUEL_MIX_NAMES = { 0: "Lean", 1: "Standard", 2: "Rich", 3: "Max" };
@@ -405,6 +430,179 @@ function closeEventFilterPanel() {
     }
 }
 
+const SESSION_FIELDS = [
+    { id: "track", name: "Track" },
+    { id: "session", name: "Session" },
+    { id: "weather", name: "Weather" },
+    { id: "trackTemp", name: "Track Temp" },
+    { id: "airTemp", name: "Air Temp" },
+    { id: "progress", name: "Time / Laps" },
+    { id: "flags", name: "Flags" },
+];
+const SESSION_FIELD_VIS_KEY = "f1telemetry_session_fields_v1";
+const SESSION_FIELD_ORDER_KEY = "f1telemetry_session_field_order_v1";
+let sessionFieldVisibility = loadSessionFieldVisibility();
+let sessionFieldOrder = loadSessionFieldOrder();
+let _sessionSettingsPanel = null;
+
+function loadSessionFieldVisibility() {
+    const defaults = {};
+    for (const f of SESSION_FIELDS) defaults[f.id] = true;
+    try {
+        const raw = localStorage.getItem(SESSION_FIELD_VIS_KEY);
+        if (raw) {
+            const saved = JSON.parse(raw);
+            for (const f of SESSION_FIELDS) {
+                if (saved[f.id] === false) defaults[f.id] = false;
+            }
+        }
+    } catch (_) { /* ignore */ }
+    return defaults;
+}
+
+function saveSessionFieldVisibility() {
+    localStorage.setItem(SESSION_FIELD_VIS_KEY, JSON.stringify(sessionFieldVisibility));
+}
+
+function loadSessionFieldOrder() {
+    const defaultIds = SESSION_FIELDS.map(f => f.id);
+    try {
+        const raw = localStorage.getItem(SESSION_FIELD_ORDER_KEY);
+        if (raw) {
+            const saved = JSON.parse(raw);
+            if (Array.isArray(saved)) {
+                const known = new Set(defaultIds);
+                const seen = new Set();
+                const result = [];
+                for (const id of saved) {
+                    if (known.has(id) && !seen.has(id)) { result.push(id); seen.add(id); }
+                }
+                for (const id of defaultIds) if (!seen.has(id)) result.push(id);
+                return result;
+            }
+        }
+    } catch (_) { /* ignore */ }
+    return defaultIds;
+}
+
+function saveSessionFieldOrder() {
+    localStorage.setItem(SESSION_FIELD_ORDER_KEY, JSON.stringify(sessionFieldOrder));
+}
+
+function applySessionFieldVisibility() {
+    document.querySelectorAll("[data-session-field]").forEach(box => {
+        const field = box.dataset.sessionField;
+        box.hidden = sessionFieldVisibility[field] === false;
+    });
+}
+
+function applySessionFieldOrder() {
+    document.querySelectorAll(".session-grid").forEach(grid => {
+        const boxes = new Map();
+        grid.querySelectorAll(":scope > [data-session-field]").forEach(b => {
+            boxes.set(b.dataset.sessionField, b);
+        });
+        for (const id of sessionFieldOrder) {
+            const b = boxes.get(id);
+            if (b) grid.appendChild(b);
+        }
+    });
+}
+
+function closeSessionSettingsPanel() {
+    if (_sessionSettingsPanel) {
+        _sessionSettingsPanel.remove();
+        _sessionSettingsPanel = null;
+    }
+}
+
+function initSessionSettings() {
+    applySessionFieldOrder();
+    applySessionFieldVisibility();
+
+    const btn = document.getElementById("btnSessionSettings");
+    if (!btn || btn.dataset.bound === "1") return;
+    btn.dataset.bound = "1";
+
+    btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (_sessionSettingsPanel) { closeSessionSettingsPanel(); return; }
+
+        const panel = document.createElement("div");
+        panel.className = "event-filter-panel session-settings-panel";
+        _sessionSettingsPanel = panel;
+        renderSessionSettingsPanel(panel);
+
+        const rect = btn.getBoundingClientRect();
+        panel.style.top = (rect.bottom + 4) + "px";
+        panel.style.left = Math.max(4, rect.right - 240) + "px";
+
+        document.body.appendChild(panel);
+        panel.addEventListener("click", (ev) => ev.stopPropagation());
+    });
+
+    document.addEventListener("click", (e) => {
+        if (_sessionSettingsPanel && !_sessionSettingsPanel.contains(e.target) && e.target !== btn && !btn.contains(e.target)) {
+            closeSessionSettingsPanel();
+        }
+    });
+}
+
+function renderSessionSettingsPanel(panel) {
+    const nameById = new Map(SESSION_FIELDS.map(f => [f.id, f.name]));
+    let html = '<div class="event-filter-actions">'
+        + '<button class="event-filter-action-btn" data-ss-action="all">All</button>'
+        + '<button class="event-filter-action-btn" data-ss-action="none">None</button></div>';
+    sessionFieldOrder.forEach((id, i) => {
+        const checked = sessionFieldVisibility[id] !== false ? "checked" : "";
+        const upDisabled = i === 0 ? "disabled" : "";
+        const downDisabled = i === sessionFieldOrder.length - 1 ? "disabled" : "";
+        html += `<div class="event-filter-item session-settings-row">
+            <label class="session-settings-label"><input type="checkbox" data-session-field-id="${id}" ${checked}>${nameById.get(id) || id}</label>
+            <div class="session-settings-order">
+                <button class="session-settings-arrow" data-ss-move="up" data-ss-id="${id}" ${upDisabled} aria-label="Move up">▲</button>
+                <button class="session-settings-arrow" data-ss-move="down" data-ss-id="${id}" ${downDisabled} aria-label="Move down">▼</button>
+            </div>
+        </div>`;
+    });
+    panel.innerHTML = html;
+
+    panel.querySelectorAll("input[data-session-field-id]").forEach(cb => {
+        cb.addEventListener("change", () => {
+            sessionFieldVisibility[cb.dataset.sessionFieldId] = cb.checked;
+            saveSessionFieldVisibility();
+            applySessionFieldVisibility();
+        });
+    });
+
+    panel.querySelectorAll("button[data-ss-move]").forEach(b => {
+        b.addEventListener("click", () => {
+            const id = b.dataset.ssId;
+            const dir = b.dataset.ssMove === "up" ? -1 : 1;
+            const i = sessionFieldOrder.indexOf(id);
+            const j = i + dir;
+            if (i < 0 || j < 0 || j >= sessionFieldOrder.length) return;
+            [sessionFieldOrder[i], sessionFieldOrder[j]] = [sessionFieldOrder[j], sessionFieldOrder[i]];
+            saveSessionFieldOrder();
+            applySessionFieldOrder();
+            renderSessionSettingsPanel(panel);
+        });
+    });
+
+    panel.querySelector('[data-ss-action="all"]')?.addEventListener("click", () => {
+        for (const f of SESSION_FIELDS) sessionFieldVisibility[f.id] = true;
+        saveSessionFieldVisibility();
+        applySessionFieldVisibility();
+        renderSessionSettingsPanel(panel);
+    });
+    panel.querySelector('[data-ss-action="none"]')?.addEventListener("click", () => {
+        for (const f of SESSION_FIELDS) sessionFieldVisibility[f.id] = false;
+        saveSessionFieldVisibility();
+        applySessionFieldVisibility();
+        renderSessionSettingsPanel(panel);
+    });
+}
+
 let _pitTimesPanel = null;
 let _pitTimesPanelDocCloseBound = false;
 
@@ -549,10 +747,11 @@ function openTyreInfo(anchor) {
         `<div class="tip-scale">` +
         `<span class="tip-zone" style="background:#00a6ff">Cold</span>` +
         `<span class="tip-zone" style="background:#22c55e">Normal</span>` +
+        `<span class="tip-zone" style="background:#b85cff">Perfect</span>` +
         `<span class="tip-zone" style="background:#eab308">Hot</span>` +
         `<span class="tip-zone" style="background:#ef4444">Overheat</span>` +
         `</div>` +
-        `<div class="tip-desc">< min&ensp;·&ensp;min – opt&ensp;·&ensp;opt – max&ensp;·&ensp;> max</div></div>`;
+        `<div class="tip-desc">Undercool · Warming · 100% grip · Slight overheat · Critical</div></div>`;
 
     document.body.appendChild(panel);
     _tyreInfoPanel = panel;
@@ -794,7 +993,7 @@ function setTyreWidgetCompoundAge(car) {
     const range = getCompoundTempRange(car.actualTyreCompound);
 
     const nameText = actual ? `${actual}` : visual;
-    const rangeText = `${range.min}–${range.max}°C`;
+    const rangeText = `${range.perfectLow}–${range.perfectHigh}°C`;
     const ageText = `${car.tyresAgeLaps} laps`;
 
     for (const [, wc] of getTyreWidgetNodes()) {
@@ -904,6 +1103,7 @@ function updateSession(data) {
             pedalHistoryT.length = 0;
             pedalHistoryB.length = 0;
             gapRingObservedMaxLapDist = 0;
+            resetPitStopHistory();
         }
         lastSessionLinkId = linkId;
     }
@@ -953,19 +1153,72 @@ function updateSession(data) {
 
     updateWeatherForecast(data);
 
-    setText("safetyCarStatus", SAFETY_CAR_STATUS[data.safetyCarStatus] || "None");
-    setText("totalLaps", data.totalLaps > 0 ? data.totalLaps : "--");
+    updateFlagIndicator();
+    updateSessionProgress();
+    updateLapTimesWidget();
+}
 
-    const timeLeftSec = data.sessionTimeLeft;
-    if (timeLeftSec > 0) {
-        const m = Math.floor(timeLeftSec / 60);
-        const s = timeLeftSec % 60;
-        setText("timeLeft", `${m}:${String(s).padStart(2, "0")}`);
-    } else {
-        setText("timeLeft", "--");
+function updateFlagIndicator() {
+    const indicator = el("flagIndicator");
+    if (!indicator) return;
+
+    const data = lastSessionPacket;
+    if (!data) {
+        indicator.textContent = "--";
+        indicator.dataset.flag = "none";
+        return;
     }
 
-    updateLapTimesWidget();
+    const sc = data.safetyCarStatus;
+    const zones = data.marshalZones || [];
+    const numZones = data.numMarshalZones || 0;
+
+    let hasRed = false, hasYellow = false, hasBlue = false, hasGreen = false;
+    for (let i = 0; i < numZones && i < zones.length; i++) {
+        const f = zones[i]?.zoneFlag;
+        if (f === 4) hasRed = true;
+        else if (f === 3) hasYellow = true;
+        else if (f === 2) hasBlue = true;
+        else if (f === 1) hasGreen = true;
+    }
+
+    let label = "--", color = "none";
+    if (hasRed) { label = "RED"; color = "red"; }
+    else if (sc === 1) { label = "SC"; color = "yellow"; }
+    else if (sc === 2) { label = "VSC"; color = "yellow"; }
+    else if (hasYellow) { label = "YELLOW"; color = "yellow"; }
+    else if (sc === 3) { label = "FORMATION"; color = "green"; }
+    else if (hasBlue) { label = "BLUE"; color = "blue"; }
+    else if (hasGreen) { label = "GREEN"; color = "green"; }
+
+    indicator.textContent = label;
+    indicator.dataset.flag = color;
+}
+
+function updateSessionProgress() {
+    const labelEl = el("sessionProgressLabel");
+    const valueEl = el("sessionProgressValue");
+    if (!labelEl || !valueEl) return;
+
+    const sType = lastSessionPacket?.sessionType ?? 0;
+    const isRaceSession = sType === 15 || sType === 16 || sType === 17;
+
+    if (isRaceSession) {
+        const lap = lastLapDataPacket?.lapDataItems?.[playerCarIndex]?.currentLapNum ?? 0;
+        const totalLaps = lastSessionPacket?.totalLaps ?? 0;
+        labelEl.textContent = "Laps";
+        valueEl.textContent = lap > 0 && totalLaps > 0 ? `${lap}/${totalLaps}` : "--";
+    } else {
+        const timeLeftSec = lastSessionPacket?.sessionTimeLeft ?? 0;
+        labelEl.textContent = "Time";
+        if (timeLeftSec > 0) {
+            const m = Math.floor(timeLeftSec / 60);
+            const s = timeLeftSec % 60;
+            valueEl.textContent = `${m}:${String(s).padStart(2, "0")}`;
+        } else {
+            valueEl.textContent = "--";
+        }
+    }
 }
 
 const WEATHER_ICONS = {
@@ -1179,21 +1432,71 @@ function updateCarStatus(data) {
                 : "--";
     }
 
-    const fuelRem = el("fuelRemaining");
-    if (fuelRem) fuelRem.textContent = car.fuelInTank.toFixed(1) + " kg";
-    const fuelLaps = el("fuelLaps");
-    if (fuelLaps) fuelLaps.textContent = car.fuelRemainingLaps.toFixed(1) + " laps";
-    const ersMode = el("ersMode");
-    if (ersMode) ersMode.textContent = ERS_MODES[car.ersDeployMode] || "--";
-
-    const ersBar = el("ersBar");
-    if (ersBar) {
-        const maxErs = 4000000;
-        const ersPct = Math.min(100, (car.ersStoreEnergy / maxErs) * 100);
-        ersBar.style.width = ersPct + "%";
-    }
+    updateFuelErsWidget(car);
 
     setTyreWidgetCompoundAge(car);
+}
+
+const FUEL_MIX_BADGE  = { 0: "LEAN", 1: "STD", 2: "RICH", 3: "MAX" };
+const ERS_MODE_BADGE  = { 0: "NONE", 1: "MED",  2: "HOT",  3: "OVER" };
+const MAX_ERS_J = 4_000_000;
+
+function updateFuelErsWidget(car) {
+    if (!car) return;
+
+    const mixEl = el("csFuelMix");
+    if (mixEl) {
+        mixEl.textContent = FUEL_MIX_BADGE[car.fuelMix] || "--";
+        mixEl.dataset.mix = String(car.fuelMix ?? 0);
+    }
+
+    const fuelInTank = Number(car.fuelInTank) || 0;
+    const fuelRemLaps = Number(car.fuelRemainingLaps) || 0;
+    setText("csFuelTank", fuelInTank.toFixed(1) + " kg");
+    setText("csFuelLaps", fuelRemLaps.toFixed(1) + " L");
+
+    const sType = lastSessionPacket?.sessionType ?? 0;
+    const isRace = sType === 15 || sType === 16 || sType === 17;
+    const totalLaps = lastSessionPacket?.totalLaps ?? 0;
+    const curLap = lastLapDataPacket?.lapDataItems?.[playerCarIndex]?.currentLapNum ?? 0;
+    const deltaBox = el("csFuelDeltaBox");
+    const deltaEl = el("csFuelDelta");
+    const showDelta = isRace && totalLaps > 0 && curLap > 0 && Number.isFinite(fuelRemLaps);
+    if (deltaBox) deltaBox.hidden = !showDelta;
+    if (showDelta && deltaEl) {
+        const delta = fuelRemLaps - (totalLaps - curLap);
+        const sign = delta >= 0 ? "+" : "";
+        deltaEl.textContent = sign + delta.toFixed(2);
+        let cls;
+        if (delta < -0.3) cls = "cs-delta-crit";
+        else if (delta > 0) cls = "cs-delta-up";
+        else cls = "cs-delta-warn";
+        deltaEl.className = "cs-big-value " + cls;
+    }
+
+    const ersModeEl = el("csErsMode");
+    if (ersModeEl) {
+        ersModeEl.textContent = ERS_MODE_BADGE[car.ersDeployMode] || "--";
+        ersModeEl.dataset.mode = String(car.ersDeployMode ?? 0);
+    }
+
+    const storeJ = Math.max(0, Number(car.ersStoreEnergy) || 0);
+    const storePct = Math.max(0, Math.min(100, (storeJ / MAX_ERS_J) * 100));
+    const storeBar = el("csErsStoreBar");
+    if (storeBar) storeBar.style.width = storePct + "%";
+    setText("csErsStoreVal", storePct.toFixed(0) + "% · " + (storeJ / 1_000_000).toFixed(2) + " MJ");
+
+    const deployJ = Math.max(0, Number(car.ersDeployedThisLap) || 0);
+    const deployPct = Math.max(0, Math.min(100, (deployJ / MAX_ERS_J) * 100));
+    const deployBar = el("csErsDeployBar");
+    if (deployBar) deployBar.style.width = deployPct + "%";
+    setText("csErsDeployVal", (deployJ / 1_000_000).toFixed(2) + " / 4.00 MJ");
+
+    const harvestJ = Math.max(0, (Number(car.ersHarvestedThisLapMguK) || 0) + (Number(car.ersHarvestedThisLapMguH) || 0));
+    const harvestPct = Math.max(0, Math.min(100, (harvestJ / MAX_ERS_J) * 100));
+    const harvestBar = el("csErsHarvestBar");
+    if (harvestBar) harvestBar.style.width = harvestPct + "%";
+    setText("csErsHarvestVal", harvestPct.toFixed(0) + "% · " + (harvestJ / 1_000_000).toFixed(2) + " MJ");
 }
 
 function updateCarSetups(data) {
@@ -1223,19 +1526,407 @@ function updateLapData(data) {
         updateTopSpeedWidgets();
     }
 
-    setText("position", car.carPosition || "--");
-    setText("currentLap", car.currentLapNum || "--");
-    setText("currentLapTime", formatTime(car.currentLapTimeInMs));
-    setText("lastLapTime", formatTime(car.lastLapTimeInMs));
-    setText("sector1", formatSectorTime(car.sector1TimeMsPart, car.sector1TimeMinutesPart));
-    setText("sector2", formatSectorTime(car.sector2TimeMsPart, car.sector2TimeMinutesPart));
-
+    updateSessionProgress();
+    updatePitStopTimer(car);
+    updateLapDataWidget(car);
     updateStandings(data);
     updateQualiStandings();
     updatePitPredictor();
     updateGapBoard();
     updateGapRing();
     updateLapTimesWidget();
+}
+
+const LAP_DATA_REF_KEY = "f1telemetry_lap_data_ref_v1";
+const LD_RECENT_LAPS = 5;
+let lapDataRef = (localStorage.getItem(LAP_DATA_REF_KEY) === "best") ? "best" : "previous";
+let _lapDataLegendPanel = null;
+
+function initLapDataWidget() {
+    const btn = document.getElementById("btnLapDataRef");
+    if (btn && btn.dataset.ldWired !== "1") {
+        btn.dataset.ldWired = "1";
+        updateLapDataRefButton();
+        btn.addEventListener("click", (e) => {
+            e.stopPropagation();
+            lapDataRef = lapDataRef === "previous" ? "best" : "previous";
+            localStorage.setItem(LAP_DATA_REF_KEY, lapDataRef);
+            updateLapDataRefButton();
+            const car = lastLapDataPacket?.lapDataItems?.[playerCarIndex];
+            if (car) updateLapDataWidget(car);
+        });
+    }
+    const legendBtn = document.getElementById("btnLapDataLegend");
+    if (legendBtn && legendBtn.dataset.ldWired !== "1") {
+        legendBtn.dataset.ldWired = "1";
+        legendBtn.addEventListener("mouseenter", () => openLapDataLegend(legendBtn));
+        legendBtn.addEventListener("mouseleave", closeLapDataLegend);
+        legendBtn.addEventListener("focus", () => openLapDataLegend(legendBtn));
+        legendBtn.addEventListener("blur", closeLapDataLegend);
+    }
+    updateLapDataRefButton();
+}
+
+function updateLapDataRefButton() {
+    const lbl = document.getElementById("ldRefLabel");
+    if (lbl) lbl.textContent = lapDataRef === "best" ? "vs Best" : "vs Prev";
+}
+
+function openLapDataLegend(anchor) {
+    closeLapDataLegend();
+    const panel = document.createElement("div");
+    panel.className = "tyre-info-panel";
+    panel.innerHTML =
+        '<div class="tip-section"><div class="tip-title">Split colors</div>' +
+        '<div class="tip-row"><span class="ld-swatch ld-pb"></span><span>Personal best</span></div>' +
+        '<div class="tip-row"><span class="ld-swatch ld-up"></span><span>Faster than reference</span></div>' +
+        '<div class="tip-row"><span class="ld-swatch ld-down"></span><span>Slower than reference</span></div>' +
+        '<div class="tip-row"><span class="ld-swatch ld-active"></span><span>Current sector</span></div></div>' +
+        '<div class="tip-section"><div class="tip-title">Reference</div>' +
+        '<div class="tip-desc">Toggle Previous Lap ↔ Personal Best via the button next to the legend.</div></div>' +
+        '<div class="tip-section"><div class="tip-title">Invalid lap</div>' +
+        '<div class="tip-desc">Invalid laps (m_currentLapInvalid) are excluded from personal bests.</div></div>';
+    document.body.appendChild(panel);
+    _lapDataLegendPanel = panel;
+    const r = anchor.getBoundingClientRect();
+    const pw = panel.offsetWidth;
+    let left = r.right - pw;
+    if (left < 4) left = 4;
+    if (left + pw > window.innerWidth - 4) left = window.innerWidth - pw - 4;
+    panel.style.left = left + "px";
+    panel.style.top = (r.bottom + 6) + "px";
+}
+
+function closeLapDataLegend() {
+    if (_lapDataLegendPanel) {
+        _lapDataLegendPanel.remove();
+        _lapDataLegendPanel = null;
+    }
+}
+
+function formatLdDelta(deltaMs) {
+    if (deltaMs == null || !Number.isFinite(deltaMs)) return "";
+    const sign = deltaMs >= 0 ? "+" : "−";
+    const abs = Math.abs(deltaMs) / 1000;
+    return sign + abs.toFixed(3);
+}
+
+function ldDeltaClass(deltaMs) {
+    if (deltaMs == null || !Number.isFinite(deltaMs)) return "";
+    if (deltaMs < 0) return "ld-delta-up";
+    if (deltaMs > 0) return "ld-delta-down";
+    return "ld-delta-neutral";
+}
+
+function ldSectorClass(currentMs, refMs, pbMs, isPB) {
+    if (!currentMs) return "ld-none";
+    if (isPB) return "ld-pb";
+    if (refMs && currentMs < refMs) return "ld-up";
+    if (refMs && currentMs > refMs) return "ld-down";
+    return "";
+}
+
+function ldLapValid(bitFlags) { return (bitFlags & 1) === 1; }
+
+function ldGetSectorBest(hist, sector) {
+    if (!hist || !hist.lapHistoryDataItems) return 0;
+    const lapNum = sector === 1 ? hist.bestSector1LapNum
+                 : sector === 2 ? hist.bestSector2LapNum
+                 : hist.bestSector3LapNum;
+    if (!lapNum) return 0;
+    const entry = hist.lapHistoryDataItems[lapNum - 1];
+    if (!entry) return 0;
+    return sectorMsFromHistoryEntry(entry, sector);
+}
+
+function ldGetBestLapMs(hist) {
+    if (!hist || !hist.lapHistoryDataItems || !hist.bestLapTimeLapNum) return 0;
+    const entry = hist.lapHistoryDataItems[hist.bestLapTimeLapNum - 1];
+    return entry?.lapTimeInMs || 0;
+}
+
+function ldGetPrevLapEntry(hist, currentLapNum) {
+    if (!hist || !hist.lapHistoryDataItems) return null;
+    const idx = currentLapNum - 2;
+    if (idx < 0 || idx >= hist.lapHistoryDataItems.length) return null;
+    return hist.lapHistoryDataItems[idx];
+}
+
+function predictLapFinishMs(car, pbS1, pbS2, pbS3) {
+    if (!car) return 0;
+    const sector = car.sector;
+    const elapsed = car.currentLapTimeInMs || 0;
+    const s1Done = (car.sector1TimeMinutesPart || 0) * 60000 + (car.sector1TimeMsPart || 0);
+    const s2Done = (car.sector2TimeMinutesPart || 0) * 60000 + (car.sector2TimeMsPart || 0);
+
+    if (sector === 0) {
+        if (!pbS1 || !pbS2 || !pbS3) return 0;
+        return Math.max(pbS1, elapsed) + pbS2 + pbS3;
+    }
+    if (sector === 1) {
+        if (!pbS2 || !pbS3) return 0;
+        const elapsedS2 = Math.max(elapsed - s1Done, 0);
+        return s1Done + Math.max(pbS2, elapsedS2) + pbS3;
+    }
+    if (sector === 2) {
+        if (!pbS3) return 0;
+        const done = s1Done + s2Done;
+        const elapsedS3 = Math.max(elapsed - done, 0);
+        return done + Math.max(pbS3, elapsedS3);
+    }
+    return 0;
+}
+
+function renderLdSector(num, currentMs, refMs, pbMs, lapValid) {
+    const valEl = el("ldS" + num);
+    const deltaEl = el("ldS" + num + "Delta");
+    if (valEl) {
+        valEl.textContent = currentMs > 0 ? formatLapClock(currentMs) : "--";
+        const cls = ldSectorClass(
+            currentMs,
+            refMs,
+            pbMs,
+            lapValid && pbMs > 0 && currentMs === pbMs
+        );
+        valEl.className = "ld-sector-time " + cls;
+    }
+    if (deltaEl) {
+        if (currentMs > 0 && refMs > 0) {
+            const d = currentMs - refMs;
+            deltaEl.textContent = formatLdDelta(d);
+            deltaEl.className = "ld-delta " + ldDeltaClass(d);
+        } else {
+            deltaEl.textContent = "";
+            deltaEl.className = "ld-delta";
+        }
+    }
+}
+
+function renderLdMiniStrips(hist, currentLapNum, pbLapMs, pbS1, pbS2, pbS3) {
+    const lapEl = el("ldMiniLap");
+    const s1El  = el("ldMiniS1");
+    const s2El  = el("ldMiniS2");
+    const s3El  = el("ldMiniS3");
+
+    const clear = () => {
+        if (lapEl) lapEl.innerHTML = "";
+        if (s1El)  s1El.innerHTML  = "";
+        if (s2El)  s2El.innerHTML  = "";
+        if (s3El)  s3El.innerHTML  = "";
+    };
+
+    if (!hist || !hist.lapHistoryDataItems || currentLapNum < 2) {
+        clear();
+        return;
+    }
+
+    const completedUpTo = Math.min(currentLapNum - 1, hist.lapHistoryDataItems.length);
+    const from = Math.max(0, completedUpTo - LD_RECENT_LAPS);
+
+    let prevLap = 0, prevS1 = 0, prevS2 = 0, prevS3 = 0;
+    if (from > 0) {
+        const prevEntry = hist.lapHistoryDataItems[from - 1];
+        if (prevEntry) {
+            prevLap = prevEntry.lapTimeInMs || 0;
+            prevS1 = sectorMsFromHistoryEntry(prevEntry, 1);
+            prevS2 = sectorMsFromHistoryEntry(prevEntry, 2);
+            prevS3 = sectorMsFromHistoryEntry(prevEntry, 3);
+        }
+    }
+
+    let htmlLap = "", htmlS1 = "", htmlS2 = "", htmlS3 = "";
+    for (let i = from; i < completedUpTo; i++) {
+        const entry = hist.lapHistoryDataItems[i];
+        if (!entry) continue;
+        const lapNum = i + 1;
+        const valid = ldLapValid(entry.lapValidBitFlags);
+        const lapMs = entry.lapTimeInMs || 0;
+        const s1 = sectorMsFromHistoryEntry(entry, 1);
+        const s2 = sectorMsFromHistoryEntry(entry, 2);
+        const s3 = sectorMsFromHistoryEntry(entry, 3);
+
+        const refLap = lapDataRef === "best" ? pbLapMs : prevLap;
+        const refS1  = lapDataRef === "best" ? pbS1    : prevS1;
+        const refS2  = lapDataRef === "best" ? pbS2    : prevS2;
+        const refS3  = lapDataRef === "best" ? pbS3    : prevS3;
+
+        const cLap = ldSectorClass(lapMs, refLap, pbLapMs, valid && pbLapMs > 0 && lapMs === pbLapMs);
+        const cS1  = ldSectorClass(s1,    refS1,  pbS1,    valid && pbS1    > 0 && s1    === pbS1);
+        const cS2  = ldSectorClass(s2,    refS2,  pbS2,    valid && pbS2    > 0 && s2    === pbS2);
+        const cS3  = ldSectorClass(s3,    refS3,  pbS3,    valid && pbS3    > 0 && s3    === pbS3);
+
+        const invCls = valid ? "" : " ld-mini-invalid";
+        const title = `L${lapNum}`;
+        htmlLap += `<span class="ld-mini-sq ${cLap}${invCls}" title="${title}"></span>`;
+        htmlS1  += `<span class="ld-mini-sq ${cS1}${invCls}"  title="${title}"></span>`;
+        htmlS2  += `<span class="ld-mini-sq ${cS2}${invCls}"  title="${title}"></span>`;
+        htmlS3  += `<span class="ld-mini-sq ${cS3}${invCls}"  title="${title}"></span>`;
+
+        prevLap = lapMs; prevS1 = s1; prevS2 = s2; prevS3 = s3;
+    }
+
+    if (lapEl) lapEl.innerHTML = htmlLap;
+    if (s1El)  s1El.innerHTML  = htmlS1;
+    if (s2El)  s2El.innerHTML  = htmlS2;
+    if (s3El)  s3El.innerHTML  = htmlS3;
+}
+
+function updateLapDataWidget(car) {
+    if (!car) return;
+    const container = document.querySelector(".lap-data-card");
+    if (!container) return;
+
+    const hist = sessionHistories[playerCarIndex];
+    const currentLapNum = car.currentLapNum || 0;
+
+    const prev = ldGetPrevLapEntry(hist, currentLapNum);
+    const prevS1 = prev ? sectorMsFromHistoryEntry(prev, 1) : 0;
+    const prevS2 = prev ? sectorMsFromHistoryEntry(prev, 2) : 0;
+    const prevS3 = prev ? sectorMsFromHistoryEntry(prev, 3) : 0;
+    const prevLapMs = prev ? prev.lapTimeInMs : 0;
+
+    const pbS1 = ldGetSectorBest(hist, 1);
+    const pbS2 = ldGetSectorBest(hist, 2);
+    const pbS3 = ldGetSectorBest(hist, 3);
+    const pbLapMs = ldGetBestLapMs(hist);
+
+    const refS1 = lapDataRef === "best" ? pbS1 : prevS1;
+    const refS2 = lapDataRef === "best" ? pbS2 : prevS2;
+    const refS3 = lapDataRef === "best" ? pbS3 : prevS3;
+    const refLap = lapDataRef === "best" ? pbLapMs : prevLapMs;
+
+    const lastLapMs = car.lastLapTimeInMs || prevLapMs;
+    const lastLapEntry = prev;
+    const lastS1 = lastLapEntry ? sectorMsFromHistoryEntry(lastLapEntry, 1) : 0;
+    const lastS2 = lastLapEntry ? sectorMsFromHistoryEntry(lastLapEntry, 2) : 0;
+    const lastS3 = lastLapEntry ? sectorMsFromHistoryEntry(lastLapEntry, 3) : 0;
+    const lastLapValid = lastLapEntry ? ldLapValid(lastLapEntry.lapValidBitFlags) : true;
+
+    const lastLapEl = el("ldLastLap");
+    if (lastLapEl) {
+        lastLapEl.textContent = lastLapMs > 0 ? formatLapClock(lastLapMs) : "--";
+        lastLapEl.className = "ld-time ld-last-time " + ldSectorClass(
+            lastLapMs,
+            refLap,
+            pbLapMs,
+            lastLapValid && pbLapMs > 0 && lastLapMs === pbLapMs
+        );
+    }
+
+    const lastLapDeltaEl = el("ldLastLapDelta");
+    if (lastLapDeltaEl) {
+        if (lastLapMs > 0 && refLap > 0) {
+            const d = lastLapMs - refLap;
+            lastLapDeltaEl.textContent = formatLdDelta(d);
+            lastLapDeltaEl.className = "ld-delta " + ldDeltaClass(d);
+        } else {
+            lastLapDeltaEl.textContent = "";
+            lastLapDeltaEl.className = "ld-delta";
+        }
+    }
+
+    renderLdSector(1, lastS1, refS1, pbS1, lastLapValid);
+    renderLdSector(2, lastS2, refS2, pbS2, lastLapValid);
+    renderLdSector(3, lastS3, refS3, pbS3, lastLapValid);
+
+    container.querySelectorAll(".ld-sector").forEach(s => s.classList.remove("ld-sector-active"));
+    const curSector = car.sector;
+    if (curSector >= 0 && curSector <= 2) {
+        const activeEl = container.querySelector(`.ld-sector[data-ld-sector="${curSector + 1}"]`);
+        if (activeEl) activeEl.classList.add("ld-sector-active");
+    }
+
+    setText("ldCurLap", formatLapClock(car.currentLapTimeInMs || 0));
+    const invBadge = el("ldInvalidBadge");
+    if (invBadge) invBadge.hidden = car.currentLapInvalid !== 1;
+
+    const predictedEl = el("ldPredicted");
+    if (predictedEl) {
+        const p = predictLapFinishMs(car, pbS1, pbS2, pbS3);
+        predictedEl.textContent = p > 0 ? formatLapClock(p) : "--";
+    }
+
+    renderLdMiniStrips(hist, currentLapNum, pbLapMs, pbS1, pbS2, pbS3);
+}
+
+const pitStopHistory = [];
+let _pitLaneActivePrev = false;
+let _pitLaneMaxLaneMs = 0;
+let _pitLaneMaxStallMs = 0;
+let _pitLaneEntryLap = 0;
+
+function formatPitTimeMs(ms) {
+    if (!ms || ms <= 0) return "--";
+    return (ms / 1000).toFixed(2) + "s";
+}
+
+function resetPitStopHistory() {
+    pitStopHistory.length = 0;
+    _pitLaneActivePrev = false;
+    _pitLaneMaxLaneMs = 0;
+    _pitLaneMaxStallMs = 0;
+    _pitLaneEntryLap = 0;
+    const laneEl = el("pitTimerLaneNow");
+    const stallEl = el("pitTimerStallNow");
+    const statusEl = el("pitTimerStatusNow");
+    if (laneEl) laneEl.textContent = "--";
+    if (stallEl) stallEl.textContent = "--";
+    if (statusEl) statusEl.textContent = "--";
+    renderPitStopHistory();
+}
+
+function updatePitStopTimer(car) {
+    if (!car) return;
+
+    const active = car.pitLaneTimerActive === 1;
+    const laneMs = car.pitLaneTimeInLaneInMs || 0;
+    const stallMs = car.pitStopTimerInMs || 0;
+    const lap = car.currentLapNum || 0;
+
+    const laneEl = el("pitTimerLaneNow");
+    const stallEl = el("pitTimerStallNow");
+    const statusEl = el("pitTimerStatusNow");
+
+    if (active) {
+        if (!_pitLaneActivePrev) _pitLaneEntryLap = lap;
+        if (laneMs > _pitLaneMaxLaneMs) _pitLaneMaxLaneMs = laneMs;
+        if (stallMs > _pitLaneMaxStallMs) _pitLaneMaxStallMs = stallMs;
+
+        if (laneEl) laneEl.textContent = formatPitTimeMs(laneMs);
+        if (stallEl) stallEl.textContent = formatPitTimeMs(stallMs);
+        if (statusEl) statusEl.textContent = car.pitStatus === 1 ? "Pitting" : "In Pit Lane";
+    } else {
+        if (_pitLaneActivePrev && (_pitLaneMaxLaneMs > 0 || _pitLaneMaxStallMs > 0)) {
+            pitStopHistory.push({
+                lap: _pitLaneEntryLap || lap,
+                laneMs: _pitLaneMaxLaneMs,
+                stallMs: _pitLaneMaxStallMs,
+            });
+            renderPitStopHistory();
+        }
+        _pitLaneMaxLaneMs = 0;
+        _pitLaneMaxStallMs = 0;
+
+        if (laneEl) laneEl.textContent = "--";
+        if (stallEl) stallEl.textContent = "--";
+        if (statusEl) statusEl.textContent = "--";
+    }
+
+    _pitLaneActivePrev = active;
+}
+
+function renderPitStopHistory() {
+    const body = el("pitTimerHistoryBody");
+    if (!body) return;
+    if (pitStopHistory.length === 0) {
+        body.innerHTML = '<tr class="pit-timer-empty"><td colspan="4">No pit stops yet</td></tr>';
+        return;
+    }
+    let html = "";
+    pitStopHistory.forEach((r, i) => {
+        html += `<tr><td>${i + 1}</td><td>${r.lap || "--"}</td><td>${formatPitTimeMs(r.laneMs)}</td><td>${formatPitTimeMs(r.stallMs)}</td></tr>`;
+    });
+    body.innerHTML = html;
 }
 
 function updateCarDamage(data) {
@@ -1377,15 +2068,13 @@ function updateTopSpeedCompareWidget() {
 
     const thisLapDeltaEl = el("topSpeedThisLapDelta");
     if (thisLapDeltaEl) {
-        if (thisLap > 0 && lastLap > 0) {
-            const delta = Math.round(thisLap - lastLap);
+        let delta = null;
+        if (thisLap > 0 && lastLap > 0) delta = Math.round(thisLap - lastLap);
+        else if (thisLap > 0 && sessionBest > 0) delta = Math.round(thisLap - sessionBest);
+
+        if (delta !== null) {
             const sign = delta >= 0 ? "+" : "";
-            thisLapDeltaEl.textContent = sign + delta + " vs last";
-            thisLapDeltaEl.className = "tsc-delta " + (delta >= 0 ? "tsc-delta-up" : "tsc-delta-down");
-        } else if (thisLap > 0 && sessionBest > 0) {
-            const delta = Math.round(thisLap - sessionBest);
-            const sign = delta >= 0 ? "+" : "";
-            thisLapDeltaEl.textContent = sign + delta + " vs best";
+            thisLapDeltaEl.textContent = sign + delta;
             thisLapDeltaEl.className = "tsc-delta " + (delta >= 0 ? "tsc-delta-up" : "tsc-delta-down");
         } else {
             thisLapDeltaEl.textContent = "";
@@ -1648,6 +2337,15 @@ function getCompoundAbbr(name) {
     return map[name] || (name[0] || "?");
 }
 
+function getActualCompoundBadgeText(actualId, fallbackVisualName) {
+    const n = ACTUAL_COMPOUNDS[actualId];
+    if (n === "Inter") return "I";
+    if (n === "Wet" || n === "W") return "W";
+    if (n === "Dry") return "D";
+    if (n && /^C[0-9]$/.test(n)) return n;
+    return getCompoundAbbr(fallbackVisualName || "");
+}
+
 function updateTyreSets(data) {
     if (data.carIdx !== playerCarIndex) return;
 
@@ -1669,12 +2367,15 @@ function updateTyreSets(data) {
     const fittedEl = el("fittedCompound");
     if (fittedEl && fittedSet) {
         const info = fittedSet.compoundInfo;
-        const abbr = getCompoundAbbr(info.name);
+        const badgeTxt = getActualCompoundBadgeText(fittedSet.actualTyreCompound, info.name);
         const wearColor = fittedSet.wear > 60 ? "var(--danger)" : fittedSet.wear > 30 ? "var(--warning)" : "var(--safe)";
-        fittedEl.innerHTML = `<span class="tyreset-badge ${info.css}">${abbr}</span>`
+        const wrate = getCompoundWearRate(fittedSet.actualTyreCompound);
+        const wrateText = wrate != null ? `${wrate.toFixed(2)}%/L` : "";
+        fittedEl.innerHTML = `<span class="tyreset-badge ${info.css}">${badgeTxt}</span>`
             + `<span>${info.name}</span>`
             + `<span style="color:${wearColor}">${fittedSet.wear}% worn</span>`
-            + `<span style="color:var(--text-dim)">${fittedSet.lifeSpan}L left</span>`;
+            + `<span style="color:var(--text-dim)">${fittedSet.lifeSpan}L left</span>`
+            + (wrateText ? `<span class="tyreset-wear-rate" title="Wear per lap">${wrateText}</span>` : "");
     }
 
     const container = el("tyreSetGroups");
@@ -1705,9 +2406,11 @@ function updateTyreSets(data) {
             const deltaSign = delta > 0 ? "+" : "";
             const deltaCls = delta > 0 ? "positive" : delta < 0 ? "negative" : "zero";
             const deltaText = delta !== 0 ? `${deltaSign}${(delta / 1000).toFixed(1)}s` : "—";
-            const abbr = getCompoundAbbr(s.compoundInfo.name);
+            const badgeTxt = getActualCompoundBadgeText(s.actualTyreCompound, s.compoundInfo.name);
+            const wrate = getCompoundWearRate(s.actualTyreCompound);
+            const wrateText = wrate != null ? `${wrate.toFixed(2)}%/L` : "—";
             const cls = s.isFitted ? "tyreset-item fitted" : "tyreset-item";
-            parts.push(`<div class="${cls}"><span class="tyreset-badge ${s.compoundInfo.css}">${abbr}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct" style="color:${wearColor}">${wearPct}%</span><span class="tyreset-life">${s.lifeSpan}L</span><span class="tyreset-delta ${deltaCls}">${deltaText}</span>${s.isFitted ? '<span class="tyreset-fitted-badge">ON</span>' : ""}</div>`);
+            parts.push(`<div class="${cls}"><span class="tyreset-badge ${s.compoundInfo.css}">${badgeTxt}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct" style="color:${wearColor}">${wearPct}%</span><span class="tyreset-life">${s.lifeSpan}L</span><span class="tyreset-wear-rate" title="Wear per lap">${wrateText}</span><span class="tyreset-delta ${deltaCls}">${deltaText}</span>${s.isFitted ? '<span class="tyreset-fitted-badge">ON</span>' : ""}</div>`);
         }
         parts.push(`</div>`);
     }
@@ -1724,8 +2427,8 @@ function updateTyreSets(data) {
         for (const s of used) {
             const wearPct = s.wear;
             const wearColor = wearPct > 60 ? "var(--danger)" : wearPct > 30 ? "var(--warning)" : "var(--safe)";
-            const abbr = getCompoundAbbr(s.compoundInfo.name);
-            parts.push(`<div class="tyreset-item"><span class="tyreset-badge tyreset-badge-sm ${s.compoundInfo.css}">${abbr}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct">${wearPct}%</span><span class="tyreset-life">${s.lifeSpan}L</span></div>`);
+            const badgeTxt = getActualCompoundBadgeText(s.actualTyreCompound, s.compoundInfo.name);
+            parts.push(`<div class="tyreset-item"><span class="tyreset-badge tyreset-badge-sm ${s.compoundInfo.css}">${badgeTxt}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct">${wearPct}%</span><span class="tyreset-life">${s.lifeSpan}L</span></div>`);
         }
         parts.push(`</div>`);
     }
@@ -1861,6 +2564,10 @@ function updateSessionHistory(data) {
     updateGapBoard();
     updateQualiStandings();
     updateLapTimesWidget();
+    if (data.carIdx === playerCarIndex) {
+        const car = lastLapDataPacket?.lapDataItems?.[playerCarIndex];
+        if (car) updateLapDataWidget(car);
+    }
 }
 
 function getQualiDriverStatus(ld) {
