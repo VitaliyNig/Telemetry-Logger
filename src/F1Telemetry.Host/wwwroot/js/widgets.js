@@ -21,9 +21,7 @@ const WIDGET_REGISTRY = {
     pitStopTimer:     { title: "Pit Stop Timer",       tpl: "tpl-pitStopTimer",     w: 6,   h: 8,   minW: 1, minH: 1 },
 };
 
-/** Finer grid (2× columns, 2× rows vs v1); physical size unchanged → scale saved layouts ×2. */
 const PRESETS_STORAGE_KEY = "f1telemetry_presets_v2";
-const PRESETS_STORAGE_KEY_V1 = "f1telemetry_presets_v1";
 const GRID_COLUMNS = 24;
 const GRID_CELL_HEIGHT_PX = 30;
 const ACTIVE_PRESET_KEY = "f1telemetry_active_preset_v1";
@@ -123,60 +121,12 @@ function layoutsEqual(a, b) {
     return true;
 }
 
-function scaleLayoutToFinerGrid(layout, factor) {
-    if (!Array.isArray(layout)) return [];
-    return layout.map(item => ({
-        ...item,
-        x: Math.round(item.x * factor),
-        y: Math.round(item.y * factor),
-        w: Math.round(item.w * factor),
-        h: Math.round(item.h * factor),
-    }));
-}
-
-function migratePresetsV1ToV2(presetsV1) {
-    const out = {};
-    for (const [name, layout] of Object.entries(presetsV1)) {
-        out[name] = scaleLayoutToFinerGrid(layout, 2);
-    }
-    return out;
-}
-
-function renameWidgetIdsInPresets(presets, fromId, toId) {
-    let changed = false;
-    for (const [name, layout] of Object.entries(presets)) {
-        if (!Array.isArray(layout)) continue;
-        for (const item of layout) {
-            if (item && item.id === fromId) {
-                item.id = toId;
-                changed = true;
-            }
-        }
-    }
-    return changed;
-}
-
 function loadAllPresets() {
     try {
-        const rawV2 = localStorage.getItem(PRESETS_STORAGE_KEY);
-        if (rawV2) {
-            const parsed = JSON.parse(rawV2);
-            if (parsed && typeof parsed === "object") {
-                if (renameWidgetIdsInPresets(parsed, "carStatus", "fuelErs")) {
-                    localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(parsed));
-                }
-                return parsed;
-            }
-        }
-        const rawV1 = localStorage.getItem(PRESETS_STORAGE_KEY_V1);
-        if (rawV1) {
-            const v1 = JSON.parse(rawV1);
-            if (v1 && typeof v1 === "object") {
-                const migrated = migratePresetsV1ToV2(v1);
-                renameWidgetIdsInPresets(migrated, "carStatus", "fuelErs");
-                localStorage.setItem(PRESETS_STORAGE_KEY, JSON.stringify(migrated));
-                return migrated;
-            }
+        const raw = localStorage.getItem(PRESETS_STORAGE_KEY);
+        if (raw) {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === "object") return parsed;
         }
     } catch (_) { /* ignore */ }
     return {};
