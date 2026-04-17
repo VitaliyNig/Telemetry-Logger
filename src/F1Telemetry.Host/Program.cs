@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Xml.Linq;
 using Microsoft.Extensions.Options;
 using F1Telemetry.Config;
 using F1Telemetry.Debug;
@@ -192,6 +193,72 @@ static class Program
                 saved = true,
                 message = "Settings saved. Web port changes require a restart."
             });
+        });
+
+        app.MapPost("/api/game/configure-udp", async (IConfiguration config) =>
+        {
+            var udpSection = config.GetSection("TelemetryUdp");
+            var listenIp = udpSection.GetValue<string>("ListenAddress") ?? "0.0.0.0";
+            var port = udpSection.GetValue<int?>("Port") ?? 20777;
+
+            var sendIp = (string.IsNullOrWhiteSpace(listenIp) || listenIp == "0.0.0.0" || listenIp == "::")
+                ? "127.0.0.1"
+                : listenIp;
+
+            var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
+            var xmlPath = Path.Combine(docs, "My Games", "F1 25", "hardwaresettings", "hardware_settings_config.xml");
+
+            if (!File.Exists(xmlPath))
+            {
+                return Results.NotFound(new
+                {
+                    error = "hardware_settings_config.xml not found. Launch F1 25 once to create it.",
+                    expectedPath = xmlPath
+                });
+            }
+
+            try
+            {
+                await File.WriteAllBytesAsync(xmlPath + ".bak", await File.ReadAllBytesAsync(xmlPath));
+
+                XDocument doc;
+                await using (var fs = File.OpenRead(xmlPath))
+                    doc = await Task.Run(() => XDocument.Load(fs));
+
+                var motion = doc.Root?.Element("motion") ?? doc.Descendants("motion").FirstOrDefault();
+                if (motion == null)
+                    return Results.Problem("No <motion> element in XML.", statusCode: 500);
+
+                var udp = motion.Element("udp");
+                if (udp == null)
+                {
+                    udp = new XElement("udp");
+                    motion.Add(udp);
+                }
+
+                udp.SetAttributeValue("enabled", "true");
+                udp.SetAttributeValue("broadcast", "true");
+                udp.SetAttributeValue("ip", sendIp);
+                udp.SetAttributeValue("port", port.ToString());
+                udp.SetAttributeValue("sendRate", "60");
+                udp.SetAttributeValue("format", "2025");
+                udp.SetAttributeValue("yourTelemetry", "public");
+                udp.SetAttributeValue("onlineNames", "on");
+
+                doc.Save(xmlPath);
+
+                return Results.Ok(new
+                {
+                    saved = true,
+                    path = xmlPath,
+                    ip = sendIp,
+                    port
+                });
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem($"Failed to update XML: {ex.Message}", statusCode: 500);
+            }
         });
 
         var pitTimesPath = Path.Combine(app.Environment.WebRootPath, "data", "pit-times.json");
