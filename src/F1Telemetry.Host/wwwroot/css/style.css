@@ -126,34 +126,34 @@
 /* Edge resize handles — give them grabbable hit areas and a subtle line on hover */
 .grid-stack-item > .ui-resizable-n,
 .grid-stack-item > .ui-resizable-s {
-    left: 8px;
-    right: 8px;
+    left: 6px;
+    right: 6px;
     width: auto;
-    height: 8px;
+    height: 5px;
 }
-.grid-stack-item > .ui-resizable-n { top: -2px; cursor: n-resize; }
-.grid-stack-item > .ui-resizable-s { bottom: -2px; cursor: s-resize; }
+.grid-stack-item > .ui-resizable-n { top: 1px; cursor: n-resize; }
+.grid-stack-item > .ui-resizable-s { bottom: 1px; cursor: s-resize; }
 
 .grid-stack-item > .ui-resizable-e,
 .grid-stack-item > .ui-resizable-w {
-    top: 8px;
-    bottom: 8px;
+    top: 6px;
+    bottom: 6px;
     height: auto;
-    width: 8px;
+    width: 5px;
 }
-.grid-stack-item > .ui-resizable-e { right: -2px; cursor: e-resize; }
-.grid-stack-item > .ui-resizable-w { left: -2px; cursor: w-resize; }
+.grid-stack-item > .ui-resizable-e { right: 1px; cursor: e-resize; }
+.grid-stack-item > .ui-resizable-w { left: 1px; cursor: w-resize; }
 
 .grid-stack-item > .ui-resizable-ne,
 .grid-stack-item > .ui-resizable-nw,
 .grid-stack-item > .ui-resizable-sw {
-    width: 14px;
-    height: 14px;
+    width: 10px;
+    height: 10px;
     background: none;
 }
-.grid-stack-item > .ui-resizable-ne { top: -2px; right: -2px; cursor: ne-resize; }
-.grid-stack-item > .ui-resizable-nw { top: -2px; left: -2px; cursor: nw-resize; }
-.grid-stack-item > .ui-resizable-sw { bottom: -2px; left: -2px; cursor: sw-resize; }
+.grid-stack-item > .ui-resizable-ne { top: 1px; right: 1px; cursor: ne-resize; }
+.grid-stack-item > .ui-resizable-nw { top: 1px; left: 1px; cursor: nw-resize; }
+.grid-stack-item > .ui-resizable-sw { bottom: 1px; left: 1px; cursor: sw-resize; }
 
 .grid-stack-item:hover > .ui-resizable-n,
 .grid-stack-item:hover > .ui-resizable-s,
@@ -479,7 +479,8 @@
 /* Card styles (now inside widget body) */
 .card {
     background: transparent;
-    padding: 12px 16px;
+    container-type: inline-size;
+    padding: clamp(6px, 2cqi, 10px);
 }
 
 .widget-title {
@@ -507,6 +508,8 @@
     flex-direction: column;
     gap: 4px;
 }
+
+.stat-box[hidden] { display: none; }
 
 .stat-label {
     font-size: 10px;
@@ -851,7 +854,6 @@
     flex-direction: column;
     min-height: 0;
     overflow: hidden;
-    padding: clamp(8px, 2.5cqi, 14px) clamp(10px, 3cqi, 18px);
 }
 
 .card.telemetry-widget .telemetry-stack {
@@ -1172,7 +1174,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
     gap: 12px;
-    padding: 0 12px 10px;
+    padding: 0 0 10px;
     flex: 1;
     min-height: 0;
 }
@@ -2500,7 +2502,7 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    padding: 0 10px 10px;
+    padding: 0 0 10px;
     container-type: inline-size;
 }
 
@@ -3046,7 +3048,6 @@
     padding: 6px 12px;
     background: rgba(255, 255, 255, 0.02);
     border-radius: var(--radius);
-    margin: 0 10px;
 }
 .ld-last-head, .ld-current-head {
     display: flex;
@@ -3084,7 +3085,6 @@
     display: grid;
     grid-template-columns: repeat(3, 1fr);
     gap: 6px;
-    padding: 0 10px;
 }
 .ld-sector {
     display: flex;
@@ -3203,7 +3203,7 @@
     display: grid;
     grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
     gap: 10px;
-    padding: 0 12px 8px;
+    padding: 0 0 8px;
     flex: 0 0 auto;
 }
 
