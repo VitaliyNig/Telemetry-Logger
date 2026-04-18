@@ -2157,14 +2157,13 @@ function updateEvent(data, header) {
     const elapsed = header?.sessionTime ?? -1;
     const sType = lastSessionPacket?.sessionType ?? 0;
     const isRaceSession = sType === 15 || sType === 16 || sType === 17;
+    const isTimeTrial = sType === 18;
     let timeCtx;
-    if (isRaceSession) {
+    if (isRaceSession || isTimeTrial) {
         const lap = lastLapDataPacket?.lapDataItems?.[playerCarIndex]?.currentLapNum ?? 0;
-        const totalLaps = lastSessionPacket?.totalLaps ?? 0;
-        timeCtx = { mode: "race", lap, totalLaps };
+        timeCtx = { mode: "lap", lap };
     } else {
-        const duration = lastSessionPacket?.sessionDuration ?? 0;
-        timeCtx = { mode: "timed", elapsed, duration };
+        timeCtx = { mode: "timed", elapsed };
     }
     const entry = { code, name, detail, timeCtx, isPenalty, vehicleIdx, penaltyType };
 
@@ -2205,15 +2204,11 @@ function fmtMmSs(totalSecs) {
 
 function formatEventTimeCtx(ctx) {
     if (!ctx) return "--";
-    if (ctx.mode === "race") {
-        const lap = ctx.lap > 0 ? ctx.lap : "--";
-        const total = ctx.totalLaps > 0 ? ctx.totalLaps : "--";
-        return `L${lap} / ${total}`;
+    if (ctx.mode === "lap") {
+        return ctx.lap > 0 ? `L${ctx.lap}` : "--";
     }
-    const elapsed = ctx.elapsed;
-    const duration = ctx.duration;
-    if (elapsed < 0 || duration <= 0) return "--";
-    return `${fmtMmSs(elapsed)} / ${fmtMmSs(duration)}`;
+    if (ctx.elapsed == null || ctx.elapsed < 0) return "--";
+    return fmtMmSs(ctx.elapsed);
 }
 
 function renderEventItem(e, pinned) {
