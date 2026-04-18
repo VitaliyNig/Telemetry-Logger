@@ -44,12 +44,18 @@ html, body {
     align-items: center;
     justify-content: space-between;
     gap: 16px;
-    padding: 0 24px;
-    height: 56px;
+    padding: 0 16px;
+    height: 48px;
+    margin: 8px 12px 0;
     background: var(--bg-secondary);
-    border-bottom: 1px solid var(--border);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
     flex-shrink: 0;
 }
+
+body.on-live-tab.hide-header .app-header { display: none; }
+body.on-live-tab.hide-header .app-main { height: 100vh; }
 
 .header-brand {
     display: flex;

@@ -4,6 +4,7 @@
     var AUTO_SWITCH_KEY = 'f1telemetry_autoswitch_v1';
     var GAME_VERSION_KEY = 'f1telemetry_gameversion_v1';
     var DEFAULT_GAME_VERSION = 'f1_25';
+    var HIDE_HEADER_KEY = 'f1telemetry_hide_header_v1';
 
     // --- State ---
     var debugMode = false;
@@ -61,7 +62,22 @@
         panels.forEach(function (p) {
             p.classList.toggle('active', p.id === 'panel-' + tabId);
         });
+        document.body.classList.toggle('on-live-tab', tabId === 'live');
         if (tabId === 'history') loadHistorySessions();
+    }
+
+    var initialActiveTab = tabNav.querySelector('.tab-btn.active');
+    document.body.classList.toggle('on-live-tab', !initialActiveTab || initialActiveTab.dataset.tab === 'live');
+
+    var hideHeaderToggle = document.getElementById('hideHeaderToggle');
+    if (hideHeaderToggle) {
+        var hideHeader = localStorage.getItem(HIDE_HEADER_KEY) === 'true';
+        hideHeaderToggle.checked = hideHeader;
+        document.body.classList.toggle('hide-header', hideHeader);
+        hideHeaderToggle.addEventListener('change', function () {
+            localStorage.setItem(HIDE_HEADER_KEY, hideHeaderToggle.checked ? 'true' : 'false');
+            document.body.classList.toggle('hide-header', hideHeaderToggle.checked);
+        });
     }
 
     // --- History ---
