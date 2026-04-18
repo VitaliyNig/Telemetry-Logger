@@ -6,7 +6,7 @@
     var BIN_COUNT = 60;
     var MAX_GEAR = 8;
     var MIN_RATIO_SAMPLES = 20;
-    var THROTTLE_MIN = 0.95;
+    var THROTTLE_MIN = 0.5;
     var RATIO_MIN_RPM = 4000;
     var RATIO_MIN_SPEED = 20;
     var SAMPLE_CAP = 10000;
@@ -14,13 +14,14 @@
     var SHIFT_ROUND_RPM = 50;
     var SCAN_MIN_RPM = 4000;
     var POWER_COVERAGE_MIN = 0.3;
+    var POWER_COVERAGE_BIN_FRACTION = 0.5;
+    var POST_SHIFT_LOCKOUT_MS = 200;
     var RENDER_MIN_INTERVAL_MS = 200;
     var SAVE_DEBOUNCE_MS = 2000;
 
     var db = {};
     var active = null;
     var lastIcePower = 0;
-    var lastMguKPower = 0;
     var lastGear = 0;
     var lastGearChangeMs = 0;
     var totalWrites = 0;
@@ -82,9 +83,8 @@
         lastShiftRpm = null;
     }
 
-    function updatePower(iceW, mguKW) {
+    function updatePower(iceW, _mguKW) {
         lastIcePower = Number(iceW) || 0;
-        lastMguKPower = Number(mguKW) || 0;
     }
 
     function sample(car, rpmMax) {
@@ -104,9 +104,10 @@
 
         if (totalWrites >= SAMPLE_CAP) return;
         if (gear < 1 || rpm <= 0 || throttle < THROTTLE_MIN) return;
+        var postShiftSettled = (now - lastGearChangeMs) >= POST_SHIFT_LOCKOUT_MS;
 
-        var P = lastIcePower + lastMguKPower;
-        if (P > 0) {
+        var P = lastIcePower;
+        if (P > 0 && postShiftSettled) {
             var b = Math.floor(rpm / BIN_SIZE);
             if (b >= 0 && b < BIN_COUNT) {
                 if (P > active.powerBins[b]) active.powerBins[b] = P;
@@ -117,7 +118,7 @@
         }
 
         if (gear <= MAX_GEAR && rpm > RATIO_MIN_RPM && speed > RATIO_MIN_SPEED &&
-            (now - lastGearChangeMs) >= 200) {
+            postShiftSettled) {
             active.gearSpeedSum[gear] += speed;
             active.gearRpmSum[gear] += rpm;
             active.gearCount[gear]++;
@@ -155,9 +156,15 @@
         var maxBin = Math.min(BIN_COUNT, Math.ceil(rpmMax / BIN_SIZE));
         var minBin = Math.floor(SCAN_MIN_RPM / BIN_SIZE);
         if (maxBin <= minBin) return 0;
+        var peak = 0;
+        for (var i = 0; i < BIN_COUNT; i++) {
+            if (active.powerBins[i] > peak) peak = active.powerBins[i];
+        }
+        if (peak <= 0) return 0;
+        var threshold = peak * POWER_COVERAGE_BIN_FRACTION;
         var filled = 0;
-        for (var i = minBin; i < maxBin; i++) {
-            if (active.powerCount[i] > 0) filled++;
+        for (var j = minBin; j < maxBin; j++) {
+            if (active.powerBins[j] >= threshold) filled++;
         }
         return filled / (maxBin - minBin);
     }
