@@ -1227,6 +1227,10 @@
 .ti-age { color: var(--text-dim); margin-left: auto; }
 
 /* Fuel & ERS widget */
+.widget-wrapper[data-widget-id="fuelErs"] {
+    container-type: size;
+    container-name: fuel-ers;
+}
 .cs-card {
     display: flex;
     flex-direction: column;
@@ -1234,17 +1238,17 @@
 }
 .cs-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
-    gap: 12px;
-    padding: 0 0 10px;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    gap: clamp(6px, 2cqi, 14px);
+    padding: 0 0 clamp(6px, 1.6cqi, 12px);
     flex: 1;
     min-height: 0;
 }
 .cs-section {
     display: flex;
     flex-direction: column;
-    gap: 8px;
-    padding: 8px 10px;
+    gap: clamp(4px, 1.5cqi, 10px);
+    padding: clamp(6px, 1.8cqi, 10px) clamp(8px, 2.4cqi, 12px);
     background: rgba(255,255,255,0.02);
     border-radius: var(--radius);
     min-width: 0;
@@ -1256,21 +1260,21 @@
     gap: 8px;
 }
 .cs-section-label {
-    font-size: 10px;
+    font-size: clamp(9px, 2.2cqi, 11px);
     text-transform: uppercase;
     letter-spacing: 1.2px;
     color: var(--text-dim);
     font-weight: 700;
 }
 .cs-micro-label {
-    font-size: 10px;
+    font-size: clamp(9px, 2.2cqi, 11px);
     text-transform: uppercase;
     letter-spacing: 0.8px;
     color: var(--text-dim);
 }
 .cs-badge {
     font-family: var(--font-mono);
-    font-size: 10px;
+    font-size: clamp(9px, 2.4cqi, 12px);
     font-weight: 700;
     letter-spacing: 0.5px;
     padding: 2px 7px;
@@ -1298,7 +1302,7 @@
 .cs-big-value {
     font-family: var(--font-mono);
     font-weight: 800;
-    font-size: 28px;
+    font-size: clamp(14px, 7cqi, 34px);
     line-height: 1.0;
     color: var(--text-primary);
 }
@@ -1316,18 +1320,19 @@
     display: flex;
     flex-direction: column;
     gap: 2px;
+    min-width: 0;
 }
 .cs-value {
     font-family: var(--font-mono);
     font-weight: 700;
-    font-size: 14px;
+    font-size: clamp(12px, 3.2cqi, 18px);
     color: var(--text-primary);
 }
 
 .cs-ers-row {
     display: flex;
     flex-direction: column;
-    gap: 3px;
+    gap: clamp(2px, 0.8cqb, 5px);
 }
 .cs-row-head {
     display: flex;
@@ -1337,16 +1342,16 @@
 }
 .cs-bar-value {
     font-family: var(--font-mono);
-    font-size: 11px;
+    font-size: clamp(10px, 2.4cqi, 13px);
     color: var(--text-secondary);
 }
 .cs-bar {
     background: rgba(255,255,255,0.08);
     border-radius: 4px;
     overflow: hidden;
-    height: 10px;
+    height: clamp(6px, 1.8cqb, 12px);
 }
-.cs-bar-thin { height: 5px; }
+.cs-bar-thin { height: clamp(4px, 1.0cqb, 7px); }
 .cs-bar-fill {
     height: 100%;
     width: 0%;
@@ -1356,6 +1361,18 @@
 }
 .cs-bar-deploy  { background: #ff8c00; }
 .cs-bar-harvest { background: var(--accent-green); }
+
+@container fuel-ers (max-width: 200px) {
+    .cs-row-head { flex-wrap: wrap; row-gap: 0; }
+    .cs-fuel-metrics { grid-template-columns: 1fr; }
+}
+
+@container fuel-ers (max-height: 160px) {
+    .cs-fuel-delta { padding: 2px 2px 2px; }
+    .cs-big-value  { font-size: clamp(13px, 5.5cqb, 22px); }
+    .cs-bar        { height: clamp(5px, 1.4cqb, 9px); }
+    .cs-bar-thin   { height: clamp(3px, 0.8cqb, 5px); }
+}
 
 /* Damage */
 .widget-wrapper[data-widget-id="damage"] {
