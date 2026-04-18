@@ -207,6 +207,7 @@ function applyLayout(layout) {
     updateDropdown();
     updateSavePresetButtonState();
     updateWidgetGridSizeBadges();
+    applyDashboardLayoutLock();
 }
 
 function switchPreset(presetName) {
