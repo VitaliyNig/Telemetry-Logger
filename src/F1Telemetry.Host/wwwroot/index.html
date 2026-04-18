@@ -112,7 +112,12 @@
                         </table>
                     </div>
                     <div class="game-settings-auto">
-                        <button type="button" id="btnAutoConfigureUdp" class="btn-auto-configure">Auto-configure F1 25</button>
+                        <div class="game-settings-auto-row">
+                            <select id="gameVersionSelect" class="game-version-select" aria-label="Game version">
+                                <option value="f1_25">F1 25</option>
+                            </select>
+                            <button type="button" id="btnAutoConfigureUdp" class="btn-auto-configure">Auto-configure</button>
+                        </div>
                         <span class="setting-hint">Writes these values directly to F1 25's <code>hardware_settings_config.xml</code>. <strong>Close the game before applying</strong> — otherwise F1 25 will overwrite the file on exit.</span>
                         <span id="autoConfigureStatus" class="auto-configure-status" hidden></span>
                     </div>

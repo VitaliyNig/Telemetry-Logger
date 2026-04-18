@@ -2,6 +2,8 @@
     'use strict';
 
     var AUTO_SWITCH_KEY = 'f1telemetry_autoswitch_v1';
+    var GAME_VERSION_KEY = 'f1telemetry_gameversion_v1';
+    var DEFAULT_GAME_VERSION = 'f1_25';
 
     // --- State ---
     var debugMode = false;
@@ -244,6 +246,19 @@
         });
         el.addEventListener('change', autoSaveSettings);
     });
+
+    var gameVersionSelect = document.getElementById('gameVersionSelect');
+    if (gameVersionSelect) {
+        var savedVersion = localStorage.getItem(GAME_VERSION_KEY) || DEFAULT_GAME_VERSION;
+        var hasSavedOption = false;
+        for (var i = 0; i < gameVersionSelect.options.length; i++) {
+            if (gameVersionSelect.options[i].value === savedVersion) { hasSavedOption = true; break; }
+        }
+        gameVersionSelect.value = hasSavedOption ? savedVersion : DEFAULT_GAME_VERSION;
+        gameVersionSelect.addEventListener('change', function () {
+            localStorage.setItem(GAME_VERSION_KEY, gameVersionSelect.value);
+        });
+    }
 
     var btnAutoConfigureUdp = document.getElementById('btnAutoConfigureUdp');
     var autoConfigureStatus = document.getElementById('autoConfigureStatus');

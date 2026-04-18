@@ -361,8 +361,31 @@
     margin-top: 10px;
 }
 
+.game-settings-auto-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.game-version-select {
+    padding: 7px 28px 7px 10px;
+    background: var(--bg-tertiary) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/></svg>") no-repeat right 10px center;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    outline: none;
+    transition: border-color var(--transition);
+}
+.game-version-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
 .btn-auto-configure {
-    align-self: flex-start;
     background: var(--accent-brand);
     color: #fff;
     border: none;
