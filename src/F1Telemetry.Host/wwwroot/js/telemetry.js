@@ -874,10 +874,13 @@ const pedalHistoryB = [];
 let playerMaxRpm = 0;
 const RPM_SCALE_FALLBACK = 15000;
 let _lastRpmScale = 0;
+let _lastRpmBarShift = null;
+let _lastOverShift = false;
 let _pedalChartRafId = 0;
 /** Absolute RPM thresholds for bar colours (vs current max RPM scale). */
 const RPM_BAR_GREEN_END = 11000;
 const RPM_BAR_GRADIENT_END = 12000;
+const RPM_BAR_SHIFT_GREEN_MARGIN = 600;
 let lastSessionLinkId = null;
 let playerVisualTyreCompound = -1;
 let playerActualTyreCompound = -1;
@@ -1004,14 +1007,22 @@ function setTyreWidgetCompoundAge(car) {
     }
 }
 
-/** Grey track; clipped fill: green 0..11k, gradient 11k..12k, solid red 12k..max. */
-function syncRpmBarSegmentWidths(scale) {
+/** Grey track; clipped fill: green/gradient/red split. If shiftRpm is provided,
+ *  the gradient band is centred on the learned shift point; otherwise fixed
+ *  11k/12k thresholds are used. */
+function syncRpmBarSegmentWidths(scale, shiftRpm) {
     const s = scale > 0 ? scale : RPM_SCALE_FALLBACK;
-    const greenEnd = Math.min(RPM_BAR_GREEN_END, s);
-    const gradEnd = Math.min(RPM_BAR_GRADIENT_END, s);
+    let greenEnd, gradEnd;
+    if (shiftRpm && shiftRpm > 0 && shiftRpm < s) {
+        gradEnd = shiftRpm;
+        greenEnd = Math.max(2000, shiftRpm - RPM_BAR_SHIFT_GREEN_MARGIN);
+    } else {
+        greenEnd = Math.min(RPM_BAR_GREEN_END, s);
+        gradEnd = Math.min(RPM_BAR_GRADIENT_END, s);
+    }
     const wGreen = greenEnd;
     const wGradient = Math.max(0, gradEnd - greenEnd);
-    const wRed = Math.max(0, s - Math.min(RPM_BAR_GRADIENT_END, s));
+    const wRed = Math.max(0, s - gradEnd);
     const setFlex = (id, w) => {
         const node = el(id);
         if (node) node.style.flex = `${w} 0 0`;
@@ -1361,11 +1372,49 @@ function updateCarTelemetry(data) {
     setText("gear", gear === -1 ? "R" : gear === 0 ? "N" : gear.toString());
 
     const scale = playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK;
-    if (scale !== _lastRpmScale) { _lastRpmScale = scale; syncRpmBarSegmentWidths(scale); }
     const rpmPct = Math.min(100, (car.engineRpm / scale) * 100);
     const rpmClip = el("rpmBarClip");
     if (rpmClip) rpmClip.style.setProperty("--rpm-pct", `${rpmPct}%`);
     setText("rpmValue", `${car.engineRpm} / ${scale} RPM`);
+
+    if (window.ShiftModel) {
+        ShiftModel.sample(car, scale);
+        const shiftRpm = ShiftModel.getShiftRpm(gear, scale);
+        if (scale !== _lastRpmScale || shiftRpm !== _lastRpmBarShift) {
+            _lastRpmScale = scale;
+            _lastRpmBarShift = shiftRpm;
+            syncRpmBarSegmentWidths(scale, shiftRpm);
+        }
+        const tick = el("rpmShiftTick");
+        const label = el("rpmShiftLabel");
+        const strip = el("rpmStrip");
+        if (shiftRpm && shiftRpm > 0) {
+            if (tick) {
+                tick.hidden = false;
+                tick.style.setProperty("--shift-pct", `${(shiftRpm / scale) * 100}%`);
+            }
+            if (label) label.textContent = `SHIFT ${shiftRpm}`;
+            const over = car.engineRpm >= shiftRpm;
+            if (over !== _lastOverShift) {
+                _lastOverShift = over;
+                if (strip) strip.classList.toggle("rpm-strip--over-shift", over);
+                if (label) label.classList.toggle("rpm-shift-label--active", over);
+            }
+        } else {
+            if (tick) tick.hidden = true;
+            if (label) {
+                label.textContent = "SHIFT --";
+                label.classList.remove("rpm-shift-label--active");
+            }
+            if (_lastOverShift) {
+                _lastOverShift = false;
+                if (strip) strip.classList.remove("rpm-strip--over-shift");
+            }
+        }
+    } else if (scale !== _lastRpmScale) {
+        _lastRpmScale = scale;
+        syncRpmBarSegmentWidths(scale);
+    }
 
     const t = Math.max(0, Math.min(1, Number(car.throttle) || 0));
     const b = Math.max(0, Math.min(1, Number(car.brake) || 0));
@@ -1408,7 +1457,11 @@ function updateCarStatus(data) {
         playerMaxRpm = car.maxRpm;
     }
 
-    syncRpmBarSegmentWidths(playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK);
+    if (window.ShiftModel) {
+        ShiftModel.updatePower(car.enginePowerIce, car.enginePowerMguK);
+    }
+
+    syncRpmBarSegmentWidths(playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK, _lastRpmBarShift);
 
     const prevVisual = playerVisualTyreCompound;
     const prevActual = playerActualTyreCompound;
@@ -1948,6 +2001,9 @@ function updateParticipants(data) {
             participantNames[i] = p?.name || `Car ${i}`;
             participantTeamIds[i] = p?.teamId != null ? p.teamId : -1;
         }
+    }
+    if (window.ShiftModel) {
+        ShiftModel.setTeam(participantTeamIds[playerCarIndex]);
     }
     updateTopSpeedWidgets();
     updateGapRing();
