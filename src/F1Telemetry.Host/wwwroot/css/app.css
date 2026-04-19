@@ -73,8 +73,9 @@ body.on-live-tab.hide-header .app-header { display: none; }
 
 .tab-nav {
     display: inline-flex;
-    align-items: center;
+    align-items: stretch;
     gap: 4px;
+    height: 40px;
     padding: 4px;
     border: 1px solid var(--border);
     border-radius: 12px;
@@ -86,7 +87,7 @@ body.on-live-tab.hide-header .app-header { display: none; }
 .tab-btn {
     display: inline-flex;
     align-items: center;
-    padding: 6px 20px;
+    padding: 0 20px;
     background: transparent;
     border: none;
     border-radius: 8px;
