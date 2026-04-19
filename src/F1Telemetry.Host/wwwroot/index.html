@@ -12,18 +12,15 @@
 </head>
 <body>
     <header class="app-header">
-        <div class="header-brand">
-            <img class="brand-logo" src="/logo.svg" width="28" height="28" alt="" aria-hidden="true">
-            <span class="brand-title">Telemetry Logger</span>
-        </div>
-        <div class="header-center">
-            <nav class="tab-nav" id="tabNav">
-                <button class="tab-btn active" data-tab="live">Live</button>
-                <button class="tab-btn" data-tab="history">History</button>
-                <button class="tab-btn" data-tab="settings">Settings</button>
-                <button class="tab-btn tab-debug hidden" data-tab="debug">Debug</button>
-            </nav>
-        </div>
+        <a class="header-logo" href="/" aria-label="Telemetry Logger">
+            <img class="header-logo__img" src="/logo.svg" width="24" height="24" alt="" aria-hidden="true">
+        </a>
+        <nav class="tab-nav" id="tabNav">
+            <button class="tab-btn active" data-tab="live">Live</button>
+            <button class="tab-btn" data-tab="history">History</button>
+            <button class="tab-btn" data-tab="settings">Settings</button>
+            <button class="tab-btn tab-debug hidden" data-tab="debug">Debug</button>
+        </nav>
         <div class="connection-pill" id="connectionStatus" data-state="connecting" role="status" aria-live="polite">
             <span class="connection-pill__dot"></span>
             <span class="connection-pill__label">Connecting…</span>
