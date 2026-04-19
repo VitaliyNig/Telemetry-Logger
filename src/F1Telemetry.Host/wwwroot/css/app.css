@@ -77,10 +77,8 @@ body.on-live-tab.hide-header .app-header { display: none; }
     gap: 4px;
     height: 40px;
     padding: 4px;
-    border: 1px solid var(--border);
-    border-radius: 12px;
-    background: var(--bg-secondary);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
     flex-shrink: 0;
 }
 
@@ -90,16 +88,18 @@ body.on-live-tab.hide-header .app-header { display: none; }
     padding: 0 20px;
     background: transparent;
     border: none;
-    border-radius: 8px;
-    color: var(--text-secondary);
+    border-radius: 6px;
+    color: var(--text-dim);
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
+    letter-spacing: 0.5px;
     cursor: pointer;
-    transition: color var(--transition), background var(--transition);
+    transition: all 0.15s;
 }
 
 .tab-btn:hover {
-    color: var(--text-primary);
+    color: var(--text-secondary);
+    background: rgba(255, 255, 255, 0.06);
 }
 
 .tab-btn.active {
