@@ -2,6 +2,7 @@
     "use strict";
 
     var STORAGE_KEY = "f1telemetry_shift_model_v1";
+    var CALIBRATION_KEY = "f1telemetry_shift_calibration_v1";
     var BIN_SIZE = 250;
     var BIN_COUNT = 60;
     var MAX_GEAR = 8;
@@ -19,7 +20,22 @@
     var RENDER_MIN_INTERVAL_MS = 200;
     var SAVE_DEBOUNCE_MS = 2000;
 
+    var F2_MONO_ID = -2;
+    var F2_TEAM_IDS = {
+        155: true, 158: true, 159: true, 160: true, 161: true, 162: true,
+        163: true, 164: true, 165: true, 166: true, 167: true, 168: true,
+    };
+
+    function normalizeTeamId(teamId) {
+        if (teamId == null) return null;
+        var n = Number(teamId);
+        if (!Number.isFinite(n)) return null;
+        if (F2_TEAM_IDS[n]) return F2_MONO_ID;
+        return n;
+    }
+
     var db = {};
+    var calibrationEnabled = true;
     var active = null;
     var lastIcePower = 0;
     var lastGear = 0;
@@ -48,12 +64,33 @@
     function load() {
         try {
             var raw = localStorage.getItem(STORAGE_KEY);
-            if (!raw) return;
-            var parsed = JSON.parse(raw);
-            if (parsed && typeof parsed === "object") db = parsed;
+            if (raw) {
+                var parsed = JSON.parse(raw);
+                if (parsed && typeof parsed === "object") db = parsed;
+            }
         } catch (e) {
             db = {};
         }
+        try {
+            var rawCal = localStorage.getItem(CALIBRATION_KEY);
+            if (rawCal != null) calibrationEnabled = rawCal !== "false";
+        } catch (e) { /* keep default */ }
+    }
+
+    function hasAnySamples(bucket) {
+        if (!bucket) return false;
+        for (var g = 1; g <= MAX_GEAR; g++) {
+            if (bucket.gearCount[g] > 0) return true;
+        }
+        for (var i = 0; i < BIN_COUNT; i++) {
+            if (bucket.powerCount[i] > 0) return true;
+        }
+        return false;
+    }
+
+    function shouldRecord() {
+        if (calibrationEnabled) return true;
+        return !hasAnySamples(active);
     }
 
     function scheduleSave() {
@@ -74,10 +111,11 @@
     }
 
     function setTeam(teamId) {
-        if (teamId == null || teamId < 0) { active = null; return; }
-        var key = String(teamId);
-        if (active && active.teamId === teamId) return;
-        if (!db[key]) db[key] = makeBucket(teamId);
+        var id = normalizeTeamId(teamId);
+        if (id == null || (id < 0 && id !== F2_MONO_ID)) { active = null; return; }
+        var key = String(id);
+        if (active && active.teamId === id) return;
+        if (!db[key]) db[key] = makeBucket(id);
         active = db[key];
         lastRenderedGear = null;
         lastShiftRpm = null;
@@ -102,6 +140,7 @@
 
         if (rpmMax > 0 && rpmMax > active.maxRpm) active.maxRpm = rpmMax;
 
+        if (!shouldRecord()) return;
         if (totalWrites >= SAMPLE_CAP) return;
         if (gear < 1 || rpm <= 0 || throttle < THROTTLE_MIN) return;
         var postShiftSettled = (now - lastGearChangeMs) >= POST_SHIFT_LOCKOUT_MS;
@@ -236,6 +275,94 @@
         flush();
     }
 
+    function deleteTeam(teamId) {
+        var id = normalizeTeamId(teamId);
+        if (id == null) return false;
+        var key = String(id);
+        if (!db[key]) return false;
+        delete db[key];
+        if (active && active.teamId === id) {
+            active = null;
+            lastRenderedGear = null;
+            lastShiftRpm = null;
+        }
+        dirty = true;
+        flush();
+        return true;
+    }
+
+    function listTeams() {
+        var out = [];
+        for (var key in db) {
+            if (!Object.prototype.hasOwnProperty.call(db, key)) continue;
+            var b = db[key];
+            if (!b) continue;
+            var teamId = b.teamId != null ? b.teamId : Number(key);
+            var totalGearSamples = 0;
+            var totalPowerSamples = 0;
+            for (var g = 1; g <= MAX_GEAR; g++) totalGearSamples += b.gearCount[g] || 0;
+            for (var i = 0; i < BIN_COUNT; i++) totalPowerSamples += b.powerCount[i] || 0;
+            out.push({
+                teamId: teamId,
+                maxRpm: b.maxRpm || 0,
+                updatedAt: b.updatedAt || 0,
+                gearSamples: totalGearSamples,
+                powerSamples: totalPowerSamples,
+                isActive: !!(active && active.teamId === teamId),
+            });
+        }
+        out.sort(function (a, b) {
+            if (b.isActive !== a.isActive) return b.isActive - a.isActive;
+            return (b.updatedAt || 0) - (a.updatedAt || 0);
+        });
+        return out;
+    }
+
+    function getTeamStats(teamId) {
+        var id = normalizeTeamId(teamId);
+        if (id == null) return null;
+        var b = db[String(id)];
+        if (!b) return null;
+        var gears = [];
+        for (var g = 1; g <= MAX_GEAR; g++) {
+            var n = b.gearCount[g] || 0;
+            if (n <= 0) {
+                gears.push({ gear: g, samples: 0, avgSpeed: 0, avgRpm: 0, ratio: 0 });
+                continue;
+            }
+            var avgSpeed = b.gearSpeedSum[g] / n;
+            var avgRpm = b.gearRpmSum[g] / n;
+            var ratio = avgRpm > 0 ? avgSpeed / avgRpm : 0;
+            gears.push({ gear: g, samples: n, avgSpeed: avgSpeed, avgRpm: avgRpm, ratio: ratio });
+        }
+        var totalPowerSamples = 0;
+        for (var i = 0; i < BIN_COUNT; i++) totalPowerSamples += b.powerCount[i] || 0;
+        return {
+            teamId: b.teamId != null ? b.teamId : id,
+            maxRpm: b.maxRpm || 0,
+            updatedAt: b.updatedAt || 0,
+            powerSamples: totalPowerSamples,
+            gears: gears,
+        };
+    }
+
+    function getCalibrationEnabled() { return calibrationEnabled; }
+
+    function setCalibrationEnabled(enabled) {
+        calibrationEnabled = !!enabled;
+        try {
+            localStorage.setItem(CALIBRATION_KEY, calibrationEnabled ? "true" : "false");
+        } catch (e) { /* ignore */ }
+    }
+
+    function isRecording() {
+        return shouldRecord() && !!active;
+    }
+
+    function getActiveTeamId() {
+        return active ? active.teamId : null;
+    }
+
     window.addEventListener("beforeunload", flush);
 
     load();
@@ -247,6 +374,13 @@
         getShiftRpm: getShiftRpm,
         reset: reset,
         resetAll: resetAll,
+        deleteTeam: deleteTeam,
+        listTeams: listTeams,
+        getTeamStats: getTeamStats,
+        getCalibrationEnabled: getCalibrationEnabled,
+        setCalibrationEnabled: setCalibrationEnabled,
+        isRecording: isRecording,
+        getActiveTeamId: getActiveTeamId,
         _internals: function () { return { db: db, active: active, totalWrites: totalWrites }; },
     };
 })();
