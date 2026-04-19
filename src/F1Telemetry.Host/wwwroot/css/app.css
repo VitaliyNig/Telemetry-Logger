@@ -60,7 +60,7 @@ body.on-live-tab.hide-header .app-main { height: 100vh; }
 .header-brand {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     flex-shrink: 0;
     min-width: 0;
 }
@@ -256,7 +256,7 @@ body.on-live-tab.hide-header .app-main { height: 100vh; }
 .game-settings-memo-intro {
     font-size: 13px;
     color: var(--text-muted);
-    margin: -8px 0 14px;
+    margin: -8px 0 16px;
     line-height: 1.45;
 }
 
@@ -274,7 +274,7 @@ body.on-live-tab.hide-header .app-main { height: 100vh; }
 
 .game-settings-memo th,
 .game-settings-memo td {
-    padding: 10px 12px;
+    padding: 8px 12px;
     text-align: left;
     border-bottom: 1px solid var(--border);
 }
@@ -314,7 +314,7 @@ body.on-live-tab.hide-header .app-main { height: 100vh; }
     display: block;
     font-size: 14px;
     font-weight: 500;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
     color: var(--text-primary);
 }
 
@@ -348,7 +348,7 @@ body.on-live-tab.hide-header .app-main { height: 100vh; }
 
 .setting-hint code {
     background: var(--bg-tertiary);
-    padding: 1px 5px;
+    padding: 1px 4px;
     border-radius: 3px;
     font-size: 11px;
     font-family: var(--font-mono);
@@ -561,14 +561,14 @@ body.on-live-tab.hide-header .app-main { height: 100vh; }
 .stat-list {
     display: flex;
     flex-direction: column;
-    gap: 6px;
+    gap: 4px;
 }
 
 .stat-item {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: 6px 10px;
+    padding: 8px;
     background: var(--bg-tertiary);
     border-radius: var(--radius-sm);
     font-size: 13px;
@@ -673,7 +673,7 @@ body.on-live-tab.hide-header .app-main { height: 100vh; }
     }
 
     .tab-btn {
-        padding: 8px 14px;
+        padding: 8px 16px;
         border-bottom: none;
         border-radius: var(--radius-sm);
     }
@@ -727,12 +727,12 @@ body.on-live-tab.hide-header .app-main { height: 100vh; }
 
 @media (max-width: 480px) {
     .tab-btn {
-        padding: 8px 10px;
+        padding: 8px;
         font-size: 13px;
     }
 
     .header-brand {
-        gap: 6px;
+        gap: 4px;
     }
 
     .brand-title {
