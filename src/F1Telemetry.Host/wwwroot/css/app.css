@@ -62,11 +62,6 @@ body.on-live-tab.hide-header .app-header { display: none; }
     background: var(--accent);
     box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
     flex-shrink: 0;
-    transition: background var(--transition);
-}
-
-.header-logo:hover {
-    background: var(--accent-hover);
 }
 
 .header-logo__img {
