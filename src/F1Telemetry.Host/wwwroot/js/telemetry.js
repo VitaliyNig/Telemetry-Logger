@@ -721,6 +721,170 @@ function initPitTimesPanel() {
     });
 }
 
+let _carTelemetrySettingsPanel = null;
+let _carTelemetrySettingsDocCloseBound = false;
+
+function closeCarTelemetrySettingsPanel() {
+    if (_carTelemetrySettingsPanel) {
+        _carTelemetrySettingsPanel.remove();
+        _carTelemetrySettingsPanel = null;
+    }
+}
+
+function formatShiftModelRatio(rSecPerRpm) {
+    if (!rSecPerRpm || rSecPerRpm <= 0) return "--";
+    const kmhPerKrpm = rSecPerRpm * 1000;
+    return kmhPerKrpm.toFixed(1);
+}
+
+function shiftModelTeamLabel(teamId) {
+    if (teamId === -2) return "F2 (mono-series)";
+    if (TEAM_NAMES[teamId]) return TEAM_NAMES[teamId];
+    return `Team ${teamId}`;
+}
+
+function renderCarTelemetrySettingsBody(panel) {
+    if (!window.ShiftModel) {
+        panel.innerHTML = '<div class="cts-empty">Shift model is unavailable.</div>';
+        return;
+    }
+    const enabled = ShiftModel.getCalibrationEnabled();
+    const recording = ShiftModel.isRecording();
+    const activeId = ShiftModel.getActiveTeamId();
+    const teams = ShiftModel.listTeams();
+
+    let html = "";
+    html += `<div class="cts-header">Shift RPM calibration</div>`;
+    html += `<div class="cts-desc">`
+        + `The widget learns the optimal shift RPM per team from live telemetry.`
+        + ` Samples are collected when throttle ≥ 50%, clear of gear changes, and used to fit a power curve plus per-gear ratios.`
+        + ` With calibration <b>ON</b> new samples are appended continuously (useful for refining or recalibrating).`
+        + ` With calibration <b>OFF</b> stored values are reused as-is; if the active team has no data yet, recording auto-enables until first samples exist.`
+        + `</div>`;
+
+    const recStatus = recording ? "recording" : "using stored values";
+    const recCls = recording ? "cts-status-rec" : "cts-status-idle";
+    html += `<div class="cts-status ${recCls}">Status: ${recStatus}${activeId != null ? ` · ${escapeXmlText(shiftModelTeamLabel(activeId))}` : ""}</div>`;
+
+    html += `<label class="cts-toggle"><input type="checkbox" id="ctsCalibrationToggle" ${enabled ? "checked" : ""}>`
+        + `<span>Calibration ${enabled ? "ON" : "OFF"}</span></label>`;
+
+    html += `<div class="cts-section-title">Recorded teams <span class="cts-count">${teams.length}</span></div>`;
+    if (teams.length === 0) {
+        html += '<div class="cts-empty">No teams recorded yet.</div>';
+    } else {
+        html += '<div class="cts-team-list">';
+        for (const t of teams) {
+            const name = shiftModelTeamLabel(t.teamId);
+            const stats = ShiftModel.getTeamStats(t.teamId);
+            const activeCls = t.isActive ? " cts-team-active" : "";
+            html += `<div class="cts-team${activeCls}" data-team-id="${t.teamId}">`;
+            html += `<div class="cts-team-head">`
+                + `<span class="cts-team-name">${escapeXmlText(name)}${t.isActive ? ' <span class="cts-team-badge">active</span>' : ""}</span>`
+                + `<span class="cts-team-meta">${t.gearSamples} gear · ${t.powerSamples} power · max ${t.maxRpm || "--"} RPM</span>`
+                + `<button type="button" class="cts-btn cts-btn-mini" data-cts-recal="${t.teamId}" title="Clear this team's data (recording resumes automatically)">Recalibrate</button>`
+                + `<button type="button" class="cts-btn cts-btn-mini cts-btn-danger" data-cts-del="${t.teamId}" title="Delete this team's data">Delete</button>`
+                + `</div>`;
+            if (stats && stats.gears.length > 0) {
+                html += '<table class="cts-gears"><thead><tr><th>Gear</th><th>Samples</th><th>Avg RPM</th><th>Avg km/h</th><th>km/h per 1k RPM</th></tr></thead><tbody>';
+                for (const g of stats.gears) {
+                    const cls = g.samples > 0 ? "" : " cts-gear-empty";
+                    html += `<tr class="${cls}"><td>${g.gear}</td>`
+                        + `<td>${g.samples}</td>`
+                        + `<td>${g.samples > 0 ? Math.round(g.avgRpm) : "--"}</td>`
+                        + `<td>${g.samples > 0 ? g.avgSpeed.toFixed(1) : "--"}</td>`
+                        + `<td>${formatShiftModelRatio(g.ratio)}</td></tr>`;
+                }
+                html += '</tbody></table>';
+            }
+            html += '</div>';
+        }
+        html += '</div>';
+    }
+
+    html += `<div class="cts-footer"><button type="button" class="cts-btn cts-btn-danger" id="ctsResetAll">Reset all</button></div>`;
+
+    panel.innerHTML = html;
+
+    panel.querySelector("#ctsCalibrationToggle")?.addEventListener("change", (ev) => {
+        ShiftModel.setCalibrationEnabled(ev.target.checked);
+        renderCarTelemetrySettingsBody(panel);
+    });
+    panel.querySelector("#ctsResetAll")?.addEventListener("click", () => {
+        if (!confirm("Delete all recorded shift-model data for every team?")) return;
+        ShiftModel.resetAll();
+        renderCarTelemetrySettingsBody(panel);
+    });
+    panel.querySelectorAll("[data-cts-del]").forEach(b => {
+        b.addEventListener("click", () => {
+            const tid = Number(b.getAttribute("data-cts-del"));
+            const name = shiftModelTeamLabel(tid);
+            if (!confirm(`Delete recorded data for ${name}?`)) return;
+            ShiftModel.deleteTeam(tid);
+            renderCarTelemetrySettingsBody(panel);
+        });
+    });
+    panel.querySelectorAll("[data-cts-recal]").forEach(b => {
+        b.addEventListener("click", () => {
+            const tid = Number(b.getAttribute("data-cts-recal"));
+            const activeId = ShiftModel.getActiveTeamId();
+            if (tid === activeId) {
+                ShiftModel.reset();
+            } else {
+                ShiftModel.deleteTeam(tid);
+            }
+            renderCarTelemetrySettingsBody(panel);
+        });
+    });
+}
+
+function positionCarTelemetrySettingsPanel(anchor, panel) {
+    const r = anchor.getBoundingClientRect();
+    const pw = panel.offsetWidth || 340;
+    let left = Math.max(4, r.right - pw);
+    if (left + pw > window.innerWidth - 4) left = window.innerWidth - pw - 4;
+    panel.style.left = left + "px";
+    panel.style.top = (r.bottom + 4) + "px";
+}
+
+function initCarTelemetrySettingsPanel() {
+    const btn = document.getElementById("btnCarTelemetrySettings");
+    if (!btn || btn.dataset.ctsWired === "1") return;
+    btn.dataset.ctsWired = "1";
+
+    btn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        if (_carTelemetrySettingsPanel) {
+            closeCarTelemetrySettingsPanel();
+            return;
+        }
+        const panel = document.createElement("div");
+        panel.className = "car-telemetry-settings-panel";
+        _carTelemetrySettingsPanel = panel;
+        document.body.appendChild(panel);
+        renderCarTelemetrySettingsBody(panel);
+        positionCarTelemetrySettingsPanel(btn, panel);
+        panel.addEventListener("click", (ev) => ev.stopPropagation());
+
+        if (!_carTelemetrySettingsDocCloseBound) {
+            _carTelemetrySettingsDocCloseBound = true;
+            document.addEventListener("click", (ev) => {
+                if (!_carTelemetrySettingsPanel) return;
+                const b = document.getElementById("btnCarTelemetrySettings");
+                if (b && (ev.target === b || b.contains(ev.target))) return;
+                if (_carTelemetrySettingsPanel.contains(ev.target)) return;
+                closeCarTelemetrySettingsPanel();
+            });
+            window.addEventListener("resize", () => {
+                const bn = document.getElementById("btnCarTelemetrySettings");
+                if (_carTelemetrySettingsPanel && bn) {
+                    positionCarTelemetrySettingsPanel(bn, _carTelemetrySettingsPanel);
+                }
+            });
+        }
+    });
+}
+
 let _tyreInfoPanel = null;
 
 function initTyreInfoTooltip() {
@@ -1568,6 +1732,14 @@ function updateCarSetups(data) {
 
 function updateLapData(data) {
     lastLapDataPacket = data;
+
+    updateSessionProgress();
+    updateStandings(data);
+    updateQualiStandings();
+    updatePitPredictor();
+    updateGapBoard();
+    updateGapRing();
+
     const car = data.lapDataItems?.[playerCarIndex];
     if (!car) return;
 
@@ -1579,15 +1751,8 @@ function updateLapData(data) {
         updateTopSpeedWidgets();
     }
 
-    updateSessionProgress();
     updatePitStopTimer(car);
     updateLapDataWidget(car);
-    updateStandings(data);
-    updateQualiStandings();
-    updatePitPredictor();
-    updateGapBoard();
-    updateGapRing();
-    updateLapTimesWidget();
 }
 
 const LAP_DATA_REF_KEY = "f1telemetry_lap_data_ref_v1";
