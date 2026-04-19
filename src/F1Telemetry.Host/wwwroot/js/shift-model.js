@@ -169,20 +169,22 @@
         if (dirty) scheduleSave();
     }
 
-    function gearRatio(g) {
-        if (!active || g < 1 || g > MAX_GEAR) return 0;
-        if (active.gearCount[g] < MIN_RATIO_SAMPLES) return 0;
-        return active.gearSpeedSum[g] / active.gearRpmSum[g];
+    function gearRatio(bucket, g) {
+        var b = bucket || active;
+        if (!b || g < 1 || g > MAX_GEAR) return 0;
+        if (b.gearCount[g] < MIN_RATIO_SAMPLES) return 0;
+        return b.gearSpeedSum[g] / b.gearRpmSum[g];
     }
 
-    function powerAt(rpm) {
-        if (!active) return 0;
+    function powerAt(bucket, rpm) {
+        var bk = bucket || active;
+        if (!bk) return 0;
         var b = rpm / BIN_SIZE;
         var b0 = Math.floor(b);
         var b1 = Math.min(BIN_COUNT - 1, b0 + 1);
         if (b0 < 0 || b0 >= BIN_COUNT) return 0;
-        var p0 = active.powerCount[b0] > 0 ? active.powerBins[b0] : 0;
-        var p1 = active.powerCount[b1] > 0 ? active.powerBins[b1] : 0;
+        var p0 = bk.powerCount[b0] > 0 ? bk.powerBins[b0] : 0;
+        var p1 = bk.powerCount[b1] > 0 ? bk.powerBins[b1] : 0;
         if (p0 === 0 && p1 === 0) return 0;
         if (p0 === 0) return p1;
         if (p1 === 0) return p0;
@@ -190,57 +192,60 @@
         return p0 + (p1 - p0) * t;
     }
 
-    function powerCoverage(rpmMax) {
-        if (!active) return 0;
+    function powerCoverage(bucket, rpmMax) {
+        var bk = bucket || active;
+        if (!bk) return 0;
         var maxBin = Math.min(BIN_COUNT, Math.ceil(rpmMax / BIN_SIZE));
         var minBin = Math.floor(SCAN_MIN_RPM / BIN_SIZE);
         if (maxBin <= minBin) return 0;
         var peak = 0;
         for (var i = 0; i < BIN_COUNT; i++) {
-            if (active.powerBins[i] > peak) peak = active.powerBins[i];
+            if (bk.powerBins[i] > peak) peak = bk.powerBins[i];
         }
         if (peak <= 0) return 0;
         var threshold = peak * POWER_COVERAGE_BIN_FRACTION;
         var filled = 0;
         for (var j = minBin; j < maxBin; j++) {
-            if (active.powerBins[j] >= threshold) filled++;
+            if (bk.powerBins[j] >= threshold) filled++;
         }
         return filled / (maxBin - minBin);
     }
 
-    function peakPowerRpm(rpmMax) {
-        if (!active) return 0;
+    function peakPowerRpm(bucket, rpmMax) {
+        var bk = bucket || active;
+        if (!bk) return 0;
         var maxBin = Math.min(BIN_COUNT, Math.ceil(rpmMax / BIN_SIZE));
         var bestRpm = 0;
         var bestP = 0;
         for (var i = 0; i < maxBin; i++) {
-            if (active.powerCount[i] > 0 && active.powerBins[i] > bestP) {
-                bestP = active.powerBins[i];
+            if (bk.powerCount[i] > 0 && bk.powerBins[i] > bestP) {
+                bestP = bk.powerBins[i];
                 bestRpm = (i + 0.5) * BIN_SIZE;
             }
         }
         return bestRpm;
     }
 
-    function computeShiftRpm(gear, rpmMax) {
-        if (!active) return null;
+    function computeShiftRpm(bucket, gear, rpmMax) {
+        var bk = bucket || active;
+        if (!bk) return null;
         if (gear < 1 || gear >= MAX_GEAR) return null;
-        var rg = gearRatio(gear);
-        var rn = gearRatio(gear + 1);
+        var rg = gearRatio(bk, gear);
+        var rn = gearRatio(bk, gear + 1);
         if (rg <= 0 || rn <= 0) return null;
-        if (powerCoverage(rpmMax) < POWER_COVERAGE_MIN) return null;
+        if (powerCoverage(bk, rpmMax) < POWER_COVERAGE_MIN) return null;
 
         var ratio = rg / rn;
         var shift = 0;
         for (var R = SCAN_MIN_RPM; R <= rpmMax; R += SCAN_STEP_RPM) {
             var Rpost = R * ratio;
             if (Rpost < SCAN_MIN_RPM || Rpost > rpmMax) continue;
-            var Ppre = powerAt(R);
-            var Ppost = powerAt(Rpost);
+            var Ppre = powerAt(bk, R);
+            var Ppost = powerAt(bk, Rpost);
             if (Ppre <= 0 || Ppost <= 0) continue;
             if (Ppre <= Ppost) { shift = R; break; }
         }
-        if (shift === 0) shift = peakPowerRpm(rpmMax);
+        if (shift === 0) shift = peakPowerRpm(bk, rpmMax);
         if (shift <= 0) return null;
         return Math.round(shift / SHIFT_ROUND_RPM) * SHIFT_ROUND_RPM;
     }
@@ -252,8 +257,22 @@
         }
         lastRenderAt = now;
         lastRenderedGear = gear;
-        lastShiftRpm = computeShiftRpm(gear, rpmMax);
+        lastShiftRpm = computeShiftRpm(active, gear, rpmMax);
         return lastShiftRpm;
+    }
+
+    function getTeamShiftRpms(teamId) {
+        var id = normalizeTeamId(teamId);
+        if (id == null) return null;
+        var bucket = db[String(id)];
+        if (!bucket) return null;
+        var rpmMax = bucket.maxRpm > 0 ? bucket.maxRpm : 15000;
+        var out = [];
+        for (var g = 1; g < MAX_GEAR; g++) {
+            var rpm = computeShiftRpm(bucket, g, rpmMax);
+            out.push({ gear: g, shiftRpm: rpm, samples: bucket.gearCount[g] || 0 });
+        }
+        return { teamId: bucket.teamId, rpmMax: rpmMax, gears: out };
     }
 
     function reset() {
@@ -377,6 +396,7 @@
         deleteTeam: deleteTeam,
         listTeams: listTeams,
         getTeamStats: getTeamStats,
+        getTeamShiftRpms: getTeamShiftRpms,
         getCalibrationEnabled: getCalibrationEnabled,
         setCalibrationEnabled: setCalibrationEnabled,
         isRecording: isRecording,

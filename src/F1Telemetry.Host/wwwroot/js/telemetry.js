@@ -724,18 +724,13 @@ function initPitTimesPanel() {
 
 let _carTelemetrySettingsPanel = null;
 let _carTelemetrySettingsDocCloseBound = false;
+const _carTelemetryExpandedTeams = new Set();
 
 function closeCarTelemetrySettingsPanel() {
     if (_carTelemetrySettingsPanel) {
         _carTelemetrySettingsPanel.remove();
         _carTelemetrySettingsPanel = null;
     }
-}
-
-function formatShiftModelRatio(rSecPerRpm) {
-    if (!rSecPerRpm || rSecPerRpm <= 0) return "--";
-    const kmhPerKrpm = rSecPerRpm * 1000;
-    return kmhPerKrpm.toFixed(1);
 }
 
 function shiftModelTeamLabel(teamId) {
@@ -777,26 +772,28 @@ function renderCarTelemetrySettingsBody(panel) {
         html += '<div class="cts-team-list">';
         for (const t of teams) {
             const name = shiftModelTeamLabel(t.teamId);
-            const stats = ShiftModel.getTeamStats(t.teamId);
+            const shifts = ShiftModel.getTeamShiftRpms(t.teamId);
             const activeCls = t.isActive ? " cts-team-active" : "";
-            html += `<div class="cts-team${activeCls}" data-team-id="${t.teamId}">`;
+            const expanded = _carTelemetryExpandedTeams.has(t.teamId);
+            const expCls = expanded ? " cts-team-expanded" : "";
+            html += `<div class="cts-team${activeCls}${expCls}" data-team-id="${t.teamId}">`;
             html += `<div class="cts-team-head">`
-                + `<span class="cts-team-name">${escapeXmlText(name)}${t.isActive ? ' <span class="cts-team-badge">active</span>' : ""}</span>`
-                + `<span class="cts-team-meta">${t.gearSamples} gear · ${t.powerSamples} power · max ${t.maxRpm || "--"} RPM</span>`
+                + `<button type="button" class="cts-team-toggle" data-cts-toggle="${t.teamId}" aria-expanded="${expanded}" title="${expanded ? "Collapse" : "Expand"}"><span class="cts-chevron">${expanded ? "▾" : "▸"}</span><span class="cts-team-name">${escapeXmlText(name)}</span>${t.isActive ? ' <span class="cts-team-badge">active</span>' : ""}</button>`
                 + `<button type="button" class="cts-btn cts-btn-mini" data-cts-recal="${t.teamId}" title="Clear this team's data (recording resumes automatically)">Recalibrate</button>`
                 + `<button type="button" class="cts-btn cts-btn-mini cts-btn-danger" data-cts-del="${t.teamId}" title="Delete this team's data">Delete</button>`
                 + `</div>`;
-            if (stats && stats.gears.length > 0) {
-                html += '<table class="cts-gears"><thead><tr><th>Gear</th><th>Samples</th><th>Avg RPM</th><th>Avg km/h</th><th>km/h per 1k RPM</th></tr></thead><tbody>';
-                for (const g of stats.gears) {
-                    const cls = g.samples > 0 ? "" : " cts-gear-empty";
-                    html += `<tr class="${cls}"><td>${g.gear}</td>`
-                        + `<td>${g.samples}</td>`
-                        + `<td>${g.samples > 0 ? Math.round(g.avgRpm) : "--"}</td>`
-                        + `<td>${g.samples > 0 ? g.avgSpeed.toFixed(1) : "--"}</td>`
-                        + `<td>${formatShiftModelRatio(g.ratio)}</td></tr>`;
+            if (expanded) {
+                if (shifts && shifts.gears.length > 0) {
+                    html += '<div class="cts-gear-grid">';
+                    for (const g of shifts.gears) {
+                        const cls = g.shiftRpm ? "" : " cts-gear-empty";
+                        const val = g.shiftRpm ? `${g.shiftRpm}` : "—";
+                        html += `<div class="cts-gear-cell${cls}"><span class="cts-gear-num">${g.gear}</span><span class="cts-gear-val">${val}</span></div>`;
+                    }
+                    html += '</div>';
+                } else {
+                    html += '<div class="cts-team-hint">Not enough samples yet.</div>';
                 }
-                html += '</tbody></table>';
             }
             html += '</div>';
         }
@@ -833,6 +830,17 @@ function renderCarTelemetrySettingsBody(panel) {
                 ShiftModel.reset();
             } else {
                 ShiftModel.deleteTeam(tid);
+            }
+            renderCarTelemetrySettingsBody(panel);
+        });
+    });
+    panel.querySelectorAll("[data-cts-toggle]").forEach(b => {
+        b.addEventListener("click", () => {
+            const tid = Number(b.getAttribute("data-cts-toggle"));
+            if (_carTelemetryExpandedTeams.has(tid)) {
+                _carTelemetryExpandedTeams.delete(tid);
+            } else {
+                _carTelemetryExpandedTeams.add(tid);
             }
             renderCarTelemetrySettingsBody(panel);
         });
