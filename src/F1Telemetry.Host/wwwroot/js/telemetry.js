@@ -3436,6 +3436,10 @@ function initConnection() {
         .build();
 
     const statusEl = el("connectionStatus");
+    const setConnectionState = (state, label) => {
+        statusEl.dataset.state = state;
+        statusEl.querySelector(".connection-pill__label").textContent = label;
+    };
 
     connection.on("ReceivePacket", (packetType, header, data) => {
         playerCarIndex = header?.playerCarIndex ?? 0;
@@ -3477,31 +3481,26 @@ function initConnection() {
     });
 
     connection.onreconnecting(() => {
-        statusEl.className = "connection-status";
-        statusEl.querySelector(".status-text").textContent = "Reconnecting...";
+        setConnectionState("reconnecting", "Reconnecting…");
     });
 
     connection.onreconnected(() => {
-        statusEl.className = "connection-status connected";
-        statusEl.querySelector(".status-text").textContent = "Connected";
+        setConnectionState("connected", "Connected");
         requestCurrentState(connection);
     });
 
     connection.onclose(() => {
-        statusEl.className = "connection-status disconnected";
-        statusEl.querySelector(".status-text").textContent = "Disconnected";
+        setConnectionState("offline", "Disconnected");
     });
 
     connection.start()
         .then(() => {
-            statusEl.className = "connection-status connected";
-            statusEl.querySelector(".status-text").textContent = "Connected";
+            setConnectionState("connected", "Connected");
             requestCurrentState(connection);
         })
         .catch(err => {
             console.error("SignalR connection failed:", err);
-            statusEl.className = "connection-status disconnected";
-            statusEl.querySelector(".status-text").textContent = "Connection failed";
+            setConnectionState("offline", "Connection failed");
         });
 }
 

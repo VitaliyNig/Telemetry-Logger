@@ -38,32 +38,85 @@
     --space-6: 24px;
 }
 
-/* Connection status indicator (used in app header) */
-.connection-status {
-    display: flex;
+/* Connection pill (used in app header) */
+.connection-pill {
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 16px;
-    border-radius: 20px;
-    background: rgba(255,255,255,0.05);
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-4);
+    border-radius: 999px;
+    border: 1px solid transparent;
+    background: rgba(255,255,255,0.04);
+    color: var(--text-secondary);
     font-size: 13px;
+    font-weight: 500;
     flex-shrink: 0;
+    transition: background 0.25s ease, border-color 0.25s ease, color 0.25s ease;
 }
 
-.status-dot {
+.connection-pill__dot {
+    position: relative;
     width: 8px;
     height: 8px;
     border-radius: 50%;
     background: var(--accent-orange);
-    animation: pulse 1.5s infinite;
+    flex-shrink: 0;
 }
 
-.connection-status.connected .status-dot { background: var(--accent-green); animation: none; }
-.connection-status.disconnected .status-dot { background: var(--semantic-red); animation: none; }
+.connection-pill__dot::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: inherit;
+    opacity: 0;
+}
 
-@keyframes pulse {
-    0%, 100% { opacity: 1; }
-    50% { opacity: 0.4; }
+.connection-pill[data-state="connecting"] {
+    background: rgba(255, 140, 0, 0.12);
+    border-color: rgba(255, 140, 0, 0.32);
+    color: var(--accent-orange);
+}
+.connection-pill[data-state="connecting"] .connection-pill__dot { background: var(--accent-orange); }
+.connection-pill[data-state="connecting"] .connection-pill__dot::before {
+    animation: pulse-ring 1.5s ease-out infinite;
+}
+
+.connection-pill[data-state="reconnecting"] {
+    background: rgba(255, 215, 0, 0.12);
+    border-color: rgba(255, 215, 0, 0.32);
+    color: var(--accent-yellow);
+}
+.connection-pill[data-state="reconnecting"] .connection-pill__dot { background: var(--accent-yellow); }
+.connection-pill[data-state="reconnecting"] .connection-pill__dot::before {
+    animation: pulse-ring 1s ease-out infinite;
+}
+
+.connection-pill[data-state="connected"] {
+    background: rgba(0, 215, 0, 0.10);
+    border-color: rgba(0, 215, 0, 0.28);
+    color: var(--accent-green);
+}
+.connection-pill[data-state="connected"] .connection-pill__dot {
+    background: var(--accent-green);
+    box-shadow: 0 0 0 3px rgba(0, 215, 0, 0.22);
+}
+
+.connection-pill[data-state="offline"] {
+    background: rgba(225, 6, 0, 0.08);
+    border-color: rgba(225, 6, 0, 0.25);
+    color: var(--semantic-red);
+}
+.connection-pill[data-state="offline"] .connection-pill__dot { background: var(--semantic-red); }
+
+@keyframes pulse-ring {
+    0%   { transform: scale(1);   opacity: 0.6; }
+    80%  { transform: scale(2.6); opacity: 0; }
+    100% { transform: scale(2.6); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .connection-pill__dot::before { animation: none; }
 }
 
 /* GridStack 24-column grid (gridstack-extra.min.css only covers 2-11; base covers 12) */

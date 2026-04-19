@@ -660,7 +660,7 @@ body.on-live-tab.hide-header .app-main { height: 100vh; }
         order: 1;
     }
 
-    .connection-status {
+    .connection-pill {
         align-self: center;
         order: 3;
     }
