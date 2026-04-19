@@ -45,7 +45,7 @@ html, body {
     gap: 12px;
     padding: 0;
     height: 48px;
-    margin: 12px 24px 0;
+    margin: 8px 24px 0;
     background: transparent;
     flex-shrink: 0;
 }
