@@ -1568,6 +1568,14 @@ function updateCarSetups(data) {
 
 function updateLapData(data) {
     lastLapDataPacket = data;
+
+    updateSessionProgress();
+    updateStandings(data);
+    updateQualiStandings();
+    updatePitPredictor();
+    updateGapBoard();
+    updateGapRing();
+
     const car = data.lapDataItems?.[playerCarIndex];
     if (!car) return;
 
@@ -1579,15 +1587,8 @@ function updateLapData(data) {
         updateTopSpeedWidgets();
     }
 
-    updateSessionProgress();
     updatePitStopTimer(car);
     updateLapDataWidget(car);
-    updateStandings(data);
-    updateQualiStandings();
-    updatePitPredictor();
-    updateGapBoard();
-    updateGapRing();
-    updateLapTimesWidget();
 }
 
 const LAP_DATA_REF_KEY = "f1telemetry_lap_data_ref_v1";
