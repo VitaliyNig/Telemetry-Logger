@@ -138,24 +138,25 @@ function getCompoundWearRate(actualCompoundId) {
     return v != null ? v : null;
 }
 
-/* Per-compound temperature zones (°C), derived from in-game grip curves:
- *   T < cold           → undercool   (blue)
- *   cold ≤ T < pLo     → warming up  (green)
- *   pLo ≤ T ≤ pHi      → perfect     (purple, ~100% grip)
- *   pHi < T ≤ hot      → overheat    (yellow)
- *   T > hot            → critical    (red)
+/* Per-compound temperature zones (°C), derived from in-game grip curves
+ * (docs/F1_tire_grip_interpolated.xlsx):
+ *   T < cold           → undercool   (blue,   grip < 99%)
+ *   cold ≤ T < pLo     → warming up  (green,  grip ≥ 99%)
+ *   pLo ≤ T ≤ pHi      → perfect     (purple, grip = 100%)
+ *   pHi < T ≤ hot      → overheat    (yellow, grip ≥ 99%)
+ *   T > hot            → critical    (red,    grip < 99%)
  */
 const ACTUAL_COMPOUND_TEMP = {
-    20: { cold: 90, perfectLow: 100, perfectHigh: 110, hot: 125 },  // C1
-    19: { cold: 85, perfectLow: 90,  perfectHigh: 100, hot: 115 },  // C2
-    18: { cold: 75, perfectLow: 80,  perfectHigh: 100, hot: 115 },  // C3
-    17: { cold: 70, perfectLow: 80,  perfectHigh: 90,  hot: 105 },  // C4
-    16: { cold: 60, perfectLow: 70,  perfectHigh: 90,  hot: 100 },  // C5
-    22: { cold: 50, perfectLow: 60,  perfectHigh: 80,  hot: 95  },  // C6
-    7:  { cold: 50, perfectLow: 60,  perfectHigh: 70,  hot: 80  },  // Inter
-    8:  { cold: 45, perfectLow: 50,  perfectHigh: 60,  hot: 75  },  // Wet
+    20: { cold: 89, perfectLow: 106, perfectHigh: 110, hot: 130 },  // C1
+    19: { cold: 80, perfectLow: 96,  perfectHigh: 98,  hot: 125 },  // C2
+    18: { cold: 75, perfectLow: 86,  perfectHigh: 96,  hot: 118 },  // C3
+    17: { cold: 68, perfectLow: 81,  perfectHigh: 86,  hot: 110 },  // C4
+    16: { cold: 65, perfectLow: 76,  perfectHigh: 86,  hot: 106 },  // C5
+    22: { cold: 56, perfectLow: 74,  perfectHigh: 76,  hot: 102 },  // C6
+    7:  { cold: 48, perfectLow: 66,  perfectHigh: 70,  hot: 96  },  // Inter
+    8:  { cold: 42, perfectLow: 56,  perfectHigh: 62,  hot: 86  },  // Wet
 };
-const ACTUAL_COMPOUND_TEMP_DEFAULT = { cold: 70, perfectLow: 80, perfectHigh: 100, hot: 115 };
+const ACTUAL_COMPOUND_TEMP_DEFAULT = { cold: 75, perfectLow: 86, perfectHigh: 96, hot: 118 };
 
 const TEMP_COLORS = {
     cold: "#00a6ff",
@@ -915,7 +916,7 @@ function openTyreInfo(anchor) {
         `<span class="tip-zone" style="background:#eab308">Hot</span>` +
         `<span class="tip-zone" style="background:#ef4444">Overheat</span>` +
         `</div>` +
-        `<div class="tip-desc">Undercool · Warming · 100% grip · Slight overheat · Critical</div></div>`;
+        `<div class="tip-desc">&lt;99% · ≥99% · 100% grip · ≥99% · &lt;99%</div></div>`;
 
     document.body.appendChild(panel);
     _tyreInfoPanel = panel;
