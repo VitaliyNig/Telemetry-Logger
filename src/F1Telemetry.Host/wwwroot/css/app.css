@@ -124,7 +124,7 @@ body.on-live-tab.hide-header .app-header { display: none; }
 
 .tab-panel {
     display: none;
-    padding: 0 24px 24px;
+    padding: 8px 24px 24px;
 }
 
 .tab-panel.active {
@@ -143,7 +143,7 @@ body.on-live-tab.hide-header .app-header { display: none; }
 }
 
 .settings-scroll {
-    padding: 0 24px 90px;
+    padding: 8px 24px 90px;
 }
 
 .settings-footer {
@@ -649,7 +649,7 @@ body.on-live-tab.hide-header .app-header { display: none; }
     }
 
     .tab-panel {
-        padding: 0 16px 16px;
+        padding: 8px 16px 16px;
     }
 
     .settings-tab-panel {
@@ -657,7 +657,7 @@ body.on-live-tab.hide-header .app-header { display: none; }
     }
 
     .settings-tab-panel.active .settings-scroll {
-        padding: 0 16px 90px;
+        padding: 8px 16px 90px;
     }
 
     .settings-footer {
