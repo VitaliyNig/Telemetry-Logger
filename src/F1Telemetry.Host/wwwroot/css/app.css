@@ -51,7 +51,6 @@ html, body {
 }
 
 body.on-live-tab.hide-header .app-header { display: none; }
-body.on-live-tab.hide-header .app-main { height: 100vh; }
 
 .header-logo {
     display: inline-flex;
@@ -122,14 +121,13 @@ body.on-live-tab.hide-header .app-main { height: 100vh; }
 
 /* === MAIN === */
 .app-main {
-    height: calc(100vh - 56px);
-    overflow: hidden;
+    height: 100vh;
+    overflow-y: auto;
+    overflow-x: hidden;
 }
 
 .tab-panel {
     display: none;
-    height: 100%;
-    overflow-y: auto;
     padding: 24px;
 }
 
@@ -146,8 +144,6 @@ body.on-live-tab.hide-header .app-main { height: 100vh; }
     display: none;
     flex-direction: column;
     padding: 0;
-    overflow: hidden;
-    min-height: 0;
     position: relative;
 }
 
@@ -156,15 +152,12 @@ body.on-live-tab.hide-header .app-main { height: 100vh; }
 }
 
 .settings-scroll {
-    flex: 1;
-    min-height: 0;
-    overflow-y: auto;
     padding: 24px;
     padding-bottom: 90px;
 }
 
 .settings-footer {
-    position: absolute;
+    position: sticky;
     bottom: 0;
     left: 0;
     right: 0;
@@ -663,10 +656,6 @@ body.on-live-tab.hide-header .app-main { height: 100vh; }
 
     .tab-btn {
         padding: 6px 16px;
-    }
-
-    .app-main {
-        height: calc(100vh - 100px);
     }
 
     .tab-panel {
