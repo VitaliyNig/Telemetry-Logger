@@ -1021,6 +1021,8 @@ const sessionHistories = {};
 let lastCarSetupsPacket = null;
 /** Per-lap setup snapshots received from backend: { lapIndex: setupObject } */
 let _lapSetupSnapshots = {};
+/** Per-lap tyre snapshots received from backend: { lapIndex: { actualTyreCompound, visualTyreCompound, tyresAgeLaps, tyresWear[] } } */
+let _lapTyreSnapshots = {};
 /** Time Trial packet (session / personal / rival rows). */
 let lastTimeTrialPacket = null;
 let _lapTimesSetupIdSeq = 0;
@@ -1666,6 +1668,7 @@ function updateCarStatus(data) {
 const FUEL_MIX_BADGE  = { 0: "LEAN", 1: "STD", 2: "RICH", 3: "MAX" };
 const ERS_MODE_BADGE  = { 0: "NONE", 1: "MED",  2: "HOT",  3: "OVER" };
 const MAX_ERS_J = 4_000_000;
+const MAX_MGUK_HARVEST_J = 2_000_000;
 
 function updateFuelErsWidget(car) {
     if (!car) return;
@@ -1683,14 +1686,14 @@ function updateFuelErsWidget(car) {
 
     const sType = lastSessionPacket?.sessionType ?? 0;
     const isRace = sType === 15 || sType === 16 || sType === 17;
-    const totalLaps = lastSessionPacket?.totalLaps ?? 0;
-    const curLap = lastLapDataPacket?.lapDataItems?.[playerCarIndex]?.currentLapNum ?? 0;
     const deltaBox = el("csFuelDeltaBox");
     const deltaEl = el("csFuelDelta");
-    const showDelta = isRace && totalLaps > 0 && curLap > 0 && Number.isFinite(fuelRemLaps);
+    // m_fuelRemainingLaps is the MFD value: a signed delta of laps of fuel
+    // surplus (+) or deficit (-) relative to finishing the race.
+    const showDelta = isRace && Number.isFinite(fuelRemLaps);
     if (deltaBox) deltaBox.hidden = !showDelta;
     if (showDelta && deltaEl) {
-        const delta = fuelRemLaps - (totalLaps - curLap);
+        const delta = fuelRemLaps;
         const sign = delta >= 0 ? "+" : "";
         deltaEl.textContent = sign + delta.toFixed(2);
         let cls;
@@ -1718,11 +1721,13 @@ function updateFuelErsWidget(car) {
     if (deployBar) deployBar.style.width = deployPct + "%";
     setText("csErsDeployVal", (deployJ / 1_000_000).toFixed(2) + " / 4.00 MJ");
 
-    const harvestJ = Math.max(0, (Number(car.ersHarvestedThisLapMguK) || 0) + (Number(car.ersHarvestedThisLapMguH) || 0));
-    const harvestPct = Math.max(0, Math.min(100, (harvestJ / MAX_ERS_J) * 100));
+    // Only MGU-K is regulated (max 2 MJ/lap to battery) and matches the in-game MFD "Harvest".
+    // MGU-H is unlimited and not displayed here.
+    const harvestJ = Math.max(0, Number(car.ersHarvestedThisLapMguK) || 0);
+    const harvestPct = Math.max(0, Math.min(100, (harvestJ / MAX_MGUK_HARVEST_J) * 100));
     const harvestBar = el("csErsHarvestBar");
     if (harvestBar) harvestBar.style.width = harvestPct + "%";
-    setText("csErsHarvestVal", harvestPct.toFixed(0) + "% · " + (harvestJ / 1_000_000).toFixed(2) + " MJ");
+    setText("csErsHarvestVal", (harvestJ / 1_000_000).toFixed(2) + " / 2.00 MJ");
 }
 
 function updateCarSetups(data) {
@@ -3116,7 +3121,6 @@ function updateGapRing() {
         return;
     }
 
-    const leaderLap = items[sorted[0].idx].currentLapNum || 0;
     const lapLen = getGapRingLapLengthMeters(items, activeIdxs);
     const n = sorted.length;
     const fontOuter = n > 16 ? 6.5 : n > 12 ? 7.5 : 8.5;
@@ -3171,9 +3175,6 @@ function updateGapRing() {
     }
 
     for (const { d, cos, sin, teamColor } of placed) {
-        const lapsDown = leaderLap - (d.currentLapNum || 0);
-        const lapSuffix = lapsDown > 0 ? ` ${lapsDown}L` : "";
-
         const isLeader = d.pos === 1;
         const outerText = formatGapRingOuterMs(d.gapLeaderMs, isLeader);
         const innerText = formatGapRingIntervalMs(d.gapAheadMs, isLeader);
@@ -3187,7 +3188,7 @@ function updateGapRing() {
 
         const nameCls = d.isPlayer ? "gap-ring-txt-name gap-ring-txt-player" : "gap-ring-txt-name";
         svgParts.push(`<text x="${ox}" y="${oy}" class="gap-ring-txt-outer" font-size="${fontOuter}">${escapeXmlText(outerText)}</text>`);
-        svgParts.push(`<text x="${mx}" y="${my}" class="${nameCls}" fill="${teamColor}" font-size="${fontName}" font-weight="600">${escapeXmlText(driverAbbrFromName(d.name) + lapSuffix)}</text>`);
+        svgParts.push(`<text x="${mx}" y="${my}" class="${nameCls}" fill="${teamColor}" font-size="${fontName}" font-weight="600">${escapeXmlText(driverAbbrFromName(d.name))}</text>`);
         svgParts.push(`<text x="${ix}" y="${iy}" class="gap-ring-txt-inner" font-size="${fontInner}">${escapeXmlText(innerText)}</text>`);
     }
 
@@ -3526,21 +3527,44 @@ function ensureLapTimesMenuHandlers() {
     });
 }
 
-function renderLapTimesPractice(tbody, headRow) {
+function isSetupSnapshotSession() {
+    const t = lastSessionPacket?.sessionType ?? 0;
+    return (t >= 1 && t <= 4) || t === 18;
+}
+
+function buildLapTyreCellHtml(lapIdx) {
+    const snap = _lapTyreSnapshots[lapIdx];
+    if (!snap) return '<span class="lt-tyre-empty">—</span>';
+    const visualId = snap.visualTyreCompound;
+    const color = COMPOUND_DOT_COLORS[visualId] || "var(--text-dim)";
+    const compoundName = VISUAL_COMPOUNDS[visualId] || "";
+    const age = snap.tyresAgeLaps ?? 0;
+    const wearArr = Array.isArray(snap.tyresWear) ? snap.tyresWear : [];
+    let maxWear = 0;
+    for (const w of wearArr) if (Number.isFinite(w) && w > maxWear) maxWear = w;
+    const wearPct = Math.round(maxWear);
+    const title = compoundName ? `${compoundName} — age ${age}L, wear ${wearPct}%` : `Age ${age}L, wear ${wearPct}%`;
+    return `<span class="lt-tyre-cell" title="${title}"><span class="lt-tyre-dot" style="background:${color}">${age}</span><span class="lt-tyre-wear">${wearPct}%</span></span>`;
+}
+
+function renderLapTimes(tbody, headRow) {
     const hist = sessionHistories[playerCarIndex];
     if (!hist?.lapHistoryDataItems?.length) {
         tbody.innerHTML = '<tr><td colspan="7" class="lt-placeholder">Waiting for lap data…</td></tr>';
         return;
     }
+    const showSetup = isSetupSnapshotSession();
     if (headRow) {
-        headRow.innerHTML = '<th class="lt-col-lead">#</th><th>Car</th><th>Lap</th><th>S1</th><th>S2</th><th>S3</th><th class="lt-col-setup"></th>';
+        const lastCol = showSetup
+            ? '<th class="lt-col-setup" aria-label="Setup"></th>'
+            : '<th class="lt-col-tyre">Tyre</th>';
+        headRow.innerHTML = '<th class="lt-col-lead">#</th><th>Car</th><th>Lap</th><th>S1</th><th>S2</th><th>S3</th>' + lastCol;
     }
 
     const eq = lastSessionPacket?.equalCarPerformance;
     const perfIcon = equalPerfTooltipAndIcon(eq);
     const rawTid = participantTeamIds[playerCarIndex];
     const teamIdForColor = (typeof rawTid === "number" && rawTid >= 0) ? rawTid : -1;
-    const tcol = teamAccentColor(teamIdForColor);
     const teamName = teamIdForColor >= 0 ? (TEAM_NAMES[teamIdForColor] || "") : "";
 
     const laps = hist.lapHistoryDataItems;
@@ -3557,11 +3581,19 @@ function renderLapTimesPractice(tbody, headRow) {
         const s1 = formatTime(sectorMsFromHistoryEntry(entry, 1));
         const s2 = formatTime(sectorMsFromHistoryEntry(entry, 2));
         const s3 = formatTime(sectorMsFromHistoryEntry(entry, 3));
-        const snapSetup = _lapSetupSnapshots[i];
-        const setupHtml = snapSetup
-            ? formatCarSetupPopoverHtml(snapSetup)
-            : buildLapTimesSetupHtml(playerCarIndex);
-        const sid = registerLapTimesSetup(setupHtml);
+
+        let lastCellHtml;
+        if (showSetup) {
+            const snapSetup = _lapSetupSnapshots[i];
+            const setupHtml = snapSetup
+                ? formatCarSetupPopoverHtml(snapSetup)
+                : buildLapTimesSetupHtml(playerCarIndex);
+            const sid = registerLapTimesSetup(setupHtml);
+            lastCellHtml = `<td><button type="button" class="lt-setup-btn" data-lt-sid="${sid}" title="Setup (click or right‑click)" aria-expanded="false">⋮</button></td>`;
+        } else {
+            lastCellHtml = `<td class="lt-tyre-td">${buildLapTyreCellHtml(i)}</td>`;
+        }
+
         parts.push(`<tr class="${rowCls}">
             <td>${i + 1}</td>
             <td class="lt-car-cell"><div class="lt-car-inner"><div class="lt-car-meta"><span class="lt-car-name">${escapeXmlText(teamName)}</span></div>${perfIcon}</div></td>
@@ -3569,7 +3601,7 @@ function renderLapTimesPractice(tbody, headRow) {
             <td>${s1}</td>
             <td>${s2}</td>
             <td>${s3}</td>
-            <td><button type="button" class="lt-setup-btn" data-lt-sid="${sid}" title="Setup (click or right‑click)" aria-expanded="false">⋮</button></td>
+            ${lastCellHtml}
         </tr>`);
     }
 
@@ -3585,7 +3617,7 @@ function updateLapTimesWidget() {
     const tbody = document.getElementById("lapTimesBody");
     if (!tbody) return;
     const headRow = document.getElementById("lapTimesHeadRow");
-    renderLapTimesPractice(tbody, headRow);
+    renderLapTimes(tbody, headRow);
 }
 
 const PACKET_HANDLERS = {
@@ -3631,6 +3663,7 @@ function initConnection() {
                 _lapTimesSetupContent.clear();
                 _lapTimesSetupIdSeq = 0;
                 _lapSetupSnapshots = {};
+                _lapTyreSnapshots = {};
                 closeLapTimesSetupPopover();
                 for (const k in sessionHistories) delete sessionHistories[k];
             }
@@ -3650,6 +3683,13 @@ function initConnection() {
     connection.on("ReceiveSetupSnapshot", (carIndex, lapIndex, setup) => {
         if (carIndex === playerCarIndex) {
             _lapSetupSnapshots[lapIndex] = setup;
+            updateLapTimesWidget();
+        }
+    });
+
+    connection.on("ReceiveTyreSnapshot", (carIndex, lapIndex, snapshot) => {
+        if (carIndex === playerCarIndex) {
+            _lapTyreSnapshots[lapIndex] = snapshot;
             updateLapTimesWidget();
         }
     });
@@ -3702,6 +3742,15 @@ function requestCurrentState(connection) {
             }
         })
         .catch(err => console.warn("Failed to get setup snapshots:", err));
+
+    connection.invoke("GetTyreSnapshots", playerCarIndex)
+        .then(snapshots => {
+            if (snapshots) {
+                _lapTyreSnapshots = snapshots;
+                updateLapTimesWidget();
+            }
+        })
+        .catch(err => console.warn("Failed to get tyre snapshots:", err));
 }
 
 document.addEventListener("DOMContentLoaded", async () => {

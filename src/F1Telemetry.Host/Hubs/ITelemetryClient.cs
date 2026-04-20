@@ -7,5 +7,6 @@ public interface ITelemetryClient
 {
     Task ReceivePacket(string packetType, TelemetryPacketHeader header, object data);
     Task ReceiveSetupSnapshot(byte carIndex, int lapIndex, object setup);
+    Task ReceiveTyreSnapshot(byte carIndex, int lapIndex, object snapshot);
     Task DebugPacket(object data);
 }
