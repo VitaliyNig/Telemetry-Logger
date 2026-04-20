@@ -3462,8 +3462,9 @@ function closeLapTimesSetupPopover() {
 
 function positionLapTimesPopover(anchor, panel) {
     const r = anchor.getBoundingClientRect();
-    const pw = Math.min(320, panel.offsetWidth || 280);
-    let left = r.left;
+    const pw = panel.offsetWidth || 340;
+    let left = r.right - pw;
+    if (left < 8) left = Math.min(r.left, window.innerWidth - pw - 8);
     if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
     if (left < 8) left = 8;
     let top = r.bottom + 6;
