@@ -23,6 +23,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
     private readonly PacketDeserializerRegistry _registry;
     private readonly TelemetryState _state;
     private readonly LapSetupStore _lapSetupStore;
+    private readonly LapTyreStore _lapTyreStore;
     private readonly SessionLogger _sessionLogger;
     private readonly DebugPacketTracker _tracker;
     private readonly IHubContext<TelemetryHub, ITelemetryClient> _hubContext;
@@ -34,6 +35,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         PacketDeserializerRegistry registry,
         TelemetryState state,
         LapSetupStore lapSetupStore,
+        LapTyreStore lapTyreStore,
         SessionLogger sessionLogger,
         DebugPacketTracker tracker,
         IHubContext<TelemetryHub, ITelemetryClient> hubContext,
@@ -44,12 +46,18 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         _registry = registry;
         _state = state;
         _lapSetupStore = lapSetupStore;
+        _lapTyreStore = lapTyreStore;
         _sessionLogger = sessionLogger;
         _tracker = tracker;
         _hubContext = hubContext;
         _appSettings = appSettings;
         _logger = logger;
     }
+
+    // Session types where a setup snapshot per lap is relevant (tuning sessions).
+    // 1-4 = Practice variants, 18 = Time Trial. See F1 25 UDP spec.
+    private static bool IsSetupSnapshotSession(byte sessionType) =>
+        sessionType is >= 1 and <= 4 or 18;
 
     public async Task OnPacketAsync(RawTelemetryPacket packet, CancellationToken cancellationToken)
     {
@@ -101,54 +109,43 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
             var carIdx = header.PlayerCarIndex;
             if (carIdx < lapDataPacket.LapDataItems.Length)
             {
-                var result = _lapSetupStore.OnLapData(
-                    header.SessionUid,
-                    carIdx,
-                    lapDataPacket.LapDataItems[carIdx].CurrentLapNum,
-                    idx =>
-                    {
-                        var setups = _state.Get<CarSetupsPacket>((byte)F125PacketId.CarSetups);
-                        if (setups?.CarSetupData == null || idx >= setups.CarSetupData.Length)
-                            return null;
-                        var src = setups.CarSetupData[idx];
-                        return new CarSetupData
-                        {
-                            FrontWing = src.FrontWing,
-                            RearWing = src.RearWing,
-                            OnThrottle = src.OnThrottle,
-                            OffThrottle = src.OffThrottle,
-                            FrontCamber = src.FrontCamber,
-                            RearCamber = src.RearCamber,
-                            FrontToe = src.FrontToe,
-                            RearToe = src.RearToe,
-                            FrontSuspension = src.FrontSuspension,
-                            RearSuspension = src.RearSuspension,
-                            FrontAntiRollBar = src.FrontAntiRollBar,
-                            RearAntiRollBar = src.RearAntiRollBar,
-                            FrontSuspensionHeight = src.FrontSuspensionHeight,
-                            RearSuspensionHeight = src.RearSuspensionHeight,
-                            BrakePressure = src.BrakePressure,
-                            BrakeBias = src.BrakeBias,
-                            EngineBraking = src.EngineBraking,
-                            RearLeftTyrePressure = src.RearLeftTyrePressure,
-                            RearRightTyrePressure = src.RearRightTyrePressure,
-                            FrontLeftTyrePressure = src.FrontLeftTyrePressure,
-                            FrontRightTyrePressure = src.FrontRightTyrePressure,
-                            Ballast = src.Ballast,
-                            FuelLoad = src.FuelLoad,
-                        };
-                    });
+                var currentLapNum = lapDataPacket.LapDataItems[carIdx].CurrentLapNum;
+                var sessionType = _state.Get<SessionPacket>((byte)F125PacketId.Session)?.SessionType ?? 0;
 
-                if (result.HasValue)
+                if (IsSetupSnapshotSession(sessionType))
                 {
-                    try
+                    var result = _lapSetupStore.OnLapData(
+                        header.SessionUid, carIdx, currentLapNum, idx => CaptureSetupSnapshot(idx));
+
+                    if (result.HasValue)
                     {
-                        await _hubContext.Clients.All.ReceiveSetupSnapshot(
-                            carIdx, result.Value.LapIndex, result.Value.Setup);
+                        try
+                        {
+                            await _hubContext.Clients.All.ReceiveSetupSnapshot(
+                                carIdx, result.Value.LapIndex, result.Value.Setup);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to broadcast setup snapshot");
+                        }
                     }
-                    catch (Exception ex)
+                }
+                else
+                {
+                    var result = _lapTyreStore.OnLapData(
+                        header.SessionUid, carIdx, currentLapNum, idx => CaptureTyreSnapshot(idx));
+
+                    if (result.HasValue)
                     {
-                        _logger.LogError(ex, "Failed to broadcast setup snapshot");
+                        try
+                        {
+                            await _hubContext.Clients.All.ReceiveTyreSnapshot(
+                                carIdx, result.Value.LapIndex, result.Value.Snapshot);
+                        }
+                        catch (Exception ex)
+                        {
+                            _logger.LogError(ex, "Failed to broadcast tyre snapshot");
+                        }
                     }
                 }
             }
@@ -180,5 +177,58 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
                 _logger.LogError(ex, "Failed to send debug packet");
             }
         }
+    }
+
+    private CarSetupData? CaptureSetupSnapshot(byte idx)
+    {
+        var setups = _state.Get<CarSetupsPacket>((byte)F125PacketId.CarSetups);
+        if (setups?.CarSetupData == null || idx >= setups.CarSetupData.Length)
+            return null;
+        var src = setups.CarSetupData[idx];
+        return new CarSetupData
+        {
+            FrontWing = src.FrontWing,
+            RearWing = src.RearWing,
+            OnThrottle = src.OnThrottle,
+            OffThrottle = src.OffThrottle,
+            FrontCamber = src.FrontCamber,
+            RearCamber = src.RearCamber,
+            FrontToe = src.FrontToe,
+            RearToe = src.RearToe,
+            FrontSuspension = src.FrontSuspension,
+            RearSuspension = src.RearSuspension,
+            FrontAntiRollBar = src.FrontAntiRollBar,
+            RearAntiRollBar = src.RearAntiRollBar,
+            FrontSuspensionHeight = src.FrontSuspensionHeight,
+            RearSuspensionHeight = src.RearSuspensionHeight,
+            BrakePressure = src.BrakePressure,
+            BrakeBias = src.BrakeBias,
+            EngineBraking = src.EngineBraking,
+            RearLeftTyrePressure = src.RearLeftTyrePressure,
+            RearRightTyrePressure = src.RearRightTyrePressure,
+            FrontLeftTyrePressure = src.FrontLeftTyrePressure,
+            FrontRightTyrePressure = src.FrontRightTyrePressure,
+            Ballast = src.Ballast,
+            FuelLoad = src.FuelLoad,
+        };
+    }
+
+    private LapTyreSnapshot? CaptureTyreSnapshot(byte idx)
+    {
+        var status = _state.Get<CarStatusPacket>((byte)F125PacketId.CarStatus);
+        var damage = _state.Get<CarDamagePacket>((byte)F125PacketId.CarDamage);
+        if (status?.CarStatusDataItems == null || idx >= status.CarStatusDataItems.Length)
+            return null;
+        var s = status.CarStatusDataItems[idx];
+        var wear = (damage?.CarDamageDataItems != null && idx < damage.CarDamageDataItems.Length)
+            ? damage.CarDamageDataItems[idx].TyresWear
+            : new float[4];
+        return new LapTyreSnapshot
+        {
+            ActualTyreCompound = s.ActualTyreCompound,
+            VisualTyreCompound = s.VisualTyreCompound,
+            TyresAgeLaps = s.TyresAgeLaps,
+            TyresWear = (float[])wear.Clone(),
+        };
     }
 }

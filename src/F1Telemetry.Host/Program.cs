@@ -47,6 +47,7 @@ static class Program
         builder.Services.AddF125Protocol();
         builder.Services.AddSingleton<TelemetryState>();
         builder.Services.AddSingleton<LapSetupStore>();
+        builder.Services.AddSingleton<LapTyreStore>();
         builder.Services.AddSingleton<SessionLogger>();
         builder.Services.AddSingleton<DebugPacketTracker>();
         builder.Services.AddSingleton<ITelemetryIngress, TelemetryPipelineIngress>();

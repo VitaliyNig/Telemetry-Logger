@@ -12,11 +12,13 @@ public sealed class TelemetryHub : Hub<ITelemetryClient>
 {
     private readonly TelemetryState _state;
     private readonly LapSetupStore _lapSetupStore;
+    private readonly LapTyreStore _lapTyreStore;
 
-    public TelemetryHub(TelemetryState state, LapSetupStore lapSetupStore)
+    public TelemetryHub(TelemetryState state, LapSetupStore lapSetupStore, LapTyreStore lapTyreStore)
     {
         _state = state;
         _lapSetupStore = lapSetupStore;
+        _lapTyreStore = lapTyreStore;
     }
 
     /// <summary>Client can request current state snapshot on connect.</summary>
@@ -36,6 +38,14 @@ public sealed class TelemetryHub : Hub<ITelemetryClient>
     public Dictionary<int, object>? GetSetupSnapshots(byte carIndex)
     {
         var snapshots = _lapSetupStore.GetSnapshots(carIndex);
+        if (snapshots == null || snapshots.Count == 0) return null;
+        return new Dictionary<int, object>(snapshots);
+    }
+
+    /// <summary>Client can request all tyre snapshots for a car on connect/reconnect.</summary>
+    public Dictionary<int, object>? GetTyreSnapshots(byte carIndex)
+    {
+        var snapshots = _lapTyreStore.GetSnapshots(carIndex);
         if (snapshots == null || snapshots.Count == 0) return null;
         return new Dictionary<int, object>(snapshots);
     }

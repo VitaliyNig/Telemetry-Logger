@@ -3186,6 +3186,53 @@
     padding-right: -1px;
 }
 
+.lap-times-table th.lt-col-tyre {
+    width: 78px;
+    text-align: center;
+    white-space: nowrap;
+}
+
+.lap-times-table td.lt-tyre-td {
+    text-align: center;
+    padding: 2px 4px;
+}
+
+.lt-tyre-cell {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    white-space: nowrap;
+}
+
+.lt-tyre-dot {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 11px;
+    color: #0f1117;
+    line-height: 1;
+    flex-shrink: 0;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.25);
+}
+
+.lt-tyre-wear {
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 11px;
+    color: var(--text-secondary);
+}
+
+.lt-tyre-empty {
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
 .lap-times-table td {
     font-family: var(--font-mono);
     font-size: 12px;
