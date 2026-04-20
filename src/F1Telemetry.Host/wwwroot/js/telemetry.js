@@ -1685,14 +1685,14 @@ function updateFuelErsWidget(car) {
 
     const sType = lastSessionPacket?.sessionType ?? 0;
     const isRace = sType === 15 || sType === 16 || sType === 17;
-    const totalLaps = lastSessionPacket?.totalLaps ?? 0;
-    const curLap = lastLapDataPacket?.lapDataItems?.[playerCarIndex]?.currentLapNum ?? 0;
     const deltaBox = el("csFuelDeltaBox");
     const deltaEl = el("csFuelDelta");
-    const showDelta = isRace && totalLaps > 0 && curLap > 0 && Number.isFinite(fuelRemLaps);
+    // m_fuelRemainingLaps is the MFD value: a signed delta of laps of fuel
+    // surplus (+) or deficit (-) relative to finishing the race.
+    const showDelta = isRace && Number.isFinite(fuelRemLaps);
     if (deltaBox) deltaBox.hidden = !showDelta;
     if (showDelta && deltaEl) {
-        const delta = fuelRemLaps - (totalLaps - curLap);
+        const delta = fuelRemLaps;
         const sign = delta >= 0 ? "+" : "";
         deltaEl.textContent = sign + delta.toFixed(2);
         let cls;
