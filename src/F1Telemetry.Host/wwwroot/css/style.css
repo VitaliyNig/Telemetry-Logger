@@ -3318,7 +3318,7 @@
 .lt-setup-popover {
     position: fixed;
     z-index: 12000;
-    width: 340px;
+    width: 380px;
     max-width: calc(100vw - 16px);
     max-height: min(520px, 75vh);
     overflow: auto;
@@ -3373,13 +3373,10 @@
 
 .lt-setup-label {
     flex-shrink: 0;
-    width: 42%;
     font-size: 11px;
     font-weight: 600;
     color: var(--text-secondary);
     white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
 }
 
 .lt-setup-bar-track {
@@ -3388,7 +3385,7 @@
     background: var(--border);
     border-radius: 4px;
     overflow: hidden;
-    min-width: 40px;
+    min-width: 60px;
 }
 
 .lt-setup-bar-fill {
