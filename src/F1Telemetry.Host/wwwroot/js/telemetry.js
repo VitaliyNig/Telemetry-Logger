@@ -3476,6 +3476,10 @@ function positionLapTimesPopover(anchor, panel) {
 function openLapTimesSetupPopover(anchor, html) {
     const panel = el("lapTimesSetupPanel");
     if (!panel || !html) return;
+    // The widget lives inside a GridStack item that uses `overflow: hidden` and
+    // `contain: layout style paint`, which both clips the popover and re-anchors
+    // position:fixed to the widget. Re-parent to <body> so it floats freely.
+    if (panel.parentElement !== document.body) document.body.appendChild(panel);
     panel.innerHTML = `<div class="lt-setup-panel-inner">${html}</div>`;
     panel.hidden = false;
     requestAnimationFrame(() => positionLapTimesPopover(anchor, panel));
