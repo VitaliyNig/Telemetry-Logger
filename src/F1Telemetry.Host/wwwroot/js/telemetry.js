@@ -1668,6 +1668,7 @@ function updateCarStatus(data) {
 const FUEL_MIX_BADGE  = { 0: "LEAN", 1: "STD", 2: "RICH", 3: "MAX" };
 const ERS_MODE_BADGE  = { 0: "NONE", 1: "MED",  2: "HOT",  3: "OVER" };
 const MAX_ERS_J = 4_000_000;
+const MAX_MGUK_HARVEST_J = 2_000_000;
 
 function updateFuelErsWidget(car) {
     if (!car) return;
@@ -1720,11 +1721,13 @@ function updateFuelErsWidget(car) {
     if (deployBar) deployBar.style.width = deployPct + "%";
     setText("csErsDeployVal", (deployJ / 1_000_000).toFixed(2) + " / 4.00 MJ");
 
-    const harvestJ = Math.max(0, (Number(car.ersHarvestedThisLapMguK) || 0) + (Number(car.ersHarvestedThisLapMguH) || 0));
-    const harvestPct = Math.max(0, Math.min(100, (harvestJ / MAX_ERS_J) * 100));
+    // Only MGU-K is regulated (max 2 MJ/lap to battery) and matches the in-game MFD "Harvest".
+    // MGU-H is unlimited and not displayed here.
+    const harvestJ = Math.max(0, Number(car.ersHarvestedThisLapMguK) || 0);
+    const harvestPct = Math.max(0, Math.min(100, (harvestJ / MAX_MGUK_HARVEST_J) * 100));
     const harvestBar = el("csErsHarvestBar");
     if (harvestBar) harvestBar.style.width = harvestPct + "%";
-    setText("csErsHarvestVal", harvestPct.toFixed(0) + "% · " + (harvestJ / 1_000_000).toFixed(2) + " MJ");
+    setText("csErsHarvestVal", (harvestJ / 1_000_000).toFixed(2) + " / 2.00 MJ");
 }
 
 function updateCarSetups(data) {
