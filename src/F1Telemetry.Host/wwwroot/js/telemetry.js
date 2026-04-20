@@ -3116,7 +3116,6 @@ function updateGapRing() {
         return;
     }
 
-    const leaderLap = items[sorted[0].idx].currentLapNum || 0;
     const lapLen = getGapRingLapLengthMeters(items, activeIdxs);
     const n = sorted.length;
     const fontOuter = n > 16 ? 6.5 : n > 12 ? 7.5 : 8.5;
@@ -3171,9 +3170,6 @@ function updateGapRing() {
     }
 
     for (const { d, cos, sin, teamColor } of placed) {
-        const lapsDown = leaderLap - (d.currentLapNum || 0);
-        const lapSuffix = lapsDown > 0 ? ` ${lapsDown}L` : "";
-
         const isLeader = d.pos === 1;
         const outerText = formatGapRingOuterMs(d.gapLeaderMs, isLeader);
         const innerText = formatGapRingIntervalMs(d.gapAheadMs, isLeader);
@@ -3187,7 +3183,7 @@ function updateGapRing() {
 
         const nameCls = d.isPlayer ? "gap-ring-txt-name gap-ring-txt-player" : "gap-ring-txt-name";
         svgParts.push(`<text x="${ox}" y="${oy}" class="gap-ring-txt-outer" font-size="${fontOuter}">${escapeXmlText(outerText)}</text>`);
-        svgParts.push(`<text x="${mx}" y="${my}" class="${nameCls}" fill="${teamColor}" font-size="${fontName}" font-weight="600">${escapeXmlText(driverAbbrFromName(d.name) + lapSuffix)}</text>`);
+        svgParts.push(`<text x="${mx}" y="${my}" class="${nameCls}" fill="${teamColor}" font-size="${fontName}" font-weight="600">${escapeXmlText(driverAbbrFromName(d.name))}</text>`);
         svgParts.push(`<text x="${ix}" y="${iy}" class="gap-ring-txt-inner" font-size="${fontInner}">${escapeXmlText(innerText)}</text>`);
     }
 
