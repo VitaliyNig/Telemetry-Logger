@@ -3020,16 +3020,16 @@
 }
 
 .ts-lb-row.player-row {
-    background: var(--accent-brand-soft);
-    border: 1px solid var(--accent-brand-border);
+    background: rgba(0, 166, 255, 0.12);
+    border: 1px solid rgba(0, 166, 255, 0.3);
 }
 
 .ts-lb-row.player-row .ts-lb-rank {
-    color: var(--accent-brand);
+    color: var(--accent-blue);
 }
 
 .ts-lb-row.player-row .ts-lb-speed {
-    color: var(--accent-brand-hover);
+    color: var(--accent-blue);
 }
 
 .ts-lb-placeholder {
