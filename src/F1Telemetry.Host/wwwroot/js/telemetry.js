@@ -3182,11 +3182,11 @@ function equalPerfTooltipAndIcon(equalB) {
 
 const LT_SETUP_ICONS = {
     aero: '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.5 11.2c2.6-4.4 6.3-5 9-3.8 2.2 1 3.6 2.7 4 4.6H4.2l-2.7-.8z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M4.2 12h10.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
-    diff: '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/><path d="M8 2.5v1.8M8 11.7v1.8M2.5 8h1.8M11.7 8h1.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+    diff: '<svg viewBox="0 0 24 24" fill="none" aria-hidden="true"><path d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 0 0 2.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 0 0 1.065 2.572c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 0 0-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 0 0-2.572 1.065c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 0 0-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 0 0-1.065-2.572c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 0 0 1.066-2.573c-.94-1.543.826-3.31 2.37-2.37 1 .608 2.296.07 2.572-1.065z" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round" stroke-linecap="round"/><circle cx="12" cy="12" r="3" stroke="currentColor" stroke-width="1.8"/></svg>',
     geom: '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 13h11M2.5 13V4.5M2.5 13l10.5-8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     susp: '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 2.5h10M3 13.5h10M4 4.5l8 1.5-8 1.5 8 1.5-8 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
     brake: '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M11.8 4.2l1.3-1.3M4.2 11.8l-1.3 1.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
-    tyre: '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2.4" stroke="currentColor" stroke-width="1.3"/><path d="M8 2v1.6M8 12.4V14M2 8h1.6M12.4 8H14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>'
+    tyre: '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6.5" stroke="currentColor" stroke-width="2"/><circle cx="8" cy="8" r="2.5" stroke="currentColor" stroke-width="1.3"/><path d="M8 5.5V3M8 13v-2.5M5.5 8H3M13 8h-2.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>'
 };
 
 function formatCarSetupPopoverHtml(setup) {
@@ -3213,11 +3213,11 @@ function formatCarSetupPopoverHtml(setup) {
         bar("Front Wing", int(setup.frontWing), 0, 50, "") +
         bar("Rear Wing", int(setup.rearWing), 0, 50, ""));
 
-    html += section("Differential", LT_SETUP_ICONS.diff,
+    html += section("Transmission", LT_SETUP_ICONS.diff,
         bar("On Throttle", int(setup.onThrottle), 10, 100, "%") +
         bar("Off Throttle", int(setup.offThrottle), 10, 100, "%"));
 
-    html += section("Geometry", LT_SETUP_ICONS.geom,
+    html += section("Suspension Geometry", LT_SETUP_ICONS.geom,
         bar("Front Camber", num(setup.frontCamber, 2), -3.50, -2.50, "°") +
         bar("Rear Camber", num(setup.rearCamber, 2), -2.00, -1.00, "°") +
         bar("Front Toe", num(setup.frontToe, 2), 0.00, 0.20, "°") +
@@ -3235,7 +3235,7 @@ function formatCarSetupPopoverHtml(setup) {
         bar("Front Brake Bias", int(setup.brakeBias), 50, 70, "%") +
         bar("Brake Pressure", int(setup.brakePressure), 80, 100, "%"));
 
-    html += section("Tyre Pressure", LT_SETUP_ICONS.tyre,
+    html += section("Tyres", LT_SETUP_ICONS.tyre,
         bar("FR Tyre Pressure", num(setup.frontRightTyrePressure, 1), 22.5, 29.5, " psi") +
         bar("FL Tyre Pressure", num(setup.frontLeftTyrePressure, 1), 22.5, 29.5, " psi") +
         bar("RR Tyre Pressure", num(setup.rearRightTyrePressure, 1), 20.5, 26.5, " psi") +
