@@ -17,7 +17,6 @@ using F1Telemetry.State;
 using F1Telemetry.Tray;
 using F1Telemetry.Udp;
 using Microsoft.AspNetCore.ResponseCompression;
-using Microsoft.AspNetCore.StaticFiles;
 
 namespace F1Telemetry;
 
@@ -123,20 +122,7 @@ static class Program
 
         app.UseResponseCompression();
         app.UseDefaultFiles();
-        app.UseStaticFiles(new StaticFileOptions
-        {
-            OnPrepareResponse = ctx =>
-            {
-                var ext = Path.GetExtension(ctx.File.Name);
-                if (ext.Equals(".js", StringComparison.OrdinalIgnoreCase) ||
-                    ext.Equals(".css", StringComparison.OrdinalIgnoreCase) ||
-                    ext.Equals(".html", StringComparison.OrdinalIgnoreCase))
-                {
-                    ctx.Context.Response.Headers.Append("Cache-Control", "no-cache, no-store, must-revalidate");
-                    ctx.Context.Response.Headers.Append("Pragma", "no-cache");
-                }
-            }
-        });
+        app.UseStaticFiles();
 
         app.MapHub<TelemetryHub>("/hub/telemetry");
 
