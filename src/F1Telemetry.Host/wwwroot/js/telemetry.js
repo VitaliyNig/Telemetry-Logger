@@ -725,7 +725,7 @@ function initPitTimesPanel() {
 let _tyreInfoPanel = null;
 
 function initTyreInfoTooltip() {
-    document.querySelectorAll(".tyre-info-btn").forEach(btn => {
+    document.querySelectorAll(".tyre-info-btn:not(.ld-legend-btn)").forEach(btn => {
         if (btn.dataset.tiWired) return;
         btn.dataset.tiWired = "1";
         btn.addEventListener("mouseenter", () => openTyreInfo(btn));
