@@ -38,11 +38,9 @@ public sealed class CarTelemetryPacketDeserializer : IPacketDeserializer
         return packet;
     }
 
-    private static ushort[] ReadTyreTemperaturesAsUInt8(ref BinaryReader125 reader)
-    {
-        var bytes = reader.ReadByteArray(4);
-        return [bytes[0], bytes[1], bytes[2], bytes[3]];
-    }
+    // Widened to ushort[] so JSON carries a numeric array (byte[] serializes as Base64).
+    private static ushort[] ReadTyreTemperaturesAsUInt8(ref BinaryReader125 reader) =>
+        [reader.ReadByte(), reader.ReadByte(), reader.ReadByte(), reader.ReadByte()];
 
     private static CarTelemetryData ReadOneCar(ref BinaryReader125 reader)
     {

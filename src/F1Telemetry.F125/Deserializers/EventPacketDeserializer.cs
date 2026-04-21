@@ -12,8 +12,9 @@ public sealed class EventPacketDeserializer : IPacketDeserializer
     public object? Deserialize(ReadOnlySpan<byte> data, TelemetryPacketHeader header)
     {
         var reader = new BinaryReader125(data, F125PacketHeaderReader.HeaderSize);
-        var codeBytes = reader.ReadByteArray(4);
-        var eventCode = Encoding.ASCII.GetString(codeBytes);
+        // 4-char ASCII code read directly from the span — no intermediate byte[].
+        var eventCode = Encoding.ASCII.GetString(data.Slice(reader.Offset, 4));
+        reader.Skip(4);
 
         var packet = new EventPacket { EventCode = eventCode };
 
