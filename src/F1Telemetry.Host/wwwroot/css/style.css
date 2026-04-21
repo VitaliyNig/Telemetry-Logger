@@ -3074,6 +3074,12 @@
     display: none;
 }
 
+.lt-setup-panel-inner {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-4);
+}
+
 .lt-setup-empty {
     text-align: center;
     color: var(--text-dim);
@@ -3096,12 +3102,12 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 12px;
+    font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 2px;
+    letter-spacing: 1.5px;
     color: var(--text-secondary);
-    padding-bottom: 8px;
+    padding-bottom: 6px;
     border-bottom: 1px solid var(--border);
 }
 
