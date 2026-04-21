@@ -1,4 +1,5 @@
 using System.Buffers.Binary;
+using System.Runtime.InteropServices;
 using System.Text;
 
 namespace F1Telemetry.F125.Protocol;
@@ -80,24 +81,42 @@ internal ref struct BinaryReader125
     public float[] ReadFloatArray(int count)
     {
         var arr = new float[count];
-        for (var i = 0; i < count; i++)
-            arr[i] = ReadFloat();
+        var bytes = _data.Slice(_offset, count * sizeof(float));
+        if (BitConverter.IsLittleEndian)
+        {
+            MemoryMarshal.Cast<byte, float>(bytes).CopyTo(arr);
+        }
+        else
+        {
+            for (var i = 0; i < count; i++)
+                arr[i] = BinaryPrimitives.ReadSingleLittleEndian(bytes[(i * 4)..]);
+        }
+        _offset += count * sizeof(float);
         return arr;
     }
 
     public ushort[] ReadUInt16Array(int count)
     {
         var arr = new ushort[count];
-        for (var i = 0; i < count; i++)
-            arr[i] = ReadUInt16();
+        var bytes = _data.Slice(_offset, count * sizeof(ushort));
+        if (BitConverter.IsLittleEndian)
+        {
+            MemoryMarshal.Cast<byte, ushort>(bytes).CopyTo(arr);
+        }
+        else
+        {
+            for (var i = 0; i < count; i++)
+                arr[i] = BinaryPrimitives.ReadUInt16LittleEndian(bytes[(i * 2)..]);
+        }
+        _offset += count * sizeof(ushort);
         return arr;
     }
 
     public byte[] ReadByteArray(int count)
     {
         var arr = new byte[count];
-        for (var i = 0; i < count; i++)
-            arr[i] = ReadByte();
+        _data.Slice(_offset, count).CopyTo(arr);
+        _offset += count;
         return arr;
     }
 
@@ -109,8 +128,10 @@ internal ref struct BinaryReader125
     public int[] ReadByteValuesAsIntArray(int count)
     {
         var arr = new int[count];
+        var src = _data.Slice(_offset, count);
         for (var i = 0; i < count; i++)
-            arr[i] = _data[_offset++];
+            arr[i] = src[i];
+        _offset += count;
         return arr;
     }
 
