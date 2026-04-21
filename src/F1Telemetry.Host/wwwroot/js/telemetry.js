@@ -2137,7 +2137,6 @@ function updatePitStopTimer(car) {
 
         if (laneEl) laneEl.textContent = "--";
         if (stallEl) stallEl.textContent = "--";
-        if (statusEl) statusEl.textContent = "--";
     }
 
     _pitLaneActivePrev = active;
