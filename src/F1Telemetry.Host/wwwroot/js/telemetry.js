@@ -3180,9 +3180,18 @@ function equalPerfTooltipAndIcon(equalB) {
     return `<span class="lt-perf-ico" title="${title}">${letter}</span>`;
 }
 
+const LT_SETUP_ICONS = {
+    aero: '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M1.5 11.2c2.6-4.4 6.3-5 9-3.8 2.2 1 3.6 2.7 4 4.6H4.2l-2.7-.8z" stroke="currentColor" stroke-width="1.3" stroke-linejoin="round"/><path d="M4.2 12h10.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+    diff: '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="1.6" fill="currentColor"/><path d="M8 2.5v1.8M8 11.7v1.8M2.5 8h1.8M11.7 8h1.8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+    geom: '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M2.5 13h11M2.5 13V4.5M2.5 13l10.5-8" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    susp: '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><path d="M3 2.5h10M3 13.5h10M4 4.5l8 1.5-8 1.5 8 1.5-8 1.5" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    brake: '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="5.5" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2" stroke="currentColor" stroke-width="1.3"/><path d="M11.8 4.2l1.3-1.3M4.2 11.8l-1.3 1.3" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>',
+    tyre: '<svg viewBox="0 0 16 16" fill="none" aria-hidden="true"><circle cx="8" cy="8" r="6" stroke="currentColor" stroke-width="1.3"/><circle cx="8" cy="8" r="2.4" stroke="currentColor" stroke-width="1.3"/><path d="M8 2v1.6M8 12.4V14M2 8h1.6M12.4 8H14" stroke="currentColor" stroke-width="1.3" stroke-linecap="round"/></svg>'
+};
+
 function formatCarSetupPopoverHtml(setup) {
     if (!setup) {
-        return '<div class="lt-setup-title">Setup</div><p class="lt-setup-empty">No car setup data.</p>';
+        return '<p class="lt-setup-empty">No car setup data.</p>';
     }
     const num = (v, d) => (v != null && Number.isFinite(Number(v))) ? Number(v).toFixed(d) : null;
     const int = (v) => (v != null && Number.isFinite(Number(v))) ? Number(v) : null;
@@ -3195,26 +3204,26 @@ function formatCarSetupPopoverHtml(setup) {
         return `<div class="lt-setup-row"><span class="lt-setup-label">${label}</span><div class="lt-setup-bar-track"><div class="lt-setup-bar-fill" style="width:${pct.toFixed(1)}%"></div></div><span class="lt-setup-val">${display}</span></div>`;
     }
 
-    function section(title, rows) {
-        return `<div class="lt-setup-section"><div class="lt-setup-section-title">${title}</div>${rows}</div>`;
+    function section(title, icon, rows) {
+        return `<section class="lt-setup-section"><header class="lt-setup-section-title"><span class="lt-setup-section-icon">${icon}</span>${title}</header><div class="lt-setup-section-body">${rows}</div></section>`;
     }
 
     let html = "";
-    html += section("Aerodynamics",
+    html += section("Aerodynamics", LT_SETUP_ICONS.aero,
         bar("Front Wing", int(setup.frontWing), 0, 50, "") +
         bar("Rear Wing", int(setup.rearWing), 0, 50, ""));
 
-    html += section("Transmission",
+    html += section("Differential", LT_SETUP_ICONS.diff,
         bar("On Throttle", int(setup.onThrottle), 10, 100, "%") +
         bar("Off Throttle", int(setup.offThrottle), 10, 100, "%"));
 
-    html += section("Suspension Geometry",
+    html += section("Geometry", LT_SETUP_ICONS.geom,
         bar("Front Camber", num(setup.frontCamber, 2), -3.50, -2.50, "°") +
         bar("Rear Camber", num(setup.rearCamber, 2), -2.00, -1.00, "°") +
         bar("Front Toe", num(setup.frontToe, 2), 0.00, 0.20, "°") +
         bar("Rear Toe", num(setup.rearToe, 2), 0.10, 0.25, "°"));
 
-    html += section("Suspension",
+    html += section("Suspension", LT_SETUP_ICONS.susp,
         bar("Front Suspension", int(setup.frontSuspension), 1, 41, "") +
         bar("Rear Suspension", int(setup.rearSuspension), 1, 41, "") +
         bar("Front Anti-Roll Bar", int(setup.frontAntiRollBar), 1, 21, "") +
@@ -3222,11 +3231,11 @@ function formatCarSetupPopoverHtml(setup) {
         bar("Front Ride Height", int(setup.frontSuspensionHeight), 15, 35, "") +
         bar("Rear Ride Height", int(setup.rearSuspensionHeight), 40, 60, ""));
 
-    html += section("Brakes",
+    html += section("Brakes", LT_SETUP_ICONS.brake,
         bar("Front Brake Bias", int(setup.brakeBias), 50, 70, "%") +
         bar("Brake Pressure", int(setup.brakePressure), 80, 100, "%"));
 
-    html += section("Tyres",
+    html += section("Tyre Pressure", LT_SETUP_ICONS.tyre,
         bar("FR Tyre Pressure", num(setup.frontRightTyrePressure, 1), 22.5, 29.5, " psi") +
         bar("FL Tyre Pressure", num(setup.frontLeftTyrePressure, 1), 22.5, 29.5, " psi") +
         bar("RR Tyre Pressure", num(setup.rearRightTyrePressure, 1), 20.5, 26.5, " psi") +
