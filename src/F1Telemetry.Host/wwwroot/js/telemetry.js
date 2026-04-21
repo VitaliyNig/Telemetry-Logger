@@ -3213,11 +3213,11 @@ function formatCarSetupPopoverHtml(setup) {
         bar("Front Wing", int(setup.frontWing), 0, 50, "") +
         bar("Rear Wing", int(setup.rearWing), 0, 50, ""));
 
-    html += section("Differential", LT_SETUP_ICONS.diff,
+    html += section("Transmission", LT_SETUP_ICONS.diff,
         bar("On Throttle", int(setup.onThrottle), 10, 100, "%") +
         bar("Off Throttle", int(setup.offThrottle), 10, 100, "%"));
 
-    html += section("Geometry", LT_SETUP_ICONS.geom,
+    html += section("Suspension Geometry", LT_SETUP_ICONS.geom,
         bar("Front Camber", num(setup.frontCamber, 2), -3.50, -2.50, "°") +
         bar("Rear Camber", num(setup.rearCamber, 2), -2.00, -1.00, "°") +
         bar("Front Toe", num(setup.frontToe, 2), 0.00, 0.20, "°") +
@@ -3235,7 +3235,7 @@ function formatCarSetupPopoverHtml(setup) {
         bar("Front Brake Bias", int(setup.brakeBias), 50, 70, "%") +
         bar("Brake Pressure", int(setup.brakePressure), 80, 100, "%"));
 
-    html += section("Tyre Pressure", LT_SETUP_ICONS.tyre,
+    html += section("Tyres", LT_SETUP_ICONS.tyre,
         bar("FR Tyre Pressure", num(setup.frontRightTyrePressure, 1), 22.5, 29.5, " psi") +
         bar("FL Tyre Pressure", num(setup.frontLeftTyrePressure, 1), 22.5, 29.5, " psi") +
         bar("RR Tyre Pressure", num(setup.rearRightTyrePressure, 1), 20.5, 26.5, " psi") +
