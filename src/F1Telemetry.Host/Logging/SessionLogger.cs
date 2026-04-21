@@ -119,9 +119,9 @@ public sealed class SessionLogger
         var wid = session.WeekendLinkIdentifier;
         entry.WeekendLinkId = wid;
 
-        if (_weekendFolders.ContainsKey(wid))
+        if (_weekendFolders.TryGetValue(wid, out var existing))
         {
-            entry.WeekendFolder = _weekendFolders[wid];
+            entry.WeekendFolder = existing;
             return;
         }
 
