@@ -3258,15 +3258,24 @@ function closeLapTimesSetupPopover() {
 function positionLapTimesPopover(anchor, panel) {
     const r = anchor.getBoundingClientRect();
     const pw = panel.offsetWidth || 340;
-    const gap = 6;
-    let left = r.left - pw - gap;
-    if (left < 8) left = Math.min(r.right + gap, window.innerWidth - pw - 8);
-    if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
-    if (left < 8) left = 8;
     const ph = panel.offsetHeight || 200;
+    const margin = 8;
+    // Primary rule: popover's top-right corner coincides with button's top-left corner.
+    let left = r.left - pw;
     let top = r.top;
-    if (top + ph > window.innerHeight - 8) top = Math.max(8, window.innerHeight - ph - 8);
-    if (top < 8) top = 8;
+    // Adaptive: if popover overflows the left edge, flip to the right side of the button.
+    if (left < margin) {
+        if (r.right + pw <= window.innerWidth - margin) {
+            left = r.right;
+        } else {
+            left = Math.max(margin, window.innerWidth - pw - margin);
+        }
+    }
+    // Adaptive: clamp vertically so the popover stays inside the viewport.
+    if (top + ph > window.innerHeight - margin) {
+        top = Math.max(margin, window.innerHeight - ph - margin);
+    }
+    if (top < margin) top = margin;
     panel.style.left = left + "px";
     panel.style.top = top + "px";
 }
