@@ -722,178 +722,6 @@ function initPitTimesPanel() {
     });
 }
 
-let _carTelemetrySettingsPanel = null;
-let _carTelemetrySettingsDocCloseBound = false;
-const _carTelemetryExpandedTeams = new Set();
-
-function closeCarTelemetrySettingsPanel() {
-    if (_carTelemetrySettingsPanel) {
-        _carTelemetrySettingsPanel.remove();
-        _carTelemetrySettingsPanel = null;
-    }
-}
-
-function shiftModelTeamLabel(teamId) {
-    if (teamId === -2) return "F2 (mono-series)";
-    if (TEAM_NAMES[teamId]) return TEAM_NAMES[teamId];
-    return `Team ${teamId}`;
-}
-
-function renderCarTelemetrySettingsBody(panel) {
-    if (!window.ShiftModel) {
-        panel.innerHTML = '<div class="cts-empty">Shift model is unavailable.</div>';
-        return;
-    }
-    const enabled = ShiftModel.getCalibrationEnabled();
-    const recording = ShiftModel.isRecording();
-    const activeId = ShiftModel.getActiveTeamId();
-    const teams = ShiftModel.listTeams();
-
-    let html = "";
-    html += `<div class="cts-header">Shift RPM calibration</div>`;
-    html += `<div class="cts-desc">`
-        + `The widget learns the optimal shift RPM per team from live telemetry.`
-        + ` Samples are collected when throttle ≥ 50%, clear of gear changes, and used to fit a power curve plus per-gear ratios.`
-        + ` With calibration <b>ON</b> new samples are appended continuously (useful for refining or recalibrating).`
-        + ` With calibration <b>OFF</b> stored values are reused as-is; if the active team has no data yet, recording auto-enables until first samples exist.`
-        + `</div>`;
-
-    const recStatus = recording ? "recording" : "using stored values";
-    const recCls = recording ? "cts-status-rec" : "cts-status-idle";
-    html += `<div class="cts-status ${recCls}">Status: ${recStatus}${activeId != null ? ` · ${escapeXmlText(shiftModelTeamLabel(activeId))}` : ""}</div>`;
-
-    html += `<label class="cts-toggle"><input type="checkbox" id="ctsCalibrationToggle" ${enabled ? "checked" : ""}>`
-        + `<span>Calibration ${enabled ? "ON" : "OFF"}</span></label>`;
-
-    html += `<div class="cts-section-title">Recorded teams <span class="cts-count">${teams.length}</span></div>`;
-    if (teams.length === 0) {
-        html += '<div class="cts-empty">No teams recorded yet.</div>';
-    } else {
-        html += '<div class="cts-team-list">';
-        for (const t of teams) {
-            const name = shiftModelTeamLabel(t.teamId);
-            const shifts = ShiftModel.getTeamShiftRpms(t.teamId);
-            const activeCls = t.isActive ? " cts-team-active" : "";
-            const expanded = _carTelemetryExpandedTeams.has(t.teamId);
-            const expCls = expanded ? " cts-team-expanded" : "";
-            html += `<div class="cts-team${activeCls}${expCls}" data-team-id="${t.teamId}">`;
-            html += `<div class="cts-team-head">`
-                + `<button type="button" class="cts-team-toggle" data-cts-toggle="${t.teamId}" aria-expanded="${expanded}" title="${expanded ? "Collapse" : "Expand"}"><span class="cts-chevron">${expanded ? "▾" : "▸"}</span><span class="cts-team-name">${escapeXmlText(name)}</span>${t.isActive ? ' <span class="cts-team-badge">active</span>' : ""}</button>`
-                + `<button type="button" class="cts-btn cts-btn-mini" data-cts-recal="${t.teamId}" title="Clear this team's data (recording resumes automatically)">Recalibrate</button>`
-                + `<button type="button" class="cts-btn cts-btn-mini cts-btn-danger" data-cts-del="${t.teamId}" title="Delete this team's data">Delete</button>`
-                + `</div>`;
-            if (expanded) {
-                if (shifts && shifts.gears.length > 0) {
-                    html += '<div class="cts-gear-grid">';
-                    for (const g of shifts.gears) {
-                        const cls = g.shiftRpm ? "" : " cts-gear-empty";
-                        const val = g.shiftRpm ? `${g.shiftRpm}` : "—";
-                        html += `<div class="cts-gear-cell${cls}"><span class="cts-gear-num">${g.gear}</span><span class="cts-gear-val">${val}</span></div>`;
-                    }
-                    html += '</div>';
-                } else {
-                    html += '<div class="cts-team-hint">Not enough samples yet.</div>';
-                }
-            }
-            html += '</div>';
-        }
-        html += '</div>';
-    }
-
-    html += `<div class="cts-footer"><button type="button" class="cts-btn cts-btn-danger" id="ctsResetAll">Reset all</button></div>`;
-
-    panel.innerHTML = html;
-
-    panel.querySelector("#ctsCalibrationToggle")?.addEventListener("change", (ev) => {
-        ShiftModel.setCalibrationEnabled(ev.target.checked);
-        renderCarTelemetrySettingsBody(panel);
-    });
-    panel.querySelector("#ctsResetAll")?.addEventListener("click", () => {
-        if (!confirm("Delete all recorded shift-model data for every team?")) return;
-        ShiftModel.resetAll();
-        renderCarTelemetrySettingsBody(panel);
-    });
-    panel.querySelectorAll("[data-cts-del]").forEach(b => {
-        b.addEventListener("click", () => {
-            const tid = Number(b.getAttribute("data-cts-del"));
-            const name = shiftModelTeamLabel(tid);
-            if (!confirm(`Delete recorded data for ${name}?`)) return;
-            ShiftModel.deleteTeam(tid);
-            renderCarTelemetrySettingsBody(panel);
-        });
-    });
-    panel.querySelectorAll("[data-cts-recal]").forEach(b => {
-        b.addEventListener("click", () => {
-            const tid = Number(b.getAttribute("data-cts-recal"));
-            const activeId = ShiftModel.getActiveTeamId();
-            if (tid === activeId) {
-                ShiftModel.reset();
-            } else {
-                ShiftModel.deleteTeam(tid);
-            }
-            renderCarTelemetrySettingsBody(panel);
-        });
-    });
-    panel.querySelectorAll("[data-cts-toggle]").forEach(b => {
-        b.addEventListener("click", () => {
-            const tid = Number(b.getAttribute("data-cts-toggle"));
-            if (_carTelemetryExpandedTeams.has(tid)) {
-                _carTelemetryExpandedTeams.delete(tid);
-            } else {
-                _carTelemetryExpandedTeams.add(tid);
-            }
-            renderCarTelemetrySettingsBody(panel);
-        });
-    });
-}
-
-function positionCarTelemetrySettingsPanel(anchor, panel) {
-    const r = anchor.getBoundingClientRect();
-    const pw = panel.offsetWidth || 340;
-    let left = Math.max(4, r.right - pw);
-    if (left + pw > window.innerWidth - 4) left = window.innerWidth - pw - 4;
-    panel.style.left = left + "px";
-    panel.style.top = (r.bottom + 4) + "px";
-}
-
-function initCarTelemetrySettingsPanel() {
-    const btn = document.getElementById("btnCarTelemetrySettings");
-    if (!btn || btn.dataset.ctsWired === "1") return;
-    btn.dataset.ctsWired = "1";
-
-    btn.addEventListener("click", (e) => {
-        e.stopPropagation();
-        if (_carTelemetrySettingsPanel) {
-            closeCarTelemetrySettingsPanel();
-            return;
-        }
-        const panel = document.createElement("div");
-        panel.className = "car-telemetry-settings-panel";
-        _carTelemetrySettingsPanel = panel;
-        document.body.appendChild(panel);
-        renderCarTelemetrySettingsBody(panel);
-        positionCarTelemetrySettingsPanel(btn, panel);
-        panel.addEventListener("click", (ev) => ev.stopPropagation());
-
-        if (!_carTelemetrySettingsDocCloseBound) {
-            _carTelemetrySettingsDocCloseBound = true;
-            document.addEventListener("click", (ev) => {
-                if (!_carTelemetrySettingsPanel) return;
-                const b = document.getElementById("btnCarTelemetrySettings");
-                if (b && (ev.target === b || b.contains(ev.target))) return;
-                if (_carTelemetrySettingsPanel.contains(ev.target)) return;
-                closeCarTelemetrySettingsPanel();
-            });
-            window.addEventListener("resize", () => {
-                const bn = document.getElementById("btnCarTelemetrySettings");
-                if (_carTelemetrySettingsPanel && bn) {
-                    positionCarTelemetrySettingsPanel(bn, _carTelemetrySettingsPanel);
-                }
-            });
-        }
-    });
-}
-
 let _tyreInfoPanel = null;
 
 function initTyreInfoTooltip() {
@@ -1049,13 +877,10 @@ const pedalHistoryB = [];
 let playerMaxRpm = 0;
 const RPM_SCALE_FALLBACK = 15000;
 let _lastRpmScale = 0;
-let _lastRpmBarShift = null;
-let _lastOverShift = false;
 let _pedalChartRafId = 0;
 /** Absolute RPM thresholds for bar colours (vs current max RPM scale). */
 const RPM_BAR_GREEN_END = 11000;
 const RPM_BAR_GRADIENT_END = 12000;
-const RPM_BAR_SHIFT_GREEN_MARGIN = 600;
 let lastSessionLinkId = null;
 let playerVisualTyreCompound = -1;
 let playerActualTyreCompound = -1;
@@ -1202,19 +1027,11 @@ function setTyreWidgetCompoundAge(car) {
     }
 }
 
-/** Grey track; clipped fill: green/gradient/red split. If shiftRpm is provided,
- *  the gradient band is centred on the learned shift point; otherwise fixed
- *  11k/12k thresholds are used. */
-function syncRpmBarSegmentWidths(scale, shiftRpm) {
+/** Grey track; clipped fill: green/gradient/red split using fixed 11k/12k thresholds. */
+function syncRpmBarSegmentWidths(scale) {
     const s = scale > 0 ? scale : RPM_SCALE_FALLBACK;
-    let greenEnd, gradEnd;
-    if (shiftRpm && shiftRpm > 0 && shiftRpm < s) {
-        gradEnd = shiftRpm;
-        greenEnd = Math.max(2000, shiftRpm - RPM_BAR_SHIFT_GREEN_MARGIN);
-    } else {
-        greenEnd = Math.min(RPM_BAR_GREEN_END, s);
-        gradEnd = Math.min(RPM_BAR_GRADIENT_END, s);
-    }
+    const greenEnd = Math.min(RPM_BAR_GREEN_END, s);
+    const gradEnd = Math.min(RPM_BAR_GRADIENT_END, s);
     const wGreen = greenEnd;
     const wGradient = Math.max(0, gradEnd - greenEnd);
     const wRed = Math.max(0, s - gradEnd);
@@ -1572,41 +1389,7 @@ function updateCarTelemetry(data) {
     if (rpmClip) rpmClip.style.setProperty("--rpm-pct", `${rpmPct}%`);
     setText("rpmValue", `${car.engineRpm} / ${scale} RPM`);
 
-    if (window.ShiftModel) {
-        ShiftModel.sample(car, scale);
-        const shiftRpm = ShiftModel.getShiftRpm(gear, scale);
-        if (scale !== _lastRpmScale || shiftRpm !== _lastRpmBarShift) {
-            _lastRpmScale = scale;
-            _lastRpmBarShift = shiftRpm;
-            syncRpmBarSegmentWidths(scale, shiftRpm);
-        }
-        const tick = el("rpmShiftTick");
-        const label = el("rpmShiftLabel");
-        const strip = el("rpmStrip");
-        if (shiftRpm && shiftRpm > 0) {
-            if (tick) {
-                tick.hidden = false;
-                tick.style.setProperty("--shift-pct", `${(shiftRpm / scale) * 100}%`);
-            }
-            if (label) label.textContent = `SHIFT ${shiftRpm}`;
-            const over = car.engineRpm >= shiftRpm;
-            if (over !== _lastOverShift) {
-                _lastOverShift = over;
-                if (strip) strip.classList.toggle("rpm-strip--over-shift", over);
-                if (label) label.classList.toggle("rpm-shift-label--active", over);
-            }
-        } else {
-            if (tick) tick.hidden = true;
-            if (label) {
-                label.textContent = "SHIFT --";
-                label.classList.remove("rpm-shift-label--active");
-            }
-            if (_lastOverShift) {
-                _lastOverShift = false;
-                if (strip) strip.classList.remove("rpm-strip--over-shift");
-            }
-        }
-    } else if (scale !== _lastRpmScale) {
+    if (scale !== _lastRpmScale) {
         _lastRpmScale = scale;
         syncRpmBarSegmentWidths(scale);
     }
@@ -1652,11 +1435,7 @@ function updateCarStatus(data) {
         playerMaxRpm = car.maxRpm;
     }
 
-    if (window.ShiftModel) {
-        ShiftModel.updatePower(car.enginePowerIce, car.enginePowerMguK);
-    }
-
-    syncRpmBarSegmentWidths(playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK, _lastRpmBarShift);
+    syncRpmBarSegmentWidths(playerMaxRpm > 0 ? playerMaxRpm : RPM_SCALE_FALLBACK);
 
     const prevVisual = playerVisualTyreCompound;
     const prevActual = playerActualTyreCompound;
@@ -2199,9 +1978,6 @@ function updateParticipants(data) {
             participantNames[i] = p?.name || `Car ${i}`;
             participantTeamIds[i] = p?.teamId != null ? p.teamId : -1;
         }
-    }
-    if (window.ShiftModel) {
-        ShiftModel.setTeam(participantTeamIds[playerCarIndex]);
     }
     updateTopSpeedWidgets();
     scheduleRafUpdate("gapRing", updateGapRing);
