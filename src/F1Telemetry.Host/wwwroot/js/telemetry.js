@@ -1063,6 +1063,26 @@ let lastPlayerCarTelemetry = null;
 
 function el(id) { return document.getElementById(id); }
 
+// At 60 Hz telemetry a single LapData packet triggers 5 full-table re-renders.
+// Coalesce heavy widget updates into one per animation frame; if the tab is
+// hidden, the browser pauses rAF and we skip rendering entirely.
+const _rafTasks = new Map();
+let _rafScheduled = false;
+
+function scheduleRafUpdate(key, fn) {
+    _rafTasks.set(key, fn);
+    if (_rafScheduled) return;
+    _rafScheduled = true;
+    requestAnimationFrame(() => {
+        _rafScheduled = false;
+        const tasks = Array.from(_rafTasks.values());
+        _rafTasks.clear();
+        for (const task of tasks) {
+            try { task(); } catch (e) { console.error(e); }
+        }
+    });
+}
+
 function setText(id, text) {
     const e = el(id);
     if (e) e.textContent = text;
@@ -1341,7 +1361,7 @@ function updateSession(data) {
 
     updateFlagIndicator();
     updateSessionProgress();
-    updateLapTimesWidget();
+    scheduleRafUpdate("lapTimes", updateLapTimesWidget);
 }
 
 function updateFlagIndicator() {
@@ -1741,18 +1761,18 @@ function updateCarSetups(data) {
             diffEl.textContent = `${setup.onThrottle}%`;
         }
     }
-    updateLapTimesWidget();
+    scheduleRafUpdate("lapTimes", updateLapTimesWidget);
 }
 
 function updateLapData(data) {
     lastLapDataPacket = data;
 
     updateSessionProgress();
-    updateStandings(data);
-    updateQualiStandings();
-    updatePitPredictor();
-    updateGapBoard();
-    updateGapRing();
+    scheduleRafUpdate("standings", () => updateStandings(lastLapDataPacket));
+    scheduleRafUpdate("qualiStandings", updateQualiStandings);
+    scheduleRafUpdate("pitPredictor", updatePitPredictor);
+    scheduleRafUpdate("gapBoard", updateGapBoard);
+    scheduleRafUpdate("gapRing", updateGapRing);
 
     const car = data.lapDataItems?.[playerCarIndex];
     if (!car) return;
@@ -2184,8 +2204,8 @@ function updateParticipants(data) {
         ShiftModel.setTeam(participantTeamIds[playerCarIndex]);
     }
     updateTopSpeedWidgets();
-    updateGapRing();
-    updateLapTimesWidget();
+    scheduleRafUpdate("gapRing", updateGapRing);
+    scheduleRafUpdate("lapTimes", updateLapTimesWidget);
 }
 
 function formatSpeedKmh(v) {
@@ -2786,9 +2806,9 @@ async function savePitTime() {
 
 function updateSessionHistory(data) {
     sessionHistories[data.carIdx] = data;
-    updateGapBoard();
-    updateQualiStandings();
-    updateLapTimesWidget();
+    scheduleRafUpdate("gapBoard", updateGapBoard);
+    scheduleRafUpdate("qualiStandings", updateQualiStandings);
+    scheduleRafUpdate("lapTimes", updateLapTimesWidget);
     if (data.carIdx === playerCarIndex) {
         const car = lastLapDataPacket?.lapDataItems?.[playerCarIndex];
         if (car) updateLapDataWidget(car);
@@ -3685,14 +3705,14 @@ function initConnection() {
     connection.on("ReceiveSetupSnapshot", (carIndex, lapIndex, setup) => {
         if (carIndex === playerCarIndex) {
             _lapSetupSnapshots[lapIndex] = setup;
-            updateLapTimesWidget();
+            scheduleRafUpdate("lapTimes", updateLapTimesWidget);
         }
     });
 
     connection.on("ReceiveTyreSnapshot", (carIndex, lapIndex, snapshot) => {
         if (carIndex === playerCarIndex) {
             _lapTyreSnapshots[lapIndex] = snapshot;
-            updateLapTimesWidget();
+            scheduleRafUpdate("lapTimes", updateLapTimesWidget);
         }
     });
 
@@ -3740,7 +3760,7 @@ function requestCurrentState(connection) {
         .then(snapshots => {
             if (snapshots) {
                 _lapSetupSnapshots = snapshots;
-                updateLapTimesWidget();
+                scheduleRafUpdate("lapTimes", updateLapTimesWidget);
             }
         })
         .catch(err => console.warn("Failed to get setup snapshots:", err));
@@ -3749,7 +3769,7 @@ function requestCurrentState(connection) {
         .then(snapshots => {
             if (snapshots) {
                 _lapTyreSnapshots = snapshots;
-                updateLapTimesWidget();
+                scheduleRafUpdate("lapTimes", updateLapTimesWidget);
             }
         })
         .catch(err => console.warn("Failed to get tyre snapshots:", err));
