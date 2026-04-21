@@ -314,27 +314,17 @@
     }
 
     // --- SignalR ---
+    // Reuse the single connection owned by telemetry.js instead of opening a
+    // second WebSocket for the Debug tab.
     function initSignalR() {
         if (connection) return;
-
-        connection = new signalR.HubConnectionBuilder()
-            .withUrl('/hub/telemetry')
-            .withAutomaticReconnect()
-            .build();
-
-        connection.on('DebugPacket', function (data) {
-            updateDebugPanel(data);
+        var subscribe = window.__f1TelemetryOnConnection;
+        if (typeof subscribe !== 'function') return;
+        subscribe(function (conn) {
+            connection = conn;
+            conn.on('DebugPacket', updateDebugPanel);
+            loadDebugStats();
         });
-
-        connection.start()
-            .then(function () {
-                console.log('SignalR connected');
-                loadDebugStats();
-            })
-            .catch(function (err) {
-                console.error('SignalR connection error:', err);
-                connection = null;
-            });
     }
 
     function loadDebugStats() {

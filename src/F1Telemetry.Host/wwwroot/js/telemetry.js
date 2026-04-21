@@ -3656,12 +3656,30 @@ const PACKET_HANDLERS = {
     TimeTrial: updateTimeTrial,
 };
 
+/** Single SignalR connection shared with app.js (Debug panel subscribes to
+ *  DebugPacket through window.__f1TelemetryOnConnection to avoid a second
+ *  WebSocket). Handlers registered before the connection exists are queued. */
+let _signalRConnection = null;
+const _signalRConnectionWaiters = [];
+
+window.__f1TelemetryOnConnection = function (fn) {
+    if (typeof fn !== "function") return;
+    if (_signalRConnection) fn(_signalRConnection);
+    else _signalRConnectionWaiters.push(fn);
+};
+
 function initConnection() {
     const connection = new signalR.HubConnectionBuilder()
         .withUrl("/hub/telemetry")
         .withAutomaticReconnect([0, 1000, 2000, 5000, 10000])
         .configureLogging(signalR.LogLevel.Warning)
         .build();
+
+    _signalRConnection = connection;
+    for (const fn of _signalRConnectionWaiters) {
+        try { fn(connection); } catch (e) { console.error(e); }
+    }
+    _signalRConnectionWaiters.length = 0;
 
     const statusEl = el("connectionStatus");
     const setConnectionState = (state, label) => {
