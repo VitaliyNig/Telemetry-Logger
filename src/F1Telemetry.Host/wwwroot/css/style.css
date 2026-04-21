@@ -3058,7 +3058,7 @@
     max-width: calc(100vw - 16px);
     max-height: min(520px, 75vh);
     overflow: auto;
-    padding: var(--space-2);
+    padding: var(--space-3);
     background: var(--bg-dark);
     border: 1px solid var(--border);
     border-radius: var(--radius);
@@ -3067,7 +3067,7 @@
     color: var(--text-secondary);
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--space-4);
 }
 
 .lt-setup-popover[hidden] {
