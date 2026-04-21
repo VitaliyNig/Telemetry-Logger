@@ -3291,6 +3291,12 @@ function positionLapTimesPopover(anchor, panel) {
 function openLapTimesSetupPopover(anchor, html) {
     const panel = el("lapTimesSetupPanel");
     if (!panel || !html) return;
+    // Move the panel to <body> to escape ancestor `contain: layout style paint`
+    // on .grid-stack-item-content, which otherwise turns position: fixed into
+    // position: absolute relative to the widget and breaks our anchoring.
+    if (panel.parentElement !== document.body) {
+        document.body.appendChild(panel);
+    }
     panel.innerHTML = `<div class="lt-setup-panel-inner">${html}</div>`;
     panel.hidden = false;
     requestAnimationFrame(() => positionLapTimesPopover(anchor, panel));
