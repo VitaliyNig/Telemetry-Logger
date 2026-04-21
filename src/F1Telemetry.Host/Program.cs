@@ -223,8 +223,8 @@ static class Program
                 await File.WriteAllBytesAsync(xmlPath + ".bak", await File.ReadAllBytesAsync(xmlPath));
 
                 XDocument doc;
-                await using (var fs = File.OpenRead(xmlPath))
-                    doc = await Task.Run(() => XDocument.Load(fs));
+                using (var fs = File.OpenRead(xmlPath))
+                    doc = XDocument.Load(fs);
 
                 var motion = doc.Root?.Element("motion") ?? doc.Descendants("motion").FirstOrDefault();
                 if (motion == null)
