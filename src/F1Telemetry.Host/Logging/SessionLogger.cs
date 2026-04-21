@@ -23,7 +23,7 @@ public sealed class SessionLogger
     private static readonly JsonSerializerOptions JsonOptions = new()
     {
         PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-        WriteIndented = true,
+        WriteIndented = false,
         Converters = { new FiniteSingleJsonConverter(), new FiniteDoubleJsonConverter() },
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
