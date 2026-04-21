@@ -1,4 +1,5 @@
 using System.IO;
+using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Xml.Linq;
@@ -22,6 +23,35 @@ namespace F1Telemetry;
 
 static class Program
 {
+    // /api/sessions cache — invalidated automatically when any Logs/ subdir changes mtime.
+    private static readonly object _sessionsCacheLock = new();
+    private static long? _sessionsCacheVersion;
+    private static object? _sessionsCacheValue;
+
+    // /api/pit-times cache — hydrated on first access, kept in sync with the file on PUT.
+    private static readonly SemaphoreSlim _pitTimesLock = new(1, 1);
+    private static Dictionary<string, JsonElement>? _pitTimesCache;
+
+    private static async Task<Dictionary<string, JsonElement>> LoadPitTimesAsync(string path)
+    {
+        if (_pitTimesCache != null) return _pitTimesCache;
+        await _pitTimesLock.WaitAsync();
+        try
+        {
+            if (_pitTimesCache != null) return _pitTimesCache;
+            if (!File.Exists(path))
+            {
+                _pitTimesCache = new Dictionary<string, JsonElement>();
+                return _pitTimesCache;
+            }
+            var json = await File.ReadAllTextAsync(path);
+            _pitTimesCache = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json)
+                             ?? new Dictionary<string, JsonElement>();
+            return _pitTimesCache;
+        }
+        finally { _pitTimesLock.Release(); }
+    }
+
     [STAThread]
     static void Main(string[] args)
     {
@@ -73,9 +103,13 @@ static class Program
         builder.Services.AddResponseCompression(opts =>
         {
             opts.EnableForHttps = true;
+            opts.Providers.Add<BrotliCompressionProvider>();
+            opts.Providers.Add<GzipCompressionProvider>();
             opts.MimeTypes = ResponseCompressionDefaults.MimeTypes.Concat(
                 new[] { "application/octet-stream" });
         });
+        builder.Services.Configure<BrotliCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
+        builder.Services.Configure<GzipCompressionProviderOptions>(o => o.Level = CompressionLevel.Fastest);
 
         builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(3));
 
@@ -266,22 +300,22 @@ static class Program
 
         app.MapGet("/api/pit-times", async () =>
         {
-            if (!File.Exists(pitTimesPath))
-                return Results.Ok(new Dictionary<string, object>());
-            var json = await File.ReadAllTextAsync(pitTimesPath);
-            var data = JsonSerializer.Deserialize<Dictionary<string, object>>(json);
-            return Results.Ok(data);
+            var cache = await LoadPitTimesAsync(pitTimesPath);
+            await _pitTimesLock.WaitAsync();
+            try
+            {
+                // Shallow snapshot so the serializer can't race with a concurrent PUT.
+                return Results.Ok(new Dictionary<string, JsonElement>(cache));
+            }
+            finally { _pitTimesLock.Release(); }
         });
 
         app.MapGet("/api/pit-times/{trackId}", async (string trackId) =>
         {
-            if (!File.Exists(pitTimesPath))
-                return Results.NotFound(new { error = "Pit times file not found" });
-            var json = await File.ReadAllTextAsync(pitTimesPath);
-            using var doc = JsonDocument.Parse(json);
-            if (doc.RootElement.TryGetProperty(trackId, out var entry))
-                return Results.Ok(JsonSerializer.Deserialize<object>(entry.GetRawText()));
-            return Results.NotFound(new { error = $"No pit time for track {trackId}" });
+            var cache = await LoadPitTimesAsync(pitTimesPath);
+            return cache.TryGetValue(trackId, out var entry)
+                ? Results.Ok(entry)
+                : Results.NotFound(new { error = $"No pit time for track {trackId}" });
         });
 
         app.MapPut("/api/pit-times/{trackId}", async (string trackId, HttpContext ctx) =>
@@ -290,27 +324,28 @@ static class Program
             if (body is null || body.PitTimeSec <= 0)
                 return Results.BadRequest("Invalid pit time");
 
-            var existing = new Dictionary<string, JsonElement>();
-            if (File.Exists(pitTimesPath))
-            {
-                var json = await File.ReadAllTextAsync(pitTimesPath);
-                existing = JsonSerializer.Deserialize<Dictionary<string, JsonElement>>(json) ?? new();
-            }
+            var cache = await LoadPitTimesAsync(pitTimesPath);
 
             var entryJson = JsonSerializer.SerializeToElement(new
             {
                 trackName = body.TrackName ?? $"Track {trackId}",
                 pitTimeSec = body.PitTimeSec
             });
-            existing[trackId] = entryJson;
 
-            var dir = Path.GetDirectoryName(pitTimesPath);
-            if (dir != null && !Directory.Exists(dir))
-                Directory.CreateDirectory(dir);
+            await _pitTimesLock.WaitAsync();
+            try
+            {
+                cache[trackId] = entryJson;
 
-            var newJson = JsonSerializer.Serialize(existing,
-                new JsonSerializerOptions { WriteIndented = true });
-            await File.WriteAllTextAsync(pitTimesPath, newJson);
+                var dir = Path.GetDirectoryName(pitTimesPath);
+                if (dir != null && !Directory.Exists(dir))
+                    Directory.CreateDirectory(dir);
+
+                var newJson = JsonSerializer.Serialize(cache,
+                    new JsonSerializerOptions { WriteIndented = true });
+                await File.WriteAllTextAsync(pitTimesPath, newJson);
+            }
+            finally { _pitTimesLock.Release(); }
 
             return Results.Ok(new { saved = true, trackId, pitTimeSec = body.PitTimeSec });
         });
@@ -353,6 +388,19 @@ static class Program
             var logsDir = Path.Combine(AppContext.BaseDirectory, "Logs");
             if (!Directory.Exists(logsDir))
                 return Results.Ok(Array.Empty<object>());
+
+            // Stat-only version: sum of top-dir + each subdir's last-write ticks.
+            // Cheaper than parsing every meta block and invalidates as soon as
+            // SessionLogger writes a new file (the weekend folder mtime changes).
+            long version = Directory.GetLastWriteTimeUtc(logsDir).Ticks;
+            foreach (var dir in Directory.EnumerateDirectories(logsDir))
+                version = HashCode.Combine(version, Directory.GetLastWriteTimeUtc(dir).Ticks);
+
+            lock (_sessionsCacheLock)
+            {
+                if (_sessionsCacheValue != null && _sessionsCacheVersion == version)
+                    return Results.Ok(_sessionsCacheValue);
+            }
 
             var weekends = new List<object>();
 
@@ -401,6 +449,12 @@ static class Program
                         sessions,
                     });
                 }
+            }
+
+            lock (_sessionsCacheLock)
+            {
+                _sessionsCacheValue = weekends;
+                _sessionsCacheVersion = version;
             }
 
             return Results.Ok(weekends);
