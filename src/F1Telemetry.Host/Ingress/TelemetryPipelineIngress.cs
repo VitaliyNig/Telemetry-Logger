@@ -59,6 +59,28 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
     private static bool IsSetupSnapshotSession(byte sessionType) =>
         sessionType is >= 1 and <= 4 or 18;
 
+    // Packet ids consumed by the web UI (telemetry.js PACKET_HANDLERS). Other ids
+    // (Motion, MotionEx, LobbyInfo, LapPositions, FinalClassification) are still
+    // deserialized and stored in TelemetryState for /api/state + History mode, but
+    // not broadcast live — avoids ~30-50% of SignalR payload volume at 60 Hz.
+    private static bool ShouldBroadcastLive(byte packetId) => packetId is
+        (byte)F125PacketId.Session
+        or (byte)F125PacketId.LapData
+        or (byte)F125PacketId.Event
+        or (byte)F125PacketId.Participants
+        or (byte)F125PacketId.CarSetups
+        or (byte)F125PacketId.CarTelemetry
+        or (byte)F125PacketId.CarStatus
+        or (byte)F125PacketId.CarDamage
+        or (byte)F125PacketId.SessionHistory
+        or (byte)F125PacketId.TyreSets
+        or (byte)F125PacketId.TimeTrial;
+
+    // Debug-panel broadcasts coalesced to ~5 Hz; at 60 Hz × 14 packet types the
+    // raw rate would be ~840 Hz and dominate CPU/GC when Debug Mode is on.
+    private const long DebugBroadcastMinIntervalTicks = TimeSpan.TicksPerMillisecond * 200;
+    private long _lastDebugBroadcastTicks;
+
     public async Task OnPacketAsync(RawTelemetryPacket packet, CancellationToken cancellationToken)
     {
         var span = packet.Payload.Span;
@@ -76,7 +98,6 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
             return;
         }
 
-        var packetName = F125PacketNames.Get(header.PacketId);
         _tracker.RecordPacket(header.PacketId);
 
         var deserializer = _registry.Get(header.PacketId);
@@ -100,8 +121,10 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         if (deserialized == null)
             return;
 
+        var settings = _appSettings.CurrentValue;
+
         _state.Update(header.PacketId, deserialized);
-        if (_appSettings.CurrentValue.EnableSessionLogging)
+        if (settings.EnableSessionLogging)
             _sessionLogger.ProcessPacket(header, header.PacketId, deserialized);
 
         if (header.PacketId == (byte)F125PacketId.LapData && deserialized is LapDataPacket lapDataPacket)
@@ -151,30 +174,43 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
             }
         }
 
-        try
-        {
-            await _hubContext.Clients.All.ReceivePacket(packetName, header, deserialized);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError(ex, "Failed to broadcast packet {PacketName}", packetName);
-        }
+        string? packetName = null;
 
-        if (_appSettings.CurrentValue.DebugMode)
+        if (ShouldBroadcastLive(header.PacketId))
         {
+            packetName = F125PacketNames.Get(header.PacketId);
             try
             {
-                await _hubContext.Clients.All.DebugPacket(new
-                {
-                    timestamp = DateTimeOffset.UtcNow.ToString("HH:mm:ss.fff"),
-                    name = packetName,
-                    counts = _tracker.GetPacketCountsByName(),
-                    total = _tracker.TotalPackets
-                });
+                await _hubContext.Clients.All.ReceivePacket(packetName, header, deserialized);
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Failed to send debug packet");
+                _logger.LogError(ex, "Failed to broadcast packet {PacketName}", packetName);
+            }
+        }
+
+        if (settings.DebugMode)
+        {
+            var nowTicks = DateTime.UtcNow.Ticks;
+            var prev = Interlocked.Read(ref _lastDebugBroadcastTicks);
+            if (nowTicks - prev >= DebugBroadcastMinIntervalTicks &&
+                Interlocked.CompareExchange(ref _lastDebugBroadcastTicks, nowTicks, prev) == prev)
+            {
+                packetName ??= F125PacketNames.Get(header.PacketId);
+                try
+                {
+                    await _hubContext.Clients.All.DebugPacket(new
+                    {
+                        timestamp = DateTimeOffset.UtcNow.ToString("HH:mm:ss.fff"),
+                        name = packetName,
+                        counts = _tracker.GetPacketCountsByName(),
+                        total = _tracker.TotalPackets
+                    });
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to send debug packet");
+                }
             }
         }
     }
