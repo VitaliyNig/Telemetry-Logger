@@ -444,12 +444,6 @@
         return n.toString().replace(/\B(?=(\d{3})+(?!\d))/g, ',');
     }
 
-    function escapeHtml(str) {
-        var div = document.createElement('div');
-        div.appendChild(document.createTextNode(str));
-        return div.innerHTML;
-    }
-
     // --- Init ---
     loadSettings();
 })();
