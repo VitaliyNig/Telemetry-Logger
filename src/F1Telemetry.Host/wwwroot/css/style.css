@@ -3096,12 +3096,12 @@
     display: flex;
     align-items: center;
     gap: 6px;
-    font-size: 11px;
+    font-size: 12px;
     font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-primary);
-    padding-bottom: 6px;
+    letter-spacing: 2px;
+    color: var(--text-secondary);
+    padding-bottom: 8px;
     border-bottom: 1px solid var(--border);
 }
 
