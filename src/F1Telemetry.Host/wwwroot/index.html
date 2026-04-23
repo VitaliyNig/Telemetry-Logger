@@ -78,13 +78,15 @@
                     <span class="history-bc-sep">/</span>
                     <span class="history-bc-session"></span>
                 </nav>
-                <div class="history-subtabs" role="tablist">
-                    <button class="history-subtab active" data-sub="laptimes">Lap Times</button>
-                    <button class="history-subtab" data-sub="positions">Positions</button>
-                    <button class="history-subtab" data-sub="compare">Telemetry Compare</button>
-                    <button class="history-subtab" data-sub="events">Events</button>
+                <div class="history-detail-layout">
+                    <nav class="history-sidenav" role="tablist">
+                        <button class="history-sidenav-item active" data-sub="laptimes">Lap Times</button>
+                        <button class="history-sidenav-item" data-sub="positions">Positions</button>
+                        <button class="history-sidenav-item" data-sub="compare">Telemetry Compare</button>
+                        <button class="history-sidenav-item" data-sub="events">Events</button>
+                    </nav>
+                    <div class="history-detail-body" id="historyDetailBody"></div>
                 </div>
-                <div class="history-detail-body" id="historyDetailBody"></div>
             </div>
         </section>
 
