@@ -12,7 +12,35 @@
         zoomStart: null,   // metres; null = full lap
         zoomEnd: null,
         deltaMode: 'cumulative', // or 'sector'
+        hiddenMetrics: new Set(),
+        heightScale: 1.0,           // 0.75 | 1.0 | 1.4
+        heightOverride: {},         // { metricKey: pixelsAtScale1 } from drag
     };
+
+    var PERSIST_KEY = 'tcCompareUi';
+
+    function loadPersistedState() {
+        try {
+            var raw = localStorage.getItem(PERSIST_KEY);
+            if (!raw) return;
+            var p = JSON.parse(raw);
+            if (Array.isArray(p.hiddenMetrics)) compareState.hiddenMetrics = new Set(p.hiddenMetrics);
+            if (typeof p.heightScale === 'number') compareState.heightScale = p.heightScale;
+            if (p.heightOverride && typeof p.heightOverride === 'object') compareState.heightOverride = p.heightOverride;
+        } catch (e) { /* ignore corrupt storage */ }
+    }
+
+    function persistState() {
+        try {
+            localStorage.setItem(PERSIST_KEY, JSON.stringify({
+                hiddenMetrics: Array.from(compareState.hiddenMetrics),
+                heightScale: compareState.heightScale,
+                heightOverride: compareState.heightOverride,
+            }));
+        } catch (e) { /* storage may be disabled */ }
+    }
+
+    loadPersistedState();
 
     var METRICS = [
         { key: 'delta', label: 'Δ (s)', height: 70, getValue: null /* computed */, min: -1, max: 1 },
@@ -22,7 +50,12 @@
         { key: 'str',   label: 'Steering', height: 50, min: -100, max: 100 },
         { key: 'gr',    label: 'Gear', height: 50, min: -1, max: 8 },
         { key: 'rpm',   label: 'RPM', height: 60, min: 0, max: 14000 },
+        { key: 'ers',   label: 'ERS (%)', height: 60, min: 0, max: 100 },
+        { key: 'drs',   label: 'DRS', height: 22, min: 0, max: 1, style: 'band' },
     ];
+
+    var ERS_MODE_NAMES = ['None', 'Low', 'Medium', 'High'];
+    var ERS_MODE_TAGS = ['', 'LOW', 'MED', 'HIGH'];
 
     function render(body) {
         var sess = window.HistoryDetail.state.session;
@@ -105,6 +138,23 @@
                 + '</button>';
         });
         html += '<button class="tc-badge tc-badge-reset" data-start="0" data-end="' + sess.meta.trackLengthM + '">Full Lap</button>';
+
+        // --- Second row: metric visibility chips + height presets + reset-heights. ---
+        html += '<div class="tc-metrics-toolbar">';
+        METRICS.forEach(function (m) {
+            var pressed = !compareState.hiddenMetrics.has(m.key);
+            html += '<button class="tc-metric-chip" data-key="' + m.key + '"'
+                + ' aria-pressed="' + (pressed ? 'true' : 'false') + '">'
+                + escapeHtml(m.label) + '</button>';
+        });
+        html += '<span class="tc-toolbar-sep"></span>';
+        [[0.75, 'Compact'], [1.0, 'Normal'], [1.4, 'Tall']].forEach(function (pair) {
+            var active = Math.abs(compareState.heightScale - pair[0]) < 0.01;
+            html += '<button class="tc-size-chip ' + (active ? 'active' : '') + '"'
+                + ' data-scale="' + pair[0] + '">' + pair[1] + '</button>';
+        });
+        html += '<button class="tc-size-chip tc-reset-heights">Reset heights</button>';
+        html += '</div>';
         host.innerHTML = html;
 
         host.querySelectorAll('.tc-badge').forEach(function (b) {
@@ -126,9 +176,42 @@
                 redraw(lapData);
             });
         });
+        host.querySelectorAll('.tc-metric-chip').forEach(function (chip) {
+            chip.addEventListener('click', function () {
+                var key = chip.dataset.key;
+                if (compareState.hiddenMetrics.has(key)) compareState.hiddenMetrics.delete(key);
+                else compareState.hiddenMetrics.add(key);
+                persistState();
+                drawBadges(lapData);
+                drawChartStack(lapData);
+            });
+        });
+        host.querySelectorAll('.tc-size-chip[data-scale]').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                compareState.heightScale = Number(btn.dataset.scale);
+                persistState();
+                drawBadges(lapData);
+                drawChartStack(lapData);
+            });
+        });
+        var resetBtn = host.querySelector('.tc-reset-heights');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', function () {
+                compareState.heightOverride = {};
+                persistState();
+                drawChartStack(lapData);
+            });
+        }
     }
 
     // ---------- chart stack ----------
+
+    function effectiveHeight(m) {
+        var base = compareState.heightOverride[m.key] != null
+            ? compareState.heightOverride[m.key]
+            : m.height;
+        return Math.max(18, Math.round(base * compareState.heightScale));
+    }
 
     function drawChartStack(lapData) {
         var host = document.getElementById('tcCharts');
@@ -143,11 +226,15 @@
         var refIdx = lapData && lapData.size > 0 ? lapData.keys().next().value : null;
         var refSamples = refIdx != null ? lapData.get(refIdx).samples : null;
 
+        var visibleMetrics = METRICS.filter(function (m) { return !compareState.hiddenMetrics.has(m.key); });
+
         var html = '';
-        METRICS.forEach(function (m) {
-            html += '<div class="tc-chart-row" data-metric="' + m.key + '">'
+        visibleMetrics.forEach(function (m) {
+            var h = effectiveHeight(m);
+            html += '<div class="tc-chart-row" data-metric="' + m.key + '" style="--tc-row-h:' + h + 'px">'
                 + '<div class="tc-chart-label">' + m.label + '</div>'
                 + '<div class="tc-chart-svg-host"></div>'
+                + '<div class="tc-resize-handle" data-metric="' + m.key + '" title="Drag to resize"></div>'
                 + '</div>';
         });
         // Hover overlay spans the entire stack.
@@ -159,22 +246,124 @@
 
         var selections = Array.from(window.HistoryDetail.state.driverSelection.entries());
 
-        METRICS.forEach(function (m) {
+        visibleMetrics.forEach(function (m) {
             var row = host.querySelector('[data-metric="' + m.key + '"] .tc-chart-svg-host');
-            row.innerHTML = renderChartSvg(m, lapData, selections, refSamples, xMin, xMax, sess);
+            row.innerHTML = renderChartSvg(m, lapData, selections, refSamples, xMin, xMax, sess, effectiveHeight(m));
         });
 
+        wireResizeHandles(host, lapData);
         wireHover(host, lapData, selections, refSamples, xMin, xMax, sess);
     }
 
-    function renderChartSvg(metric, lapData, selections, refSamples, xMin, xMax, sess) {
-        var W = 900, H = metric.height;
+    // Mouse-drag on the bottom edge of a row changes compareState.heightOverride[key].
+    function wireResizeHandles(host, lapData) {
+        host.querySelectorAll('.tc-resize-handle').forEach(function (h) {
+            h.addEventListener('mousedown', function (ev) {
+                ev.preventDefault();
+                var key = h.dataset.metric;
+                var row = h.parentElement;
+                var svgHost = row.querySelector('.tc-chart-svg-host');
+                var startY = ev.clientY;
+                var startH = svgHost.getBoundingClientRect().height;
+
+                function onMove(e) {
+                    var deltaPx = e.clientY - startY;
+                    var newH = Math.max(18, Math.round(startH + deltaPx));
+                    // Store as "pixels at scale 1" so scale presets still compose correctly.
+                    compareState.heightOverride[key] = newH / Math.max(0.01, compareState.heightScale);
+                    svgHost.style.height = newH + 'px';
+                    row.style.setProperty('--tc-row-h', newH + 'px');
+                }
+                function onUp() {
+                    document.removeEventListener('mousemove', onMove);
+                    document.removeEventListener('mouseup', onUp);
+                    persistState();
+                    drawChartStack(lapData);
+                }
+                document.addEventListener('mousemove', onMove);
+                document.addEventListener('mouseup', onUp);
+            });
+        });
+    }
+
+    // Walks samples and returns contiguous runs where `field` has a constant value.
+    // Each run is { from, to, v } in lapDistance metres.
+    function runLengthRuns(samples, field, xMin, xMax) {
+        var runs = [];
+        if (!samples || samples.length === 0) return runs;
+        var curV = samples[0][field] || 0;
+        var curFrom = samples[0].d;
+        for (var i = 1; i < samples.length; i++) {
+            var v = samples[i][field] || 0;
+            if (v !== curV) {
+                runs.push({ from: curFrom, to: samples[i].d, v: curV });
+                curV = v;
+                curFrom = samples[i].d;
+            }
+        }
+        runs.push({ from: curFrom, to: samples[samples.length - 1].d, v: curV });
+        return runs.filter(function (r) { return r.to >= xMin && r.from <= xMax; });
+    }
+
+    function renderChartSvg(metric, lapData, selections, refSamples, xMin, xMax, sess, H) {
+        var W = 900;
         var PAD_T = 4, PAD_B = 16;
         var plotH = H - PAD_T - PAD_B;
         function x(d) { return (d - xMin) / Math.max(1, xMax - xMin) * W; }
 
+        // Reference driver samples for overlays (DRS overlay on Speed; ERS bg band).
+        var refCarIdx = selections.length > 0 ? selections[0][0] : null;
+        var refDriverData = (refCarIdx != null && lapData) ? lapData.get(refCarIdx) : null;
+        var refDriverSamples = refDriverData ? refDriverData.samples : null;
+
+        // ---- DRS band row: filled blocks where drs===1, no polyline. ----
+        if (metric.style === 'band' && metric.key === 'drs') {
+            var bandSvg = '';
+            if (refDriverSamples) {
+                runLengthRuns(refDriverSamples, 'drs', xMin, xMax).forEach(function (r) {
+                    if (r.v !== 1) return;
+                    var x0 = Math.max(0, x(Math.max(r.from, xMin)));
+                    var x1 = Math.min(W, x(Math.min(r.to, xMax)));
+                    if (x1 <= x0) return;
+                    bandSvg += '<rect class="tc-drs-block" x="' + x0 + '" y="' + PAD_T
+                        + '" width="' + (x1 - x0) + '" height="' + plotH + '"/>';
+                });
+            }
+            return '<svg class="tc-chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
+                + bandSvg + '</svg>';
+        }
+
+        // ---- ERS row: background mode band + floating mode tags, polyline on top. ----
+        var ersBg = '';
+        if (metric.key === 'ers' && refDriverSamples) {
+            runLengthRuns(refDriverSamples, 'ersMd', xMin, xMax).forEach(function (r) {
+                var x0 = Math.max(0, x(Math.max(r.from, xMin)));
+                var x1 = Math.min(W, x(Math.min(r.to, xMax)));
+                if (x1 <= x0) return;
+                ersBg += '<rect class="tc-ers-band tc-ers-mode-' + r.v + '" x="' + x0 + '" y="' + PAD_T
+                    + '" width="' + (x1 - x0) + '" height="' + plotH + '"/>';
+                var tag = ERS_MODE_TAGS[r.v] || '';
+                if (tag && (x1 - x0) > 30) {
+                    ersBg += '<text class="tc-ers-mode-tag" x="' + (x1 - 3) + '" y="' + (PAD_T + 10)
+                        + '" text-anchor="end">' + tag + '</text>';
+                }
+            });
+        }
+
+        // ---- Speed row: faint DRS overlay under the polylines. ----
+        var speedDrsOverlay = '';
+        if (metric.key === 'spd' && refDriverSamples) {
+            runLengthRuns(refDriverSamples, 'drs', xMin, xMax).forEach(function (r) {
+                if (r.v !== 1) return;
+                var x0 = Math.max(0, x(Math.max(r.from, xMin)));
+                var x1 = Math.min(W, x(Math.min(r.to, xMax)));
+                if (x1 <= x0) return;
+                speedDrsOverlay += '<rect class="tc-drs-overlay" x="' + x0 + '" y="' + PAD_T
+                    + '" width="' + (x1 - x0) + '" height="' + plotH + '"/>';
+            });
+        }
+
         var lines = '';
-        var mins = [], maxs = [];
         selections.forEach(function (kv) {
             var carIdx = kv[0];
             var d = lapData && lapData.get(carIdx);
@@ -187,12 +376,10 @@
                 if (!refSamples) return;
                 values = computeDeltaSeries(d.samples, refSamples, sess);
             } else {
-                values = d.samples.map(function (s) { return { d: s.d, v: s[metric.key] }; });
+                values = d.samples.map(function (s) { return { d: s.d, v: s[metric.key] || 0 }; });
             }
             values = values.filter(function (pt) { return pt.d >= xMin && pt.d <= xMax; });
             if (values.length === 0) return;
-
-            values.forEach(function (pt) { mins.push(pt.v); maxs.push(pt.v); });
 
             var pts = values.map(function (pt) {
                 var vMin = metric.min, vMax = metric.max;
@@ -222,7 +409,7 @@
         });
 
         return '<svg class="tc-chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
-            + sectorMarkers + lines + '</svg>';
+            + ersBg + speedDrsOverlay + sectorMarkers + lines + '</svg>';
     }
 
     // Resamples driverSamples onto reference sample distances and returns per-distance Δtime (seconds).
@@ -276,6 +463,9 @@
                     str: a.str + (b.str - a.str) * f,
                     gr:  a.gr,
                     rpm: a.rpm + (b.rpm - a.rpm) * f,
+                    ers: (a.ers || 0) + ((b.ers || 0) - (a.ers || 0)) * f,
+                    ersMd: a.ersMd || 0,
+                    drs: a.drs || 0,
                 };
             }
         }
@@ -362,12 +552,16 @@
                 var color = (typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
                 var s = interpAtDistance(data.samples, d);
                 if (!s) return;
+                var ersMode = ERS_MODE_NAMES[s.ersMd || 0] || 'None';
                 rows += '<div class="tc-tip-row">'
                     + '<span class="driver-dot" style="background:' + color + '"></span>'
                     + '<span class="tc-tip-label">' + escapeHtml(driver.name) + '</span>'
                     + '<span class="tc-tip-val">' + Math.round(s.spd) + 'kph · '
                     + Math.round(s.thr) + '% · '
-                    + Math.round(s.brk) + '% · G' + s.gr + '</span>'
+                    + Math.round(s.brk) + '% · G' + s.gr + ' · '
+                    + 'ERS ' + Math.round(s.ers || 0) + '% [' + ersMode + '] · '
+                    + 'DRS ' + ((s.drs || 0) ? 'ON' : 'OFF')
+                    + '</span>'
                     + '</div>';
             });
             tooltip.innerHTML = rows;
