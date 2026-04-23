@@ -54,8 +54,8 @@
         { key: 'drs',   label: 'DRS', height: 22, min: 0, max: 1, style: 'band' },
     ];
 
-    var ERS_MODE_NAMES = ['None', 'Low', 'Medium', 'High'];
-    var ERS_MODE_TAGS = ['', 'LOW', 'MED', 'HIGH'];
+    var ERS_MODE_NAMES = ['None', 'Medium', 'Hotlap', 'Overtake'];
+    var ERS_MODE_TAGS = ['', 'MED', 'HOT', 'OT'];
 
     function render(body) {
         var sess = window.HistoryDetail.state.session;

@@ -31,7 +31,7 @@ public sealed class LapSample
     public byte Sec { get; set; }
     /// <summary>ERS store 0..100 (% of 4 MJ capacity).</summary>
     public byte Ers { get; set; }
-    /// <summary>ERS deploy mode 0=None 1=Low 2=Medium 3=High.</summary>
+    /// <summary>ERS deploy mode 0=None 1=Medium 2=Hotlap 3=Overtake.</summary>
     public byte ErsMd { get; set; }
     /// <summary>DRS 0 off, 1 active.</summary>
     public byte Drs { get; set; }
