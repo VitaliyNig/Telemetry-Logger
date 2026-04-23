@@ -1,0 +1,335 @@
+{
+  "meta": {
+    "trackId": 7,
+    "trackName": "Silverstone",
+    "sessionType": 15,
+    "sessionTypeName": "Race",
+    "gameYear": 25,
+    "weekendLinkId": 42000001,
+    "sessionLinkId": 42000015,
+    "playerCarIndex": 0,
+    "savedAt": "2026-04-23T14:30:00+00:00",
+    "trackLengthM": 5891.0,
+    "totalLaps": 2,
+    "sector2StartM": 2100.0,
+    "sector3StartM": 4200.0,
+    "trackBoundsXZ": {
+      "minX": -620.0,
+      "maxX": 620.0,
+      "minZ": -540.0,
+      "maxZ": 540.0
+    }
+  },
+  "packets": {},
+  "drivers": {
+    "0": {
+      "carIdx": 0,
+      "teamId": 3,
+      "driverId": 9,
+      "name": "HAMILTON",
+      "laps": [
+        {
+          "lapNum": 1,
+          "lapTimeMs": 90450,
+          "s1Ms": 28420,
+          "s2Ms": 29380,
+          "s3Ms": 32650,
+          "compoundActual": 16,
+          "compoundVisual": 16,
+          "tyreAge": 1,
+          "tyreWearEnd": [1.4, 1.5, 1.6, 1.7],
+          "valid": true,
+          "pit": false,
+          "position": 1,
+          "gapToLeaderMs": 0,
+          "raceFlag": 0,
+          "samples": [
+            { "t": 0.00,  "d": 0,    "spd": 298, "thr": 100, "brk": 0,   "str": 0,   "gr": 7, "rpm": 10800, "sec": 0, "ers": 82, "ersMd": 2, "drs": 0 },
+            { "t": 3.20,  "d": 250,  "spd": 310, "thr": 100, "brk": 0,   "str": -4,  "gr": 7, "rpm": 11100, "sec": 0, "ers": 80, "ersMd": 2, "drs": 0 },
+            { "t": 6.15,  "d": 520,  "spd": 190, "thr": 20,  "brk": 60,  "str": -35, "gr": 4, "rpm": 9800,  "sec": 0, "ers": 78, "ersMd": 2, "drs": 0 },
+            { "t": 9.40,  "d": 820,  "spd": 240, "thr": 95,  "brk": 0,   "str": -12, "gr": 6, "rpm": 10500, "sec": 0, "ers": 76, "ersMd": 2, "drs": 0 },
+            { "t": 12.60, "d": 1120, "spd": 300, "thr": 100, "brk": 0,   "str": 0,   "gr": 7, "rpm": 10900, "sec": 0, "ers": 74, "ersMd": 2, "drs": 1 },
+            { "t": 16.10, "d": 1500, "spd": 318, "thr": 100, "brk": 0,   "str": 3,   "gr": 8, "rpm": 11300, "sec": 0, "ers": 71, "ersMd": 2, "drs": 1 },
+            { "t": 19.50, "d": 1820, "spd": 220, "thr": 30,  "brk": 50,  "str": 18,  "gr": 5, "rpm": 10200, "sec": 0, "ers": 68, "ersMd": 2, "drs": 0 },
+            { "t": 22.80, "d": 2050, "spd": 175, "thr": 100, "brk": 0,   "str": 42,  "gr": 4, "rpm": 9700,  "sec": 0, "ers": 65, "ersMd": 2, "drs": 0 },
+            { "t": 28.42, "d": 2180, "spd": 205, "thr": 100, "brk": 0,   "str": 10,  "gr": 5, "rpm": 10100, "sec": 1, "ers": 62, "ersMd": 2, "drs": 0 },
+            { "t": 31.70, "d": 2480, "spd": 275, "thr": 100, "brk": 0,   "str": -6,  "gr": 6, "rpm": 10600, "sec": 1, "ers": 60, "ersMd": 2, "drs": 0 },
+            { "t": 35.20, "d": 2820, "spd": 305, "thr": 100, "brk": 0,   "str": 0,   "gr": 7, "rpm": 11000, "sec": 1, "ers": 57, "ersMd": 2, "drs": 1 },
+            { "t": 38.80, "d": 3180, "spd": 160, "thr": 15,  "brk": 80,  "str": -58, "gr": 3, "rpm": 9500,  "sec": 1, "ers": 55, "ersMd": 2, "drs": 0 },
+            { "t": 42.30, "d": 3450, "spd": 198, "thr": 90,  "brk": 0,   "str": -25, "gr": 4, "rpm": 9900,  "sec": 1, "ers": 53, "ersMd": 2, "drs": 0 },
+            { "t": 45.80, "d": 3780, "spd": 255, "thr": 100, "brk": 0,   "str": -8,  "gr": 6, "rpm": 10400, "sec": 1, "ers": 50, "ersMd": 2, "drs": 0 },
+            { "t": 49.60, "d": 4120, "spd": 292, "thr": 100, "brk": 0,   "str": 0,   "gr": 7, "rpm": 10800, "sec": 1, "ers": 47, "ersMd": 2, "drs": 1 },
+            { "t": 57.80, "d": 4280, "spd": 188, "thr": 20,  "brk": 65,  "str": 48,  "gr": 4, "rpm": 9600,  "sec": 2, "ers": 44, "ersMd": 2, "drs": 0 },
+            { "t": 61.50, "d": 4560, "spd": 215, "thr": 100, "brk": 0,   "str": 22,  "gr": 5, "rpm": 10000, "sec": 2, "ers": 41, "ersMd": 2, "drs": 0 },
+            { "t": 65.20, "d": 4880, "spd": 268, "thr": 100, "brk": 0,   "str": -4,  "gr": 6, "rpm": 10500, "sec": 2, "ers": 38, "ersMd": 2, "drs": 0 },
+            { "t": 69.00, "d": 5180, "spd": 302, "thr": 100, "brk": 0,   "str": 0,   "gr": 7, "rpm": 10900, "sec": 2, "ers": 35, "ersMd": 2, "drs": 1 },
+            { "t": 73.40, "d": 5480, "spd": 165, "thr": 18,  "brk": 75,  "str": -50, "gr": 3, "rpm": 9400,  "sec": 2, "ers": 32, "ersMd": 2, "drs": 0 },
+            { "t": 78.20, "d": 5680, "spd": 178, "thr": 80,  "brk": 0,   "str": -30, "gr": 4, "rpm": 9700,  "sec": 2, "ers": 30, "ersMd": 2, "drs": 0 },
+            { "t": 84.10, "d": 5820, "spd": 230, "thr": 100, "brk": 0,   "str": -5,  "gr": 5, "rpm": 10200, "sec": 2, "ers": 28, "ersMd": 2, "drs": 0 },
+            { "t": 88.60, "d": 5880, "spd": 282, "thr": 100, "brk": 0,   "str": 0,   "gr": 7, "rpm": 10700, "sec": 2, "ers": 26, "ersMd": 2, "drs": 0 }
+          ],
+          "motion": [
+            { "t": 0.00,  "d": 0,    "x": 0.0,    "z": -520.0 },
+            { "t": 5.00,  "d": 400,  "x": 180.0,  "z": -480.0 },
+            { "t": 10.00, "d": 880,  "x": 380.0,  "z": -360.0 },
+            { "t": 15.00, "d": 1390, "x": 540.0,  "z": -180.0 },
+            { "t": 20.00, "d": 1870, "x": 600.0,  "z": 40.0 },
+            { "t": 25.00, "d": 2150, "x": 560.0,  "z": 220.0 },
+            { "t": 30.00, "d": 2420, "x": 460.0,  "z": 360.0 },
+            { "t": 35.00, "d": 2810, "x": 300.0,  "z": 460.0 },
+            { "t": 40.00, "d": 3280, "x": 80.0,   "z": 520.0 },
+            { "t": 45.00, "d": 3720, "x": -180.0, "z": 500.0 },
+            { "t": 50.00, "d": 4180, "x": -380.0, "z": 400.0 },
+            { "t": 55.00, "d": 4260, "x": -500.0, "z": 250.0 },
+            { "t": 60.00, "d": 4520, "x": -580.0, "z": 60.0 },
+            { "t": 65.00, "d": 4840, "x": -600.0, "z": -140.0 },
+            { "t": 70.00, "d": 5220, "x": -520.0, "z": -320.0 },
+            { "t": 75.00, "d": 5520, "x": -360.0, "z": -450.0 },
+            { "t": 80.00, "d": 5720, "x": -180.0, "z": -510.0 },
+            { "t": 85.00, "d": 5830, "x": -60.0,  "z": -520.0 }
+          ]
+        },
+        {
+          "lapNum": 2,
+          "lapTimeMs": 89720,
+          "s1Ms": 28210,
+          "s2Ms": 29060,
+          "s3Ms": 32450,
+          "compoundActual": 16,
+          "compoundVisual": 16,
+          "tyreAge": 2,
+          "tyreWearEnd": [2.9, 3.0, 3.2, 3.4],
+          "valid": true,
+          "pit": false,
+          "position": 1,
+          "gapToLeaderMs": 0,
+          "raceFlag": 0,
+          "samples": [
+            { "t": 0.00,  "d": 0,    "spd": 305, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 10900, "sec": 0, "ers": 70, "ersMd": 2, "drs": 0 },
+            { "t": 3.10,  "d": 260,  "spd": 315, "thr": 100, "brk": 0,  "str": -3,  "gr": 8, "rpm": 11200, "sec": 0, "ers": 68, "ersMd": 2, "drs": 0 },
+            { "t": 6.00,  "d": 540,  "spd": 195, "thr": 25,  "brk": 55, "str": -34, "gr": 4, "rpm": 9850,  "sec": 0, "ers": 66, "ersMd": 2, "drs": 0 },
+            { "t": 9.30,  "d": 840,  "spd": 245, "thr": 100, "brk": 0,  "str": -10, "gr": 6, "rpm": 10550, "sec": 0, "ers": 64, "ersMd": 2, "drs": 0 },
+            { "t": 12.40, "d": 1140, "spd": 305, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 10950, "sec": 0, "ers": 62, "ersMd": 2, "drs": 1 },
+            { "t": 15.90, "d": 1520, "spd": 322, "thr": 100, "brk": 0,  "str": 2,   "gr": 8, "rpm": 11400, "sec": 0, "ers": 59, "ersMd": 2, "drs": 1 },
+            { "t": 19.30, "d": 1840, "spd": 225, "thr": 35,  "brk": 48, "str": 16,  "gr": 5, "rpm": 10250, "sec": 0, "ers": 56, "ersMd": 2, "drs": 0 },
+            { "t": 22.60, "d": 2070, "spd": 178, "thr": 100, "brk": 0,  "str": 40,  "gr": 4, "rpm": 9750,  "sec": 0, "ers": 53, "ersMd": 2, "drs": 0 },
+            { "t": 28.21, "d": 2190, "spd": 210, "thr": 100, "brk": 0,  "str": 9,   "gr": 5, "rpm": 10150, "sec": 1, "ers": 50, "ersMd": 2, "drs": 0 },
+            { "t": 31.40, "d": 2500, "spd": 280, "thr": 100, "brk": 0,  "str": -5,  "gr": 6, "rpm": 10650, "sec": 1, "ers": 48, "ersMd": 2, "drs": 0 },
+            { "t": 34.90, "d": 2850, "spd": 308, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 11050, "sec": 1, "ers": 45, "ersMd": 2, "drs": 1 },
+            { "t": 38.50, "d": 3210, "spd": 162, "thr": 18,  "brk": 78, "str": -57, "gr": 3, "rpm": 9550,  "sec": 1, "ers": 43, "ersMd": 2, "drs": 0 },
+            { "t": 42.00, "d": 3480, "spd": 202, "thr": 95,  "brk": 0,  "str": -22, "gr": 4, "rpm": 9950,  "sec": 1, "ers": 41, "ersMd": 2, "drs": 0 },
+            { "t": 45.50, "d": 3810, "spd": 260, "thr": 100, "brk": 0,  "str": -6,  "gr": 6, "rpm": 10450, "sec": 1, "ers": 38, "ersMd": 2, "drs": 0 },
+            { "t": 49.30, "d": 4150, "spd": 296, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 10850, "sec": 1, "ers": 35, "ersMd": 2, "drs": 1 },
+            { "t": 57.27, "d": 4300, "spd": 192, "thr": 22,  "brk": 62, "str": 46,  "gr": 4, "rpm": 9650,  "sec": 2, "ers": 32, "ersMd": 2, "drs": 0 },
+            { "t": 61.10, "d": 4580, "spd": 220, "thr": 100, "brk": 0,  "str": 20,  "gr": 5, "rpm": 10050, "sec": 2, "ers": 29, "ersMd": 2, "drs": 0 },
+            { "t": 64.80, "d": 4900, "spd": 272, "thr": 100, "brk": 0,  "str": -3,  "gr": 6, "rpm": 10550, "sec": 2, "ers": 26, "ersMd": 2, "drs": 0 },
+            { "t": 68.60, "d": 5200, "spd": 306, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 10950, "sec": 2, "ers": 23, "ersMd": 2, "drs": 1 },
+            { "t": 73.00, "d": 5500, "spd": 168, "thr": 20,  "brk": 72, "str": -48, "gr": 3, "rpm": 9450,  "sec": 2, "ers": 20, "ersMd": 2, "drs": 0 },
+            { "t": 77.80, "d": 5700, "spd": 182, "thr": 85,  "brk": 0,  "str": -28, "gr": 4, "rpm": 9750,  "sec": 2, "ers": 18, "ersMd": 2, "drs": 0 },
+            { "t": 83.40, "d": 5830, "spd": 236, "thr": 100, "brk": 0,  "str": -4,  "gr": 5, "rpm": 10250, "sec": 2, "ers": 16, "ersMd": 2, "drs": 0 },
+            { "t": 87.90, "d": 5880, "spd": 288, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 10750, "sec": 2, "ers": 14, "ersMd": 2, "drs": 0 }
+          ],
+          "motion": [
+            { "t": 0.00,  "d": 0,    "x": 0.0,    "z": -520.0 },
+            { "t": 5.00,  "d": 410,  "x": 185.0,  "z": -478.0 },
+            { "t": 10.00, "d": 900,  "x": 385.0,  "z": -355.0 },
+            { "t": 15.00, "d": 1410, "x": 545.0,  "z": -175.0 },
+            { "t": 20.00, "d": 1890, "x": 602.0,  "z": 45.0 },
+            { "t": 25.00, "d": 2170, "x": 560.0,  "z": 225.0 },
+            { "t": 30.00, "d": 2450, "x": 455.0,  "z": 365.0 },
+            { "t": 35.00, "d": 2840, "x": 295.0,  "z": 462.0 },
+            { "t": 40.00, "d": 3310, "x": 75.0,   "z": 520.0 },
+            { "t": 45.00, "d": 3750, "x": -185.0, "z": 498.0 },
+            { "t": 50.00, "d": 4210, "x": -385.0, "z": 398.0 },
+            { "t": 55.00, "d": 4290, "x": -502.0, "z": 248.0 },
+            { "t": 60.00, "d": 4550, "x": -582.0, "z": 58.0 },
+            { "t": 65.00, "d": 4870, "x": -598.0, "z": -142.0 },
+            { "t": 70.00, "d": 5250, "x": -518.0, "z": -322.0 },
+            { "t": 75.00, "d": 5550, "x": -358.0, "z": -452.0 },
+            { "t": 80.00, "d": 5740, "x": -178.0, "z": -512.0 },
+            { "t": 85.00, "d": 5840, "x": -58.0,  "z": -520.0 }
+          ]
+        }
+      ],
+      "tyreByLap": {
+        "0": { "act": 16, "vis": 16, "age": 1, "wear": [1.4, 1.5, 1.6, 1.7] },
+        "1": { "act": 16, "vis": 16, "age": 2, "wear": [2.9, 3.0, 3.2, 3.4] }
+      }
+    },
+    "1": {
+      "carIdx": 1,
+      "teamId": 1,
+      "driverId": 33,
+      "name": "VERSTAPPEN",
+      "laps": [
+        {
+          "lapNum": 1,
+          "lapTimeMs": 90780,
+          "s1Ms": 28560,
+          "s2Ms": 29510,
+          "s3Ms": 32710,
+          "compoundActual": 17,
+          "compoundVisual": 17,
+          "tyreAge": 1,
+          "tyreWearEnd": [1.6, 1.7, 1.9, 2.0],
+          "valid": true,
+          "pit": false,
+          "position": 2,
+          "gapToLeaderMs": 1240,
+          "raceFlag": 0,
+          "samples": [
+            { "t": 0.00,  "d": 0,    "spd": 295, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 10750, "sec": 0, "ers": 84, "ersMd": 2, "drs": 0 },
+            { "t": 6.25,  "d": 510,  "spd": 188, "thr": 22,  "brk": 58, "str": -36, "gr": 4, "rpm": 9780,  "sec": 0, "ers": 80, "ersMd": 2, "drs": 0 },
+            { "t": 12.80, "d": 1110, "spd": 298, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 10850, "sec": 0, "ers": 76, "ersMd": 2, "drs": 1 },
+            { "t": 19.70, "d": 1815, "spd": 218, "thr": 32,  "brk": 52, "str": 19,  "gr": 5, "rpm": 10180, "sec": 0, "ers": 70, "ersMd": 2, "drs": 0 },
+            { "t": 28.56, "d": 2175, "spd": 202, "thr": 100, "brk": 0,  "str": 11,  "gr": 5, "rpm": 10080, "sec": 1, "ers": 64, "ersMd": 2, "drs": 0 },
+            { "t": 35.40, "d": 2810, "spd": 302, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 10970, "sec": 1, "ers": 58, "ersMd": 2, "drs": 1 },
+            { "t": 42.50, "d": 3440, "spd": 195, "thr": 88,  "brk": 0,  "str": -26, "gr": 4, "rpm": 9880,  "sec": 1, "ers": 52, "ersMd": 2, "drs": 0 },
+            { "t": 49.80, "d": 4115, "spd": 290, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 10780, "sec": 1, "ers": 46, "ersMd": 2, "drs": 1 },
+            { "t": 58.07, "d": 4285, "spd": 185, "thr": 20,  "brk": 67, "str": 49,  "gr": 4, "rpm": 9580,  "sec": 2, "ers": 40, "ersMd": 2, "drs": 0 },
+            { "t": 65.40, "d": 4880, "spd": 264, "thr": 100, "brk": 0,  "str": -4,  "gr": 6, "rpm": 10480, "sec": 2, "ers": 34, "ersMd": 2, "drs": 0 },
+            { "t": 73.60, "d": 5485, "spd": 162, "thr": 18,  "brk": 77, "str": -52, "gr": 3, "rpm": 9380,  "sec": 2, "ers": 28, "ersMd": 2, "drs": 0 },
+            { "t": 84.40, "d": 5820, "spd": 226, "thr": 100, "brk": 0,  "str": -5,  "gr": 5, "rpm": 10180, "sec": 2, "ers": 22, "ersMd": 2, "drs": 0 },
+            { "t": 88.90, "d": 5880, "spd": 278, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 10680, "sec": 2, "ers": 20, "ersMd": 2, "drs": 0 }
+          ],
+          "motion": [
+            { "t": 0.00,  "d": 0,    "x": 0.0,    "z": -515.0 },
+            { "t": 10.00, "d": 875,  "x": 378.0,  "z": -362.0 },
+            { "t": 20.00, "d": 1860, "x": 598.0,  "z": 38.0 },
+            { "t": 30.00, "d": 2410, "x": 458.0,  "z": 358.0 },
+            { "t": 40.00, "d": 3270, "x": 82.0,   "z": 518.0 },
+            { "t": 50.00, "d": 4170, "x": -378.0, "z": 398.0 },
+            { "t": 60.00, "d": 4510, "x": -580.0, "z": 58.0 },
+            { "t": 70.00, "d": 5215, "x": -518.0, "z": -318.0 },
+            { "t": 80.00, "d": 5715, "x": -180.0, "z": -508.0 }
+          ]
+        },
+        {
+          "lapNum": 2,
+          "lapTimeMs": 90120,
+          "s1Ms": 28320,
+          "s2Ms": 29240,
+          "s3Ms": 32560,
+          "compoundActual": 17,
+          "compoundVisual": 17,
+          "tyreAge": 2,
+          "tyreWearEnd": [3.1, 3.3, 3.5, 3.7],
+          "valid": true,
+          "pit": false,
+          "position": 2,
+          "gapToLeaderMs": 1640,
+          "raceFlag": 0,
+          "samples": [
+            { "t": 0.00,  "d": 0,    "spd": 300, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 10820, "sec": 0, "ers": 72, "ersMd": 2, "drs": 0 },
+            { "t": 6.10,  "d": 530,  "spd": 192, "thr": 24,  "brk": 54, "str": -33, "gr": 4, "rpm": 9820,  "sec": 0, "ers": 68, "ersMd": 2, "drs": 0 },
+            { "t": 12.60, "d": 1130, "spd": 302, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 10920, "sec": 0, "ers": 64, "ersMd": 2, "drs": 1 },
+            { "t": 19.50, "d": 1830, "spd": 222, "thr": 34,  "brk": 50, "str": 17,  "gr": 5, "rpm": 10220, "sec": 0, "ers": 58, "ersMd": 2, "drs": 0 },
+            { "t": 28.32, "d": 2185, "spd": 206, "thr": 100, "brk": 0,  "str": 10,  "gr": 5, "rpm": 10120, "sec": 1, "ers": 52, "ersMd": 2, "drs": 0 },
+            { "t": 35.10, "d": 2830, "spd": 306, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 11020, "sec": 1, "ers": 46, "ersMd": 2, "drs": 1 },
+            { "t": 42.20, "d": 3460, "spd": 198, "thr": 92,  "brk": 0,  "str": -24, "gr": 4, "rpm": 9920,  "sec": 1, "ers": 40, "ersMd": 2, "drs": 0 },
+            { "t": 49.50, "d": 4130, "spd": 294, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 10820, "sec": 1, "ers": 34, "ersMd": 2, "drs": 1 },
+            { "t": 57.56, "d": 4295, "spd": 188, "thr": 21,  "brk": 64, "str": 47,  "gr": 4, "rpm": 9620,  "sec": 2, "ers": 28, "ersMd": 2, "drs": 0 },
+            { "t": 65.00, "d": 4895, "spd": 268, "thr": 100, "brk": 0,  "str": -3,  "gr": 6, "rpm": 10520, "sec": 2, "ers": 22, "ersMd": 2, "drs": 0 },
+            { "t": 73.20, "d": 5495, "spd": 166, "thr": 19,  "brk": 74, "str": -50, "gr": 3, "rpm": 9420,  "sec": 2, "ers": 16, "ersMd": 2, "drs": 0 },
+            { "t": 84.00, "d": 5830, "spd": 230, "thr": 100, "brk": 0,  "str": -4,  "gr": 5, "rpm": 10220, "sec": 2, "ers": 12, "ersMd": 2, "drs": 0 },
+            { "t": 88.50, "d": 5880, "spd": 282, "thr": 100, "brk": 0,  "str": 0,   "gr": 7, "rpm": 10720, "sec": 2, "ers": 10, "ersMd": 2, "drs": 0 }
+          ],
+          "motion": [
+            { "t": 0.00,  "d": 0,    "x": 0.0,    "z": -515.0 },
+            { "t": 10.00, "d": 890,  "x": 382.0,  "z": -358.0 },
+            { "t": 20.00, "d": 1880, "x": 600.0,  "z": 42.0 },
+            { "t": 30.00, "d": 2440, "x": 454.0,  "z": 362.0 },
+            { "t": 40.00, "d": 3300, "x": 78.0,   "z": 520.0 },
+            { "t": 50.00, "d": 4200, "x": -382.0, "z": 400.0 },
+            { "t": 60.00, "d": 4540, "x": -582.0, "z": 60.0 },
+            { "t": 70.00, "d": 5245, "x": -516.0, "z": -320.0 },
+            { "t": 80.00, "d": 5735, "x": -178.0, "z": -510.0 }
+          ]
+        }
+      ],
+      "tyreByLap": {
+        "0": { "act": 17, "vis": 17, "age": 1, "wear": [1.6, 1.7, 1.9, 2.0] },
+        "1": { "act": 17, "vis": 17, "age": 2, "wear": [3.1, 3.3, 3.5, 3.7] }
+      }
+    }
+  },
+  "lapHistories": {
+    "0": {
+      "carIdx": 0,
+      "numLaps": 2,
+      "numTyreStints": 1,
+      "bestLapTimeLapNum": 2,
+      "bestSector1LapNum": 2,
+      "bestSector2LapNum": 2,
+      "bestSector3LapNum": 2,
+      "lapHistoryDataItems": [
+        {
+          "lapTimeInMs": 90450,
+          "sector1TimeMsPart": 28420,
+          "sector1TimeMinutesPart": 0,
+          "sector2TimeMsPart": 29380,
+          "sector2TimeMinutesPart": 0,
+          "sector3TimeMsPart": 32650,
+          "sector3TimeMinutesPart": 0,
+          "lapValidBitFlags": 15
+        },
+        {
+          "lapTimeInMs": 89720,
+          "sector1TimeMsPart": 28210,
+          "sector1TimeMinutesPart": 0,
+          "sector2TimeMsPart": 29060,
+          "sector2TimeMinutesPart": 0,
+          "sector3TimeMsPart": 32450,
+          "sector3TimeMinutesPart": 0,
+          "lapValidBitFlags": 15
+        }
+      ],
+      "tyreStintsHistoryData": [
+        { "endLap": 255, "tyreActualCompound": 16, "tyreVisualCompound": 16 }
+      ]
+    },
+    "1": {
+      "carIdx": 1,
+      "numLaps": 2,
+      "numTyreStints": 1,
+      "bestLapTimeLapNum": 2,
+      "bestSector1LapNum": 2,
+      "bestSector2LapNum": 2,
+      "bestSector3LapNum": 2,
+      "lapHistoryDataItems": [
+        {
+          "lapTimeInMs": 90780,
+          "sector1TimeMsPart": 28560,
+          "sector1TimeMinutesPart": 0,
+          "sector2TimeMsPart": 29510,
+          "sector2TimeMinutesPart": 0,
+          "sector3TimeMsPart": 32710,
+          "sector3TimeMinutesPart": 0,
+          "lapValidBitFlags": 15
+        },
+        {
+          "lapTimeInMs": 90120,
+          "sector1TimeMsPart": 28320,
+          "sector1TimeMinutesPart": 0,
+          "sector2TimeMsPart": 29240,
+          "sector2TimeMinutesPart": 0,
+          "sector3TimeMsPart": 32560,
+          "sector3TimeMinutesPart": 0,
+          "lapValidBitFlags": 15
+        }
+      ],
+      "tyreStintsHistoryData": [
+        { "endLap": 255, "tyreActualCompound": 17, "tyreVisualCompound": 17 }
+      ]
+    }
+  },
+  "events": [
+    { "timeS": 0.00,   "code": "SSTA", "lap": 1, "carIdx": null, "flag": 0,    "details": null },
+    { "timeS": 90.45,  "code": "LAP",  "lap": 1, "carIdx": 0,    "flag": null, "details": { "lapTimeMs": 90450 } },
+    { "timeS": 91.69,  "code": "LAP",  "lap": 1, "carIdx": 1,    "flag": null, "details": { "lapTimeMs": 90780 } },
+    { "timeS": 180.17, "code": "LAP",  "lap": 2, "carIdx": 0,    "flag": null, "details": { "lapTimeMs": 89720 } },
+    { "timeS": 181.81, "code": "LAP",  "lap": 2, "carIdx": 1,    "flag": null, "details": { "lapTimeMs": 90120 } },
+    { "timeS": 181.82, "code": "SEND", "lap": 2, "carIdx": null, "flag": null, "details": null }
+  ],
+  "finalClassification": null
+}
