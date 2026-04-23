@@ -1,6 +1,7 @@
 using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Threading.Channels;
 using F1Telemetry.F125.Packets;
 using F1Telemetry.F125.Protocol;
 using F1Telemetry.Host.Serialization;
@@ -11,9 +12,11 @@ using Microsoft.Extensions.Logging;
 namespace F1Telemetry.Host.Logging;
 
 /// <summary>
-/// Accumulates telemetry data per session and writes to JSON files in the Logs/ folder.
-/// Flushes on session end (SEND event) and on app shutdown as a safety net.
-/// Sessions belonging to the same weekend (same WeekendLinkIdentifier) share a folder.
+/// Accumulates telemetry data per session and writes schema-v2 JSON files to Logs/.
+/// For every completed lap of every car it keeps a 20 Hz telemetry sample stream and a 10 Hz
+/// motion trace; samples live in-memory for the current lap only and are committed to the
+/// per-car Laps list at lap completion. Sessions belonging to the same weekend
+/// (WeekendLinkIdentifier) share a folder.
 /// </summary>
 public sealed class SessionLogger
 {
@@ -28,12 +31,16 @@ public sealed class SessionLogger
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
     };
 
-    /// <summary>Packet types to skip — high-frequency physics data not useful as a snapshot.</summary>
-    private static readonly HashSet<byte> IgnoredPackets = new()
-    {
-        (byte)F125PacketId.Motion,
-        (byte)F125PacketId.MotionEx,
-    };
+    // Sampling gates (seconds): packets arrive at 60 Hz; we accept a sample if at least this
+    // long has passed since the last recorded one for the given car.
+    private const float TelemetryGateS = 0.05f; // 20 Hz
+    private const float MotionGateS = 0.10f;    // 10 Hz
+
+    private const int MaxCars = 22;
+
+    // Periodic checkpoint cadence: every N completed laps of the player car we rewrite the
+    // session JSON so a crash only loses the tail of a session, not the whole thing.
+    private const int FlushEveryNPlayerLaps = 5;
 
     private readonly object _lock = new();
 
@@ -45,17 +52,43 @@ public sealed class SessionLogger
 
     private ulong _currentSessionUid;
 
+    /// <summary>
+    /// Envelope queued from the UDP thread and drained by <see cref="SessionLoggerWriter"/>.
+    /// Using a channel decouples JSON work + list growth from the hot ingress path so SignalR
+    /// broadcasts don't pay the sampling / flush cost.
+    /// </summary>
+    internal readonly record struct LoggerEnvelope(TelemetryPacketHeader Header, byte PacketId, object Data);
+
+    // Bounded-capacity channel with DropOldest when full: at 60 Hz × 14 packet types we'd enqueue
+    // ~840 msg/s, well under 16k. A backlog that hits the cap means the writer is pathologically
+    // behind (disk issue) and dropping the oldest motion packets is preferable to unbounded growth.
+    private readonly Channel<LoggerEnvelope> _queue = Channel.CreateBounded<LoggerEnvelope>(
+        new BoundedChannelOptions(16_384)
+        {
+            FullMode = BoundedChannelFullMode.DropOldest,
+            SingleReader = true,
+            SingleWriter = false,
+        });
+
+    internal ChannelReader<LoggerEnvelope> Reader => _queue.Reader;
+
     public SessionLogger(LapSetupStore lapSetupStore, ILogger<SessionLogger> logger)
     {
         _lapSetupStore = lapSetupStore;
         _logger = logger;
     }
 
+    /// <summary>
+    /// Called from the UDP / ingress thread. Non-blocking: pushes the packet to an internal channel
+    /// which <see cref="SessionLoggerWriter"/> drains on a dedicated task.
+    /// </summary>
+    public void Enqueue(TelemetryPacketHeader header, byte packetId, object data)
+    {
+        _queue.Writer.TryWrite(new LoggerEnvelope(header, packetId, data));
+    }
+
     public void ProcessPacket(TelemetryPacketHeader header, byte packetId, object data)
     {
-        if (IgnoredPackets.Contains(packetId))
-            return;
-
         lock (_lock)
         {
             var uid = header.SessionUid;
@@ -70,23 +103,26 @@ public sealed class SessionLogger
             entry.PlayerCarIndex = header.PlayerCarIndex;
             entry.GameYear = header.GameYear;
 
-            // Accumulated data — append/merge rather than overwrite
+            // Update latest snapshot for every non-high-frequency packet. Motion / MotionEx
+            // would otherwise balloon the in-memory snapshot dictionary.
+            if (packetId != (byte)F125PacketId.Motion && packetId != (byte)F125PacketId.MotionEx)
+            {
+                var name = F125PacketNames.Get(packetId);
+                entry.LatestPackets[name] = data;
+            }
+
             switch (data)
             {
                 case SessionPacket session:
                     entry.SessionType = session.SessionType;
                     ResolveWeekendFolder(entry, session);
+                    UpdateRaceFlag(entry, session);
                     break;
                 case SessionHistoryPacket history:
                     entry.LapHistories[history.CarIdx] = history;
                     break;
                 case EventPacket evt:
-                    entry.Events.Add(new SessionLogEvent
-                    {
-                        SessionTime = header.SessionTime,
-                        EventCode = evt.EventCode,
-                        Details = evt.Details,
-                    });
+                    HandleEvent(entry, header, evt);
                     if (evt.EventCode == "SEND")
                     {
                         WriteSession(uid, entry);
@@ -94,12 +130,264 @@ public sealed class SessionLogger
                         return;
                     }
                     break;
+                case CarTelemetryPacket telemetry:
+                    SampleTelemetry(entry, header, telemetry);
+                    break;
+                case MotionPacket motion:
+                    SampleMotion(entry, header, motion);
+                    break;
+                case LapDataPacket lapData:
+                    ProcessLapData(entry, header, lapData);
+                    break;
+            }
+        }
+    }
+
+    private void SampleTelemetry(SessionEntry entry, TelemetryPacketHeader header, CarTelemetryPacket packet)
+    {
+        var lapPacket = entry.LatestPackets.GetValueOrDefault("LapData") as LapDataPacket;
+        if (lapPacket == null) return;
+
+        var count = Math.Min(packet.CarTelemetryData.Length, Math.Min(lapPacket.LapDataItems.Length, MaxCars));
+        for (byte idx = 0; idx < count; idx++)
+        {
+            if (header.SessionTime - entry.LastTelemetryTickS[idx] < TelemetryGateS)
+                continue;
+            entry.LastTelemetryTickS[idx] = header.SessionTime;
+
+            var t = packet.CarTelemetryData[idx];
+            var l = lapPacket.LapDataItems[idx];
+
+            var buf = entry.CurrentLapSamples[idx] ??= new List<LapSample>(256);
+            buf.Add(new LapSample
+            {
+                T = header.SessionTime - entry.CurrentLapStartSessionTimeS[idx],
+                D = l.LapDistance,
+                Spd = t.Speed,
+                Thr = (byte)Math.Clamp((int)MathF.Round(t.Throttle * 100f), 0, 100),
+                Brk = (byte)Math.Clamp((int)MathF.Round(t.Brake * 100f), 0, 100),
+                Str = (sbyte)Math.Clamp((int)MathF.Round(t.Steer * 100f), -100, 100),
+                Gr = t.Gear,
+                Rpm = t.EngineRpm,
+                Sec = l.Sector,
+            });
+        }
+    }
+
+    private void SampleMotion(SessionEntry entry, TelemetryPacketHeader header, MotionPacket packet)
+    {
+        var lapPacket = entry.LatestPackets.GetValueOrDefault("LapData") as LapDataPacket;
+        if (lapPacket == null) return;
+
+        var count = Math.Min(packet.CarMotionData.Length, Math.Min(lapPacket.LapDataItems.Length, MaxCars));
+        for (byte idx = 0; idx < count; idx++)
+        {
+            if (header.SessionTime - entry.LastMotionTickS[idx] < MotionGateS)
+                continue;
+            entry.LastMotionTickS[idx] = header.SessionTime;
+
+            var m = packet.CarMotionData[idx];
+            var l = lapPacket.LapDataItems[idx];
+
+            var buf = entry.CurrentLapMotion[idx] ??= new List<MotionSample>(128);
+            buf.Add(new MotionSample
+            {
+                T = header.SessionTime - entry.CurrentLapStartSessionTimeS[idx],
+                D = l.LapDistance,
+                X = m.WorldPositionX,
+                Z = m.WorldPositionZ,
+            });
+        }
+    }
+
+    private void ProcessLapData(SessionEntry entry, TelemetryPacketHeader header, LapDataPacket packet)
+    {
+        var count = Math.Min(packet.LapDataItems.Length, MaxCars);
+        for (byte idx = 0; idx < count; idx++)
+        {
+            var lap = packet.LapDataItems[idx];
+
+            // Track the highest race-control flag the car saw during this lap.
+            if (entry.CurrentRaceFlag > entry.LapMaxFlag[idx])
+                entry.LapMaxFlag[idx] = entry.CurrentRaceFlag;
+
+            var currentNum = lap.CurrentLapNum;
+            var prevNum = entry.CurrentLapNum[idx];
+            if (prevNum == 0)
+            {
+                // First time we see this car — anchor the lap start.
+                entry.CurrentLapNum[idx] = currentNum;
+                entry.CurrentLapStartSessionTimeS[idx] = header.SessionTime - lap.CurrentLapTimeInMs / 1000f;
+                continue;
             }
 
-            // Latest snapshot of every packet type (overwrites previous)
-            var name = F125PacketNames.Get(packetId);
-            entry.LatestPackets[name] = data;
+            if (currentNum != prevNum)
+            {
+                // Lap boundary crossed — the lap we just left (prevNum) is now complete.
+                CompleteLap(entry, idx, prevNum, lap, header);
+                entry.CurrentLapNum[idx] = currentNum;
+                entry.CurrentLapStartSessionTimeS[idx] = header.SessionTime;
+                entry.LapMaxFlag[idx] = entry.CurrentRaceFlag;
+            }
         }
+    }
+
+    private void CompleteLap(SessionEntry entry, byte idx, byte completedLapNum, LapData latest, TelemetryPacketHeader header)
+    {
+        var driver = GetOrCreateDriver(entry, idx);
+
+        // Authoritative times come from SessionHistoryPacket (server emits validity bits here).
+        // LapDataPacket gives us LastLapTimeInMs which was freshly set when the lap completed.
+        uint lapTimeMs = latest.LastLapTimeInMs;
+        uint s1Ms = 0, s2Ms = 0, s3Ms = 0;
+        bool lapValid = latest.CurrentLapInvalid == 0;
+
+        if (entry.LapHistories.TryGetValue(idx, out var hist) &&
+            completedLapNum >= 1 && completedLapNum <= hist.LapHistoryDataItems.Length)
+        {
+            var h = hist.LapHistoryDataItems[completedLapNum - 1];
+            if (h.LapTimeInMs > 0) lapTimeMs = h.LapTimeInMs;
+            s1Ms = (uint)(h.Sector1TimeMsPart + h.Sector1TimeMinutesPart * 60_000);
+            s2Ms = (uint)(h.Sector2TimeMsPart + h.Sector2TimeMinutesPart * 60_000);
+            s3Ms = (uint)(h.Sector3TimeMsPart + h.Sector3TimeMinutesPart * 60_000);
+            // Bit 0 = lap valid, bits 1..3 = sector validity. Keep lap-level here.
+            lapValid = (h.LapValidBitFlags & 0x01) != 0;
+        }
+
+        // Gap to leader: convert the LapData delta fields (minutes + ms).
+        int? gapMs = null;
+        if (latest.DeltaToRaceLeaderMsPart != 0 || latest.DeltaToRaceLeaderMinutesPart != 0)
+            gapMs = latest.DeltaToRaceLeaderMsPart + latest.DeltaToRaceLeaderMinutesPart * 60_000;
+
+        // Capture tyre state at lap completion.
+        var tyre = CaptureTyreSnapshot(entry, idx);
+        if (tyre != null)
+            driver.TyreByLap[completedLapNum - 1] = tyre;
+
+        var lap = new DriverLap
+        {
+            LapNum = completedLapNum,
+            LapTimeMs = lapTimeMs,
+            S1Ms = s1Ms,
+            S2Ms = s2Ms,
+            S3Ms = s3Ms,
+            CompoundActual = tyre?.Act ?? 0,
+            CompoundVisual = tyre?.Vis ?? 0,
+            TyreAge = tyre?.Age ?? 0,
+            TyreWearEnd = tyre?.Wear ?? new float[4],
+            Valid = lapValid,
+            Pit = latest.NumPitStops > 0 && latest.PitStatus != 0,
+            Position = latest.CarPosition,
+            GapToLeaderMs = gapMs,
+            RaceFlag = entry.LapMaxFlag[idx] == RaceFlag.Green ? null : entry.LapMaxFlag[idx],
+            Samples = entry.CurrentLapSamples[idx],
+            Motion = entry.CurrentLapMotion[idx],
+        };
+        driver.Laps.Add(lap);
+
+        // Reset sampling buffers for the next lap.
+        entry.CurrentLapSamples[idx] = null;
+        entry.CurrentLapMotion[idx] = null;
+
+        // Checkpoint the session to disk on every Nth player lap so a crash only loses the tail.
+        // We deliberately do NOT null out samples of prior laps afterwards: WriteSession serializes
+        // the whole in-memory state each time, and nullified samples would overwrite what was
+        // previously persisted. Accept ~100 MB peak RAM for a 60-lap race.
+        if (idx == entry.PlayerCarIndex && completedLapNum > 0 && completedLapNum % FlushEveryNPlayerLaps == 0)
+        {
+            WriteSession(header.SessionUid, entry);
+        }
+    }
+
+    private DriverSessionData GetOrCreateDriver(SessionEntry entry, byte idx)
+    {
+        if (entry.Drivers.TryGetValue(idx, out var existing))
+            return existing;
+
+        var participants = entry.LatestPackets.GetValueOrDefault("Participants") as ParticipantsPacket;
+        ParticipantData? p = null;
+        if (participants?.Participants != null && idx < participants.Participants.Length)
+            p = participants.Participants[idx];
+
+        var driver = new DriverSessionData
+        {
+            CarIdx = idx,
+            TeamId = p?.TeamId ?? 0,
+            DriverId = p?.DriverId ?? 0,
+            Name = p?.Name ?? $"Car {idx}",
+        };
+        entry.Drivers[idx] = driver;
+        return driver;
+    }
+
+    private LapTyreSnapshotV2? CaptureTyreSnapshot(SessionEntry entry, byte idx)
+    {
+        var status = entry.LatestPackets.GetValueOrDefault("CarStatus") as CarStatusPacket;
+        var damage = entry.LatestPackets.GetValueOrDefault("CarDamage") as CarDamagePacket;
+        if (status?.CarStatusDataItems == null || idx >= status.CarStatusDataItems.Length)
+            return null;
+        var s = status.CarStatusDataItems[idx];
+        var wear = (damage?.CarDamageDataItems != null && idx < damage.CarDamageDataItems.Length)
+            ? damage.CarDamageDataItems[idx].TyresWear
+            : new float[4];
+        return new LapTyreSnapshotV2
+        {
+            Act = s.ActualTyreCompound,
+            Vis = s.VisualTyreCompound,
+            Age = s.TyresAgeLaps,
+            Wear = (float[])wear.Clone(),
+        };
+    }
+
+    private void UpdateRaceFlag(SessionEntry entry, SessionPacket session)
+    {
+        // SessionPacket.SafetyCarStatus: 0 = No, 1 = Full SC, 2 = Virtual SC, 3 = Formation lap.
+        entry.CurrentRaceFlag = session.SafetyCarStatus switch
+        {
+            1 => RaceFlag.Sc,
+            2 => RaceFlag.Vsc,
+            _ => entry.CurrentRaceFlag == RaceFlag.Red ? RaceFlag.Red : RaceFlag.Green,
+        };
+    }
+
+    private void HandleEvent(SessionEntry entry, TelemetryPacketHeader header, EventPacket evt)
+    {
+        byte? carIdx = evt.Details switch
+        {
+            FastestLapEvent e => e.VehicleIdx,
+            RetirementEvent e => e.VehicleIdx,
+            TeamMateInPitsEvent e => e.VehicleIdx,
+            RaceWinnerEvent e => e.VehicleIdx,
+            PenaltyEvent e => e.VehicleIdx,
+            SpeedTrapEvent e => e.VehicleIdx,
+            DriveThroughPenaltyServedEvent e => e.VehicleIdx,
+            StopGoPenaltyServedEvent e => e.VehicleIdx,
+            OvertakeEvent e => e.OvertakingVehicleIdx,
+            _ => null,
+        };
+
+        byte? lapAtEvent = null;
+        if (carIdx is byte ci && ci < MaxCars && entry.CurrentLapNum[ci] != 0)
+            lapAtEvent = entry.CurrentLapNum[ci];
+
+        RaceFlag? flag = evt.EventCode switch
+        {
+            "RDFL" => RaceFlag.Red,
+            "SCAR" => evt.Details is SafetyCarEvent sce && sce.SafetyCarType == 2 ? RaceFlag.Vsc : RaceFlag.Sc,
+            _ => null,
+        };
+        if (flag.HasValue)
+            entry.CurrentRaceFlag = flag.Value;
+
+        entry.Events.Add(new SessionLogEventV2
+        {
+            TimeS = header.SessionTime,
+            Code = evt.EventCode,
+            Lap = lapAtEvent,
+            CarIdx = carIdx,
+            Flag = flag,
+            Details = evt.Details,
+        });
     }
 
     /// <summary>Flush any remaining sessions to disk. Safety net for app shutdown.</summary>
@@ -152,18 +440,26 @@ public sealed class SessionLogger
 
             var filePath = Path.Combine(logsDir, $"{slug}.json");
 
-            // Gather setup snapshots for the player car
-            Dictionary<int, object>? setupSnapshots = null;
+            // Player setup snapshots live on the player's DriverSessionData.
             if (uid == _currentSessionUid)
             {
                 var snapshots = _lapSetupStore.GetSnapshots(entry.PlayerCarIndex);
                 if (snapshots != null && snapshots.Count > 0)
-                    setupSnapshots = new Dictionary<int, object>(snapshots);
+                {
+                    var playerDriver = GetOrCreateDriver(entry, entry.PlayerCarIndex);
+                    playerDriver.SetupByLap = new Dictionary<int, CarSetupData>();
+                    foreach (var (lapIdx, setup) in snapshots)
+                        if (setup is CarSetupData cs)
+                            playerDriver.SetupByLap[lapIdx] = cs;
+                }
             }
 
-            var logData = new SessionLogData
+            var bounds = ComputeTrackBounds(entry);
+            var finalClassification = entry.LatestPackets.GetValueOrDefault("FinalClassification");
+
+            var logData = new SessionLogDataV2
             {
-                Meta = new SessionLogMeta
+                Meta = new SessionLogMetaV2
                 {
                     TrackId = sessionPacket.TrackId,
                     TrackName = F125TrackNames.Get(sessionPacket.TrackId),
@@ -174,19 +470,29 @@ public sealed class SessionLogger
                     SessionLinkId = sessionPacket.SessionLinkIdentifier,
                     PlayerCarIndex = entry.PlayerCarIndex,
                     SavedAt = DateTimeOffset.Now,
+                    TrackLengthM = sessionPacket.TrackLength,
+                    TotalLaps = sessionPacket.TotalLaps,
+                    Sector2StartM = sessionPacket.Sector2LapDistanceStart,
+                    Sector3StartM = sessionPacket.Sector3LapDistanceStart,
+                    TrackBoundsXZ = bounds,
                 },
                 Packets = new Dictionary<string, object>(entry.LatestPackets),
+                Drivers = entry.Drivers.Count > 0
+                    ? new Dictionary<int, DriverSessionData>(entry.Drivers)
+                    : null,
                 LapHistories = entry.LapHistories.Count > 0
                     ? new Dictionary<int, SessionHistoryPacket>(entry.LapHistories)
                     : null,
                 Events = entry.Events.Count > 0
-                    ? new List<SessionLogEvent>(entry.Events)
+                    ? new List<SessionLogEventV2>(entry.Events)
                     : null,
-                SetupSnapshots = setupSnapshots,
+                FinalClassification = finalClassification,
             };
 
             var json = JsonSerializer.Serialize(logData, JsonOptions);
-            File.WriteAllText(filePath, json);
+            var tmpPath = filePath + ".tmp";
+            File.WriteAllText(tmpPath, json);
+            File.Move(tmpPath, filePath, overwrite: true);
 
             _logger.LogInformation("Session saved to {FilePath}", filePath);
         }
@@ -194,6 +500,31 @@ public sealed class SessionLogger
         {
             _logger.LogError(ex, "Failed to save session log");
         }
+    }
+
+    private static TrackBounds? ComputeTrackBounds(SessionEntry entry)
+    {
+        float minX = float.MaxValue, maxX = float.MinValue;
+        float minZ = float.MaxValue, maxZ = float.MinValue;
+        bool any = false;
+
+        foreach (var driver in entry.Drivers.Values)
+        {
+            foreach (var lap in driver.Laps)
+            {
+                if (lap.Motion == null) continue;
+                foreach (var m in lap.Motion)
+                {
+                    if (m.X < minX) minX = m.X;
+                    if (m.X > maxX) maxX = m.X;
+                    if (m.Z < minZ) minZ = m.Z;
+                    if (m.Z > maxZ) maxZ = m.Z;
+                    any = true;
+                }
+            }
+        }
+
+        return any ? new TrackBounds { MinX = minX, MaxX = maxX, MinZ = minZ, MaxZ = maxZ } : null;
     }
 
     private sealed class SessionEntry
@@ -210,44 +541,25 @@ public sealed class SessionLogger
         /// <summary>Per-car lap history (accumulated, key = carIdx).</summary>
         public Dictionary<int, SessionHistoryPacket> LapHistories { get; } = new();
 
-        /// <summary>All events in order.</summary>
-        public List<SessionLogEvent> Events { get; } = new();
+        /// <summary>All events in order (v2 shape, with lap + carIdx + flag).</summary>
+        public List<SessionLogEventV2> Events { get; } = new();
+
+        /// <summary>Per-car accumulated lap+sample data (v2 schema).</summary>
+        public Dictionary<int, DriverSessionData> Drivers { get; } = new();
+
+        // Per-car sampling buffers for the currently-active lap. Flushed into Drivers[idx].Laps
+        // on lap completion and reset.
+        public readonly List<LapSample>?[] CurrentLapSamples = new List<LapSample>?[MaxCars];
+        public readonly List<MotionSample>?[] CurrentLapMotion = new List<MotionSample>?[MaxCars];
+        public readonly float[] LastTelemetryTickS = new float[MaxCars];
+        public readonly float[] LastMotionTickS = new float[MaxCars];
+        public readonly byte[] CurrentLapNum = new byte[MaxCars];
+        public readonly float[] CurrentLapStartSessionTimeS = new float[MaxCars];
+
+        // Live race-control state. Applied to each newly completed lap.
+        public RaceFlag CurrentRaceFlag = RaceFlag.Green;
+        /// <summary>Highest flag seen during the current lap per car (gets stamped at lap completion).</summary>
+        public readonly RaceFlag[] LapMaxFlag = new RaceFlag[MaxCars];
     }
 
-    private sealed class SessionLogData
-    {
-        public SessionLogMeta? Meta { get; set; }
-
-        /// <summary>Latest snapshot of every packet type (Session, LapData, CarTelemetry, CarStatus, CarDamage, CarSetups, TyreSets, Participants, FinalClassification, TimeTrial, LapPositions, LobbyInfo).</summary>
-        public Dictionary<string, object>? Packets { get; set; }
-
-        /// <summary>Full lap history per car (key = carIdx).</summary>
-        public Dictionary<int, SessionHistoryPacket>? LapHistories { get; set; }
-
-        /// <summary>All session events in chronological order.</summary>
-        public List<SessionLogEvent>? Events { get; set; }
-
-        /// <summary>Per-lap setup snapshots for the player car (key = lapIndex).</summary>
-        public Dictionary<int, object>? SetupSnapshots { get; set; }
-    }
-
-    private sealed class SessionLogMeta
-    {
-        public int TrackId { get; set; }
-        public string TrackName { get; set; } = "";
-        public byte SessionType { get; set; }
-        public string SessionTypeName { get; set; } = "";
-        public byte GameYear { get; set; }
-        public uint WeekendLinkId { get; set; }
-        public uint SessionLinkId { get; set; }
-        public byte PlayerCarIndex { get; set; }
-        public DateTimeOffset SavedAt { get; set; }
-    }
-
-    private sealed class SessionLogEvent
-    {
-        public float SessionTime { get; set; }
-        public string EventCode { get; set; } = "";
-        public object? Details { get; set; }
-    }
 }

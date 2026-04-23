@@ -70,6 +70,22 @@
         <!-- History Tab -->
         <section class="tab-panel" id="panel-history">
             <div class="history-container" id="historySessionList"></div>
+            <div class="history-detail" id="historyDetailView" hidden>
+                <nav class="history-breadcrumb">
+                    <button class="history-back" data-action="back">&larr; All Sessions</button>
+                    <span class="history-bc-sep">/</span>
+                    <span class="history-bc-weekend"></span>
+                    <span class="history-bc-sep">/</span>
+                    <span class="history-bc-session"></span>
+                </nav>
+                <div class="history-subtabs" role="tablist">
+                    <button class="history-subtab active" data-sub="laptimes">Lap Times</button>
+                    <button class="history-subtab" data-sub="positions">Positions</button>
+                    <button class="history-subtab" data-sub="compare">Telemetry Compare</button>
+                    <button class="history-subtab" data-sub="events">Events</button>
+                </div>
+                <div class="history-detail-body" id="historyDetailBody"></div>
+            </div>
         </section>
 
         <!-- Settings Tab -->
@@ -545,5 +561,7 @@
     <script src="/js/app.js"></script>
     <script src="/js/widgets.js"></script>
     <script src="/js/telemetry.js"></script>
+    <script src="/js/historyDetail.js"></script>
+    <script src="/js/telemetryCompare.js"></script>
 </body>
 </html>
