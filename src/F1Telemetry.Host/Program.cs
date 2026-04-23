@@ -370,14 +370,11 @@ static class Program
 
         // --- Sessions (History) ---
 
-        app.MapGet("/api/sessions", (HttpContext ctx) =>
+        app.MapGet("/api/sessions", () =>
         {
             var logsDir = Path.Combine(AppContext.BaseDirectory, "Logs");
             if (!Directory.Exists(logsDir))
-            {
-                ctx.Response.Headers["X-Legacy-Count"] = "0";
                 return Results.Ok(Array.Empty<object>());
-            }
 
             // Stat-only version: sum of top-dir + each subdir's last-write ticks.
             // Cheaper than parsing every meta block and invalidates as soon as
@@ -388,15 +385,11 @@ static class Program
 
             lock (_sessionsCacheLock)
             {
-                if (_sessionsCacheValue is SessionsCacheEntry cached && _sessionsCacheVersion == version)
-                {
-                    ctx.Response.Headers["X-Legacy-Count"] = cached.LegacyCount.ToString();
-                    return Results.Ok(cached.Weekends);
-                }
+                if (_sessionsCacheValue != null && _sessionsCacheVersion == version)
+                    return Results.Ok(_sessionsCacheValue);
             }
 
             var weekends = new List<object>();
-            int legacyCount = 0;
 
             foreach (var dir in Directory.GetDirectories(logsDir).OrderByDescending(d => d))
             {
@@ -417,17 +410,6 @@ static class Program
                         using var doc = JsonDocument.Parse(stream);
                         var meta = doc.RootElement.GetProperty("meta");
 
-                        // Hide schema-v1 logs from History — they lack per-lap samples and motion
-                        // traces, so none of the detail views can render anything useful.
-                        int schemaVersion = 1;
-                        if (meta.TryGetProperty("schemaVersion", out var sv))
-                            schemaVersion = sv.GetInt32();
-                        if (schemaVersion < 2)
-                        {
-                            legacyCount++;
-                            continue;
-                        }
-
                         trackId ??= meta.GetProperty("trackId").GetInt32();
                         trackName ??= meta.GetProperty("trackName").GetString();
                         if (!gameYear.HasValue && meta.TryGetProperty("gameYear", out var gy))
@@ -438,7 +420,6 @@ static class Program
                             slug = Path.GetFileNameWithoutExtension(file),
                             typeName = meta.GetProperty("sessionTypeName").GetString(),
                             savedAt = meta.GetProperty("savedAt").GetString(),
-                            schemaVersion,
                         });
                     }
                     catch { /* skip corrupt files */ }
@@ -459,11 +440,10 @@ static class Program
 
             lock (_sessionsCacheLock)
             {
-                _sessionsCacheValue = new SessionsCacheEntry(weekends, legacyCount);
+                _sessionsCacheValue = weekends;
                 _sessionsCacheVersion = version;
             }
 
-            ctx.Response.Headers["X-Legacy-Count"] = legacyCount.ToString();
             return Results.Ok(weekends);
         });
 
@@ -716,8 +696,6 @@ record SettingsUpdateRequest(
     [property: JsonPropertyName("enableSessionLogging")] bool EnableSessionLogging);
 
 record OpenFolderRequest(string Folder);
-
-record SessionsCacheEntry(List<object> Weekends, int LegacyCount);
 
 record PitTimeUpdateRequest(
     string? TrackName,

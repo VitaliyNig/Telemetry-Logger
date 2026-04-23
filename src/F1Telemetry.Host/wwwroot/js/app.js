@@ -96,12 +96,8 @@
             container.innerHTML = '<div class="history-empty"><p>Loading...</p></div>';
         }
 
-        var legacyCount = 0;
         fetch('/api/sessions')
-            .then(function (r) {
-                legacyCount = Number(r.headers.get('X-Legacy-Count') || 0);
-                return r.json();
-            })
+            .then(function (r) { return r.json(); })
             .then(function (weekends) {
                 _historyLoaded = true;
                 if (!weekends || weekends.length === 0) {
@@ -110,15 +106,15 @@
                             '<div class="placeholder-icon">&#128202;</div>' +
                             '<h2>No Sessions</h2>' +
                             '<p>Recorded sessions will appear here after completing a session.</p>' +
-                            (legacyCount > 0 ? '<p class="history-legacy-note">' + legacyCount + ' older session(s) hidden (pre-v2 schema).</p>' : '') +
                         '</div>';
                     return;
                 }
 
-                var html = legacyCount > 0
-                    ? '<div class="history-legacy-note">' + legacyCount + ' older session(s) hidden (pre-v2 schema).</div>'
-                    : '';
-                html += '<div class="history-grid">';
+                var folderIcon = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">'
+                    + '<path fill="currentColor" d="M1.75 3A1.75 1.75 0 0 0 0 4.75v6.5C0 12.216.784 13 1.75 13h12.5A1.75 1.75 0 0 0 16 11.25V5.75A1.75 1.75 0 0 0 14.25 4H7.5L6 2.5H1.75A1.75 1.75 0 0 0 0 4.25V3z"/>'
+                    + '</svg>';
+
+                var html = '<div class="history-grid">';
                 weekends.forEach(function (w) {
                     var flagCode = (typeof TRACK_FLAG_MAP !== 'undefined' && w.trackId != null)
                         ? TRACK_FLAG_MAP[w.trackId] : null;
@@ -131,15 +127,16 @@
                     var firstDate = '';
                     if (w.sessions && w.sessions.length > 0) {
                         w.sessions.forEach(function (s) {
-                            tags += '<button type="button" class="history-tag" '
-                                + 'data-slug="' + escapeHtml(s.slug) + '">'
-                                + escapeHtml(s.typeName || s.slug) + '</button>';
+                            tags += '<span class="history-tag">' + escapeHtml(s.typeName || s.slug) + '</span>';
                         });
                         firstDate = formatSessionDate(w.sessions[0].savedAt);
                     }
 
                     html += '<div class="history-card" data-folder="' + escapeHtml(w.folder) + '"'
                         + ' data-weekend-name="' + escapeHtml(w.trackName || w.folder) + '">' +
+                        '<button type="button" class="history-card-open-folder" title="Open folder in Explorer" aria-label="Open folder">' +
+                            folderIcon +
+                        '</button>' +
                         '<div class="history-card-header">' +
                             '<div class="history-card-title">' + flagHtml + '<span>' + escapeHtml(w.trackName || w.folder) + '</span></div>' +
                             (gameLabel ? '<span class="history-card-game">' + gameLabel + '</span>' : '') +
@@ -151,28 +148,29 @@
                 html += '</div>';
                 container.innerHTML = html;
 
-                // Click on a session tag opens the detail view. Right-click on a card opens the
-                // folder in Explorer (secondary action, preserved from the original UX).
-                container.querySelectorAll('.history-tag').forEach(function (tag) {
-                    tag.addEventListener('click', function (e) {
-                        e.stopPropagation();
-                        var card = tag.closest('.history-card');
-                        if (!card || !window.HistoryDetail) return;
-                        window.HistoryDetail.open(
-                            card.dataset.folder,
-                            tag.dataset.slug,
-                            card.dataset.weekendName);
+                // Clicking the card opens the session (picker modal when >1 session). The small
+                // folder button in the corner is the only way to trigger Open-In-Explorer now.
+                container.querySelectorAll('.history-card').forEach(function (card) {
+                    card.addEventListener('click', function (e) {
+                        if (e.target.closest('.history-card-open-folder')) return;
+                        var weekend = weekends.find(function (x) { return x.folder === card.dataset.folder; });
+                        if (!weekend || !window.HistoryDetail) return;
+                        if (weekend.sessions.length === 1) {
+                            window.HistoryDetail.open(weekend.folder, weekend.sessions[0].slug, card.dataset.weekendName);
+                        } else {
+                            openSessionPickerModal(weekend, card.dataset.weekendName);
+                        }
                     });
                 });
-                container.querySelectorAll('.history-card').forEach(function (card) {
-                    card.addEventListener('contextmenu', function (e) {
-                        e.preventDefault();
-                        var folder = card.dataset.folder;
-                        if (!folder) return;
+                container.querySelectorAll('.history-card-open-folder').forEach(function (btn) {
+                    btn.addEventListener('click', function (e) {
+                        e.stopPropagation();
+                        var card = btn.closest('.history-card');
+                        if (!card) return;
                         fetch('/api/sessions/open-folder', {
                             method: 'POST',
                             headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ folder: folder })
+                            body: JSON.stringify({ folder: card.dataset.folder })
                         });
                     });
                 });
@@ -180,6 +178,34 @@
             .catch(function () {
                 container.innerHTML = '<div class="history-empty"><p>Failed to load sessions.</p></div>';
             });
+    }
+
+    function openSessionPickerModal(weekend, weekendName) {
+        var overlay = document.createElement('div');
+        overlay.className = 'history-modal-overlay';
+        var rows = weekend.sessions.map(function (s) {
+            return '<button type="button" class="session-pick-row" data-slug="' + escapeHtml(s.slug) + '">'
+                + '<span class="session-pick-name">' + escapeHtml(s.typeName || s.slug) + '</span>'
+                + '<span class="session-pick-date">' + formatSessionDate(s.savedAt) + '</span>'
+                + '</button>';
+        }).join('');
+        overlay.innerHTML = ''
+            + '<div class="history-modal">'
+            +   '<div class="history-modal-header">' + escapeHtml(weekendName) + ' — pick a session'
+            +     '<button class="history-modal-close" aria-label="Close">&times;</button>'
+            +   '</div>'
+            +   '<div class="history-modal-body">' + rows + '</div>'
+            + '</div>';
+        document.body.appendChild(overlay);
+        function dismiss() { overlay.remove(); }
+        overlay.querySelector('.history-modal-close').addEventListener('click', dismiss);
+        overlay.addEventListener('click', function (e) { if (e.target === overlay) dismiss(); });
+        overlay.querySelectorAll('.session-pick-row').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                dismiss();
+                window.HistoryDetail.open(weekend.folder, btn.dataset.slug, weekendName);
+            });
+        });
     }
 
     function formatSessionDate(isoStr) {

@@ -3515,25 +3515,58 @@
 
 /* ============ History Detail view ============ */
 
-/* history-tag rendered as <button> so it's keyboard-focusable — strip the browser chrome. */
-button.history-tag {
-    font-family: inherit;
+/* The whole card is clickable — show that with a pointer cursor and a small hover cue. */
+.history-card { position: relative; cursor: pointer; }
+
+/* Corner button — the only way to open the folder in Explorer now. */
+.history-card-open-folder {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: transparent;
+    border: 1px solid transparent;
+    border-radius: 4px;
+    color: var(--text-dim);
     cursor: pointer;
-    transition: background 0.15s, border-color 0.15s;
+    font-family: inherit;
+    padding: 0;
+    transition: color 0.15s, background 0.15s, border-color 0.15s;
 }
-button.history-tag:hover {
-    background: var(--accent-brand-hover-soft, rgba(155, 63, 245, 0.25));
+.history-card-open-folder:hover {
+    color: var(--accent-brand);
+    background: var(--bg-card);
+    border-color: var(--accent-brand);
 }
 
-.history-legacy-note {
-    font-size: 12px;
-    color: var(--text-dim);
-    padding: 8px 12px;
-    margin-bottom: 12px;
-    background: var(--bg-card);
+/* Session picker rows (shown when a weekend card has > 1 session). */
+.session-pick-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    width: 100%;
+    background: transparent;
     border: 1px solid var(--border);
-    border-radius: 6px;
+    border-radius: 4px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    color: var(--text-primary);
+    font-family: inherit;
+    font-size: 13px;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
 }
+.session-pick-row:last-child { margin-bottom: 0; }
+.session-pick-row:hover {
+    border-color: var(--accent-brand);
+    background: rgba(155, 63, 245, 0.06);
+}
+.session-pick-name { font-weight: 600; }
+.session-pick-date { color: var(--text-dim); font-size: 11px; font-family: 'Courier New', monospace; }
 
 .history-detail {
     display: flex;
