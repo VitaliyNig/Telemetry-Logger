@@ -70,7 +70,7 @@
 
     function switchSubTab(id) {
         state.subTab = id;
-        var tabs = document.querySelectorAll('.history-subtab');
+        var tabs = document.querySelectorAll('.history-sidenav-item');
         tabs.forEach(function (t) {
             t.classList.toggle('active', t.dataset.sub === id);
         });
@@ -901,7 +901,7 @@
 
     // ---------- wire up sub-tab click handlers once ----------
     document.addEventListener('click', function (e) {
-        var sub = e.target.closest('.history-subtab');
+        var sub = e.target.closest('.history-sidenav-item');
         if (sub) {
             switchSubTab(sub.dataset.sub);
             return;
