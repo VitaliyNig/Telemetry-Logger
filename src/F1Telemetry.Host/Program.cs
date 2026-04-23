@@ -78,6 +78,7 @@ static class Program
         builder.Services.AddSingleton<LapSetupStore>();
         builder.Services.AddSingleton<LapTyreStore>();
         builder.Services.AddSingleton<SessionLogger>();
+        builder.Services.AddHostedService<SessionLoggerWriter>();
         builder.Services.AddSingleton<DebugPacketTracker>();
         builder.Services.AddSingleton<ITelemetryIngress, TelemetryPipelineIngress>();
         builder.Services.AddTelemetryUdpListener();
@@ -369,11 +370,14 @@ static class Program
 
         // --- Sessions (History) ---
 
-        app.MapGet("/api/sessions", () =>
+        app.MapGet("/api/sessions", (HttpContext ctx) =>
         {
             var logsDir = Path.Combine(AppContext.BaseDirectory, "Logs");
             if (!Directory.Exists(logsDir))
+            {
+                ctx.Response.Headers["X-Legacy-Count"] = "0";
                 return Results.Ok(Array.Empty<object>());
+            }
 
             // Stat-only version: sum of top-dir + each subdir's last-write ticks.
             // Cheaper than parsing every meta block and invalidates as soon as
@@ -384,11 +388,15 @@ static class Program
 
             lock (_sessionsCacheLock)
             {
-                if (_sessionsCacheValue != null && _sessionsCacheVersion == version)
-                    return Results.Ok(_sessionsCacheValue);
+                if (_sessionsCacheValue is SessionsCacheEntry cached && _sessionsCacheVersion == version)
+                {
+                    ctx.Response.Headers["X-Legacy-Count"] = cached.LegacyCount.ToString();
+                    return Results.Ok(cached.Weekends);
+                }
             }
 
             var weekends = new List<object>();
+            int legacyCount = 0;
 
             foreach (var dir in Directory.GetDirectories(logsDir).OrderByDescending(d => d))
             {
@@ -409,6 +417,17 @@ static class Program
                         using var doc = JsonDocument.Parse(stream);
                         var meta = doc.RootElement.GetProperty("meta");
 
+                        // Hide schema-v1 logs from History — they lack per-lap samples and motion
+                        // traces, so none of the detail views can render anything useful.
+                        int schemaVersion = 1;
+                        if (meta.TryGetProperty("schemaVersion", out var sv))
+                            schemaVersion = sv.GetInt32();
+                        if (schemaVersion < 2)
+                        {
+                            legacyCount++;
+                            continue;
+                        }
+
                         trackId ??= meta.GetProperty("trackId").GetInt32();
                         trackName ??= meta.GetProperty("trackName").GetString();
                         if (!gameYear.HasValue && meta.TryGetProperty("gameYear", out var gy))
@@ -419,6 +438,7 @@ static class Program
                             slug = Path.GetFileNameWithoutExtension(file),
                             typeName = meta.GetProperty("sessionTypeName").GetString(),
                             savedAt = meta.GetProperty("savedAt").GetString(),
+                            schemaVersion,
                         });
                     }
                     catch { /* skip corrupt files */ }
@@ -439,11 +459,235 @@ static class Program
 
             lock (_sessionsCacheLock)
             {
-                _sessionsCacheValue = weekends;
+                _sessionsCacheValue = new SessionsCacheEntry(weekends, legacyCount);
                 _sessionsCacheVersion = version;
             }
 
+            ctx.Response.Headers["X-Legacy-Count"] = legacyCount.ToString();
             return Results.Ok(weekends);
+        });
+
+        // Session detail: meta + per-driver lap summaries (NO samples/motion). Small enough
+        // to hold in the browser for the whole lifetime of the detail view.
+        app.MapGet("/api/sessions/{folder}/{slug}", (string folder, string slug) =>
+        {
+            var data = HistoryReader.Load(folder, slug);
+            if (data == null)
+                return Results.NotFound(new { error = "session not found or schema < v2" });
+
+            var drivers = data.Drivers?.ToDictionary(
+                kv => kv.Key,
+                kv => new
+                {
+                    carIdx = kv.Value.CarIdx,
+                    teamId = kv.Value.TeamId,
+                    driverId = kv.Value.DriverId,
+                    name = kv.Value.Name,
+                    lapCount = kv.Value.Laps.Count,
+                    laps = kv.Value.Laps.Select(l => new
+                    {
+                        l.LapNum, l.LapTimeMs, l.S1Ms, l.S2Ms, l.S3Ms,
+                        l.CompoundActual, l.CompoundVisual, l.TyreAge, l.TyreWearEnd,
+                        l.Valid, l.Pit, l.Position, l.GapToLeaderMs, l.RaceFlag,
+                    }).ToArray(),
+                    tyreByLap = kv.Value.TyreByLap,
+                });
+
+            return Results.Ok(new
+            {
+                meta = data.Meta,
+                drivers,
+                lapHistories = data.LapHistories,
+                events = data.Events,
+                finalClassification = data.FinalClassification,
+            });
+        });
+
+        // Per-driver lap summaries only (compact).
+        app.MapGet("/api/sessions/{folder}/{slug}/laps", (string folder, string slug) =>
+        {
+            var data = HistoryReader.Load(folder, slug);
+            if (data == null)
+                return Results.NotFound(new { error = "session not found" });
+
+            if (data.Drivers == null)
+                return Results.Ok(new Dictionary<int, object>());
+
+            var laps = data.Drivers.ToDictionary(
+                kv => kv.Key,
+                kv => (object)kv.Value.Laps.Select(l => new
+                {
+                    l.LapNum, l.LapTimeMs, l.S1Ms, l.S2Ms, l.S3Ms,
+                    l.CompoundActual, l.CompoundVisual, l.TyreAge, l.TyreWearEnd,
+                    l.Valid, l.Pit, l.Position, l.GapToLeaderMs, l.RaceFlag,
+                }).ToArray());
+
+            return Results.Ok(laps);
+        });
+
+        // Lazy-load samples + motion for one lap of one driver. Called by Telemetry Compare
+        // when the user picks a lap from the per-driver dropdown. Cached on the client.
+        app.MapGet("/api/sessions/{folder}/{slug}/lap-samples",
+            (string folder, string slug, int carIdx, int lap) =>
+        {
+            var data = HistoryReader.Load(folder, slug);
+            if (data?.Drivers == null || !data.Drivers.TryGetValue(carIdx, out var driver))
+                return Results.NotFound(new { error = "driver not found" });
+
+            var match = driver.Laps.FirstOrDefault(l => l.LapNum == lap);
+            if (match == null)
+                return Results.NotFound(new { error = "lap not found" });
+
+            return Results.Ok(new
+            {
+                carIdx,
+                lap = match.LapNum,
+                samples = match.Samples ?? new List<LapSample>(),
+                motion = match.Motion ?? new List<MotionSample>(),
+            });
+        });
+
+        app.MapGet("/api/sessions/{folder}/{slug}/events", (string folder, string slug) =>
+        {
+            var data = HistoryReader.Load(folder, slug);
+            if (data == null)
+                return Results.NotFound(new { error = "session not found" });
+            return Results.Ok(data.Events ?? new List<SessionLogEventV2>());
+        });
+
+        // Export one driver's full session data as a standalone JSON. The payload stays compatible
+        // with /api/history/import so two instances can swap ghost files directly.
+        app.MapGet("/api/sessions/{folder}/{slug}/export", (string folder, string slug, int carIdx) =>
+        {
+            var data = HistoryReader.Load(folder, slug);
+            if (data?.Drivers == null || !data.Drivers.TryGetValue(carIdx, out var driver))
+                return Results.NotFound(new { error = "driver not found" });
+
+            var payload = new
+            {
+                schemaVersion = 2,
+                sourceFolder = folder,
+                sourceSlug = slug,
+                meta = data.Meta,
+                driver,
+            };
+            var jsonOptions = new JsonSerializerOptions
+            {
+                PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
+                WriteIndented = false,
+                Converters = { new FiniteSingleJsonConverter(), new FiniteDoubleJsonConverter() },
+                DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
+            };
+            var bytes = JsonSerializer.SerializeToUtf8Bytes(payload, jsonOptions);
+            var filename = $"{folder}__{slug}__car{carIdx}.json";
+            return Results.File(bytes, "application/json", filename);
+        });
+
+        // Import a ghost driver. Stored on disk under _ghosts/ so re-opening the session picks
+        // them up via /ghosts without a re-upload.
+        app.MapPost("/api/history/import", async (HttpContext ctx, string folder, string slug) =>
+        {
+            var target = HistoryReader.Load(folder, slug);
+            if (target?.Meta == null)
+                return Results.NotFound(new { error = "target session not found" });
+
+            using var ms = new MemoryStream();
+            await ctx.Request.Body.CopyToAsync(ms);
+            ms.Position = 0;
+            JsonElement root;
+            try
+            {
+                using var doc = JsonDocument.Parse(ms);
+                root = doc.RootElement.Clone();
+            }
+            catch
+            {
+                return Results.BadRequest(new { error = "invalid JSON" });
+            }
+
+            if (!root.TryGetProperty("schemaVersion", out var sv) || sv.GetInt32() != 2)
+                return Results.BadRequest(new { error = "schema mismatch (expected v2)" });
+            if (!root.TryGetProperty("meta", out var meta) ||
+                !meta.TryGetProperty("trackId", out var tid) || tid.GetInt32() != target.Meta.TrackId)
+                return Results.BadRequest(new { error = "track mismatch" });
+            if (!root.TryGetProperty("driver", out var driverEl))
+                return Results.BadRequest(new { error = "no driver payload" });
+
+            var safeFolder = Path.GetFileName(folder);
+            var ghostsDir = Path.Combine(AppContext.BaseDirectory, "Logs", safeFolder, "_ghosts");
+            Directory.CreateDirectory(ghostsDir);
+            var fileName = $"ghost_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.json";
+            var path = Path.Combine(ghostsDir, fileName);
+            await File.WriteAllTextAsync(path, root.GetRawText());
+
+            return Results.Ok(new
+            {
+                imported = true,
+                driver = driverEl,
+                fileName,
+            });
+        });
+
+        app.MapGet("/api/sessions/{folder}/{slug}/track-svg",
+            (string folder, string slug, IWebHostEnvironment env) =>
+        {
+            var data = HistoryReader.Load(folder, slug);
+            if (data?.Meta == null)
+                return Results.NotFound(new { error = "session not found" });
+
+            var cachePath = TrackSvgGenerator.CachePath(env.WebRootPath, data.Meta.TrackId);
+            if (File.Exists(cachePath))
+            {
+                var cached = File.ReadAllText(cachePath);
+                return Results.Content(cached, "image/svg+xml");
+            }
+
+            var svg = TrackSvgGenerator.TryGenerate(data);
+            if (svg == null)
+                return Results.NotFound(new { error = "not enough motion data" });
+
+            try
+            {
+                var dir = Path.GetDirectoryName(cachePath);
+                if (dir != null && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
+                File.WriteAllText(cachePath, svg);
+            }
+            catch { /* cache write failures don't block the response */ }
+
+            return Results.Content(svg, "image/svg+xml");
+        });
+
+        app.MapGet("/api/sessions/{folder}/{slug}/ghosts", (string folder, string slug) =>
+        {
+            var target = HistoryReader.Load(folder, slug);
+            if (target?.Meta == null)
+                return Results.NotFound(new { error = "session not found" });
+
+            var safeFolder = Path.GetFileName(folder);
+            var ghostsDir = Path.Combine(AppContext.BaseDirectory, "Logs", safeFolder, "_ghosts");
+            if (!Directory.Exists(ghostsDir)) return Results.Ok(Array.Empty<object>());
+
+            var ghosts = new List<object>();
+            foreach (var file in Directory.GetFiles(ghostsDir, "*.json"))
+            {
+                try
+                {
+                    using var stream = File.OpenRead(file);
+                    using var doc = JsonDocument.Parse(stream);
+                    var root = doc.RootElement;
+                    if (!root.TryGetProperty("meta", out var m) ||
+                        !m.TryGetProperty("trackId", out var tid) ||
+                        tid.GetInt32() != target.Meta.TrackId) continue;
+                    ghosts.Add(new
+                    {
+                        fileName = Path.GetFileName(file),
+                        driver = root.GetProperty("driver").Clone(),
+                        sourceSlug = root.TryGetProperty("sourceSlug", out var ss) ? ss.GetString() : null,
+                    });
+                }
+                catch { /* skip corrupt ghost */ }
+            }
+            return Results.Ok(ghosts);
         });
 
         app.MapPost("/api/sessions/open-folder", (OpenFolderRequest req) =>
@@ -472,6 +716,8 @@ record SettingsUpdateRequest(
     [property: JsonPropertyName("enableSessionLogging")] bool EnableSessionLogging);
 
 record OpenFolderRequest(string Folder);
+
+record SessionsCacheEntry(List<object> Weekends, int LegacyCount);
 
 record PitTimeUpdateRequest(
     string? TrackName,
