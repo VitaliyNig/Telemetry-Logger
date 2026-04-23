@@ -147,6 +147,7 @@ public sealed class SessionLogger
     {
         var lapPacket = entry.LatestPackets.GetValueOrDefault("LapData") as LapDataPacket;
         if (lapPacket == null) return;
+        var statusPacket = entry.LatestPackets.GetValueOrDefault("CarStatus") as CarStatusPacket;
 
         var count = Math.Min(packet.CarTelemetryData.Length, Math.Min(lapPacket.LapDataItems.Length, MaxCars));
         for (byte idx = 0; idx < count; idx++)
@@ -157,6 +158,9 @@ public sealed class SessionLogger
 
             var t = packet.CarTelemetryData[idx];
             var l = lapPacket.LapDataItems[idx];
+            var s = (statusPacket != null && idx < statusPacket.CarStatusDataItems.Length)
+                ? statusPacket.CarStatusDataItems[idx]
+                : null;
 
             var buf = entry.CurrentLapSamples[idx] ??= new List<LapSample>(256);
             buf.Add(new LapSample
@@ -170,6 +174,9 @@ public sealed class SessionLogger
                 Gr = t.Gear,
                 Rpm = t.EngineRpm,
                 Sec = l.Sector,
+                Ers = s == null ? (byte)0 : (byte)Math.Clamp((int)MathF.Round(s.ErsStoreEnergy / 4_000_000f * 100f), 0, 100),
+                ErsMd = s?.ErsDeployMode ?? (byte)0,
+                Drs = t.Drs,
             });
         }
     }

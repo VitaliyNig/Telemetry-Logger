@@ -29,6 +29,12 @@ public sealed class LapSample
     public ushort Rpm { get; set; }
     /// <summary>Sector 0..2.</summary>
     public byte Sec { get; set; }
+    /// <summary>ERS store 0..100 (% of 4 MJ capacity).</summary>
+    public byte Ers { get; set; }
+    /// <summary>ERS deploy mode 0=None 1=Medium 2=Hotlap 3=Overtake.</summary>
+    public byte ErsMd { get; set; }
+    /// <summary>DRS 0 off, 1 active.</summary>
+    public byte Drs { get; set; }
 }
 
 /// <summary>One 10 Hz world-position sample for track-map trajectories.</summary>
