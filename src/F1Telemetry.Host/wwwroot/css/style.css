@@ -3578,6 +3578,10 @@
     overflow: hidden;
 }
 
+.history-detail[hidden] {
+    display: none;
+}
+
 .history-detail-layout {
     display: flex;
     flex: 1;
