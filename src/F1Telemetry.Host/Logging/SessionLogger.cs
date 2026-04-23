@@ -461,7 +461,6 @@ public sealed class SessionLogger
             {
                 Meta = new SessionLogMetaV2
                 {
-                    SchemaVersion = 2,
                     TrackId = sessionPacket.TrackId,
                     TrackName = F125TrackNames.Get(sessionPacket.TrackId),
                     SessionType = entry.SessionType,

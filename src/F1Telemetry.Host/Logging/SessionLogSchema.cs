@@ -94,10 +94,9 @@ public sealed class DriverSessionData
     public Dictionary<int, CarSetupData>? SetupByLap { get; set; }
 }
 
-/// <summary>Session log metadata (v2). SchemaVersion gates History-mode visibility.</summary>
+/// <summary>Session log metadata.</summary>
 public sealed class SessionLogMetaV2
 {
-    public int SchemaVersion { get; set; } = 2;
     public int TrackId { get; set; }
     public string TrackName { get; set; } = "";
     public byte SessionType { get; set; }

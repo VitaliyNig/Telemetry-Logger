@@ -48,11 +48,7 @@ public static class HistoryReader
 
         using var stream = File.OpenRead(path);
         var data = JsonSerializer.Deserialize<SessionLogDataV2>(stream, JsonOptions);
-        if (data == null) return null;
-
-        // Only schema-v2 logs carry per-lap samples. Older logs are handled elsewhere (hidden
-        // from /api/sessions); this is belt-and-braces for direct detail-endpoint access.
-        if (data.Meta is null || data.Meta.SchemaVersion < 2) return null;
+        if (data?.Meta == null) return null;
 
         _cache[key] = new CachedSession(mtime, data);
         return data;
