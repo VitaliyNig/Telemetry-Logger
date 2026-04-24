@@ -4043,15 +4043,71 @@
 
 /* ---------- Positions page ---------- */
 
-.pos-layout { display: flex; gap: 16px; padding: 4px; }
-.pos-side { flex: 0 0 240px; }
-.pos-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 16px; }
+.pos-layout {
+    display: grid;
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+    gap: 16px;
+    padding: 4px;
+    align-items: start;
+}
+
+.pos-side { min-width: 0; position: sticky; top: 4px; }
+.pos-side .history-driver-picker {
+    min-width: 0;
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+}
+
+.pos-main {
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+}
 
 .pos-chart {
     background: var(--bg-card);
     border: 1px solid var(--border);
     border-radius: 6px;
     padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+}
+
+.pos-legend {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 14px;
+    font-size: 11px;
+    color: var(--text-dim);
+    padding: 0 2px;
+}
+.pos-legend-item { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.pos-legend-chip {
+    display: inline-block;
+    width: 14px;
+    height: 10px;
+    border-radius: 2px;
+    border: 1px solid rgba(255, 255, 255, 0.08);
+}
+.pos-legend-chip--sc     { background: rgba(255, 140, 0, 0.55); }
+.pos-legend-chip--vsc    { background: rgba(255, 215, 0, 0.45); }
+.pos-legend-chip--red    { background: rgba(225, 6, 0, 0.55); }
+.pos-legend-chip--yellow { background: rgba(255, 215, 0, 0.35); }
+.pos-legend-chip--pit {
+    width: 0;
+    height: 0;
+    border: none;
+    border-radius: 0;
+    border-left: 5px solid transparent;
+    border-right: 5px solid transparent;
+    border-bottom: 8px solid var(--text-secondary);
+}
+
+.pos-chart-wrap {
+    width: 100%;
+    min-height: 240px;
 }
 
 .pos-svg { width: 100%; height: auto; display: block; }
@@ -4063,11 +4119,15 @@
     stroke-linecap: round;
 }
 
-.pos-pit-marker { stroke: #000; stroke-width: 0.5; }
+.pos-pit-marker {
+    stroke: #fff;
+    stroke-width: 0.75;
+    paint-order: stroke fill;
+}
 
-.pos-grid { stroke: rgba(255, 255, 255, 0.06); stroke-width: 1; }
+.pos-grid { stroke: rgba(255, 255, 255, 0.08); stroke-width: 1; }
 .pos-ytick, .pos-xtick {
-    font-size: 10px;
+    font-size: 11px;
     font-family: 'Courier New', monospace;
     fill: var(--text-dim);
 }
@@ -4075,7 +4135,7 @@
 .pos-band-sc     { fill: rgba(255, 140, 0, 0.18); }
 .pos-band-vsc    { fill: rgba(255, 215, 0, 0.15); }
 .pos-band-red    { fill: rgba(225, 6, 0, 0.22); }
-.pos-band-yellow { fill: rgba(255, 215, 0, 0.08); }
+.pos-band-yellow { fill: rgba(255, 215, 0, 0.10); }
 
 .pos-stints {
     background: var(--bg-card);
@@ -4084,10 +4144,21 @@
     padding: 12px;
 }
 
+.pos-stints-title {
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    padding-bottom: 8px;
+    margin-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
 .stint-grid {
     display: grid;
-    grid-template-columns: 180px 1fr;
-    gap: 4px 12px;
+    grid-template-columns: minmax(0, 180px) minmax(0, 1fr);
+    gap: 6px 12px;
     align-items: center;
 }
 
@@ -4107,7 +4178,9 @@
     position: relative;
     height: 14px;
     background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.05);
     border-radius: 3px;
+    overflow: hidden;
 }
 
 .stint-bar {
@@ -4116,6 +4189,28 @@
     bottom: 0;
     border-radius: 2px;
     cursor: help;
+}
+
+@media (max-width: 960px) {
+    .pos-layout {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 12px;
+    }
+    .pos-side { position: static; }
+    .pos-side .history-driver-picker { max-height: 260px; }
+}
+
+@media (max-width: 600px) {
+    .pos-layout { padding: 0; }
+    .pos-chart,
+    .pos-stints { padding: 10px; }
+    .stint-grid {
+        grid-template-columns: minmax(0, 120px) minmax(0, 1fr);
+        gap: 4px 8px;
+    }
+    .stint-row-label { font-size: 11px; gap: 4px; }
+    .pos-ytick, .pos-xtick { font-size: 10px; }
+    .pos-legend { gap: 4px 10px; font-size: 10px; }
 }
 
 /* ---------- Telemetry Compare ---------- */

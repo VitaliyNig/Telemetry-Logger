@@ -532,8 +532,20 @@
         body.innerHTML = '<div class="pos-layout">'
             + '<div class="pos-side" id="posSide"></div>'
             + '<div class="pos-main">'
-            +   '<div class="pos-chart" id="posChart"></div>'
-            +   '<div class="pos-stints" id="posStints"></div>'
+            +   '<div class="pos-chart">'
+            +     '<div class="pos-legend">'
+            +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--yellow"></span>Yellow flag</span>'
+            +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--sc"></span>Safety car</span>'
+            +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--vsc"></span>VSC</span>'
+            +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--red"></span>Red flag</span>'
+            +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--pit"></span>Pit stop</span>'
+            +     '</div>'
+            +     '<div class="pos-chart-wrap" id="posChart"></div>'
+            +   '</div>'
+            +   '<div class="pos-stints">'
+            +     '<div class="pos-stints-title">Tyre stints</div>'
+            +     '<div id="posStints"></div>'
+            +   '</div>'
             + '</div>'
             + '</div>';
 
@@ -642,7 +654,10 @@
         var selected = Array.from(state.driverSelection.keys()).filter(function (k) {
             return sess.drivers && sess.drivers[k];
         });
-        if (selected.length === 0) { host.innerHTML = ''; return; }
+        if (selected.length === 0) {
+            host.innerHTML = '<div class="history-placeholder">Select drivers to view stints.</div>';
+            return;
+        }
 
         var totalLaps = (sess.meta && sess.meta.totalLaps) || computeMaxLap(sess.drivers);
         if (!totalLaps) totalLaps = 1;
