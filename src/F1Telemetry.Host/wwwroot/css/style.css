@@ -4347,20 +4347,21 @@
     gap: 12px;
 }
 
-.ev-chips { display: flex; gap: 4px; flex-wrap: wrap; }
-
-.ev-chip {
-    background: transparent;
-    border: 1px solid var(--border);
-    color: var(--text-secondary);
-    padding: 4px 10px;
-    font-size: 11px;
-    font-family: inherit;
-    border-radius: 4px;
-    cursor: pointer;
+.ev-tools {
+    display: flex;
+    align-items: center;
+    gap: 8px;
 }
-.ev-chip:hover { color: var(--text-primary); }
-.ev-chip.active { background: var(--accent-brand); color: #fff; border-color: var(--accent-brand); }
+
+.ev-filter-hint {
+    font-size: 11px;
+    color: var(--text-dim);
+}
+
+.ev-filter-toggle.active {
+    color: var(--accent-brand);
+    border-color: var(--accent-brand);
+}
 
 .ev-search {
     background: var(--bg-card);

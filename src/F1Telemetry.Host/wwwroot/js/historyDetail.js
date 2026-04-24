@@ -63,6 +63,7 @@
         var detail = document.getElementById('historyDetailView');
         if (list) list.hidden = false;
         if (detail) detail.hidden = true;
+        closeEventsFilterPanel();
         state.session = null;
     }
 
@@ -80,6 +81,7 @@
     function renderCurrentSubTab() {
         var body = document.getElementById('historyDetailBody');
         if (!body) return;
+        if (state.subTab !== 'events') closeEventsFilterPanel();
         if (!state.session) {
             body.innerHTML = '<div class="history-empty"><p>Loading session…</p></div>';
             return;
@@ -704,7 +706,13 @@
     }
     // ---------- Phase H: Events ----------
 
-    var eventsState = { filter: 'all', query: '' };
+    var HISTORY_EVENT_FILTER_KEY = 'f1telemetry_event_filter_v1';
+    var eventsState = {
+        query: '',
+        codeFilter: loadEventFilter(),
+        panel: null,
+        panelButton: null,
+    };
 
     var EVENT_NAMES = {
         'SSTA': 'Session Start', 'SEND': 'Session End',
@@ -719,13 +727,126 @@
         'COLL': 'Collision', 'RDFL': 'Red Flag',
     };
 
-    function categoryOf(code) {
-        if (['SCAR', 'RDFL'].includes(code)) return 'flags';
-        if (code === 'OVTK') return 'overtakes';
-        if (code === 'PENA') return 'penalties';
-        if (code === 'FTLP') return 'fastest';
-        if (code === 'DRSE' || code === 'DRSD') return 'drs';
-        return 'other';
+    var EVENT_CODE_COLORS = {
+        'SSTA': '#22c55e', 'SEND': '#22c55e', 'LGOT': '#22c55e', 'CHQF': '#22c55e',
+        'FTLP': '#a855f7', 'RCWN': '#c084fc',
+        'PENA': '#ef4444', 'DTSV': '#ef4444', 'SGSV': '#ef4444', 'RDFL': '#ef4444',
+        'SCAR': '#eab308', 'COLL': '#f59e0b', 'FLBK': '#f59e0b',
+        'DRSE': '#38bdf8', 'DRSD': '#38bdf8', 'SPTP': '#38bdf8', 'STLG': '#38bdf8',
+        'OVTK': '#fb923c', 'RTMT': '#fb923c', 'TMPT': '#fb923c',
+        'BUTN': '#6b7280',
+    };
+
+    function loadEventFilter() {
+        try {
+            var raw = localStorage.getItem(HISTORY_EVENT_FILTER_KEY);
+            if (raw) {
+                var saved = JSON.parse(raw);
+                var filter = {};
+                Object.keys(EVENT_NAMES).forEach(function (code) {
+                    filter[code] = saved[code] !== undefined ? saved[code] : (code !== 'BUTN');
+                });
+                return filter;
+            }
+        } catch (_) { /* ignore */ }
+
+        var defaults = {};
+        Object.keys(EVENT_NAMES).forEach(function (code) {
+            defaults[code] = code !== 'BUTN';
+        });
+        return defaults;
+    }
+
+    function saveEventFilter() {
+        localStorage.setItem(HISTORY_EVENT_FILTER_KEY, JSON.stringify(eventsState.codeFilter));
+    }
+
+    function closeEventsFilterPanel() {
+        if (eventsState.panel) {
+            eventsState.panel.remove();
+            eventsState.panel = null;
+            if (eventsState.panelButton) eventsState.panelButton.classList.remove('active');
+            eventsState.panelButton = null;
+        }
+    }
+
+    function onEventsPanelOutsideClick(e) {
+        if (!eventsState.panel) return;
+        var button = eventsState.panelButton;
+        if (eventsState.panel.contains(e.target)) return;
+        if (button && (button === e.target || button.contains(e.target))) return;
+        closeEventsFilterPanel();
+    }
+
+    function openEventsFilterPanel(button, body, events) {
+        closeEventsFilterPanel();
+
+        var panel = document.createElement('div');
+        panel.className = 'event-filter-panel';
+
+        var html = '<div class="event-filter-actions">'
+            + '<button class="event-filter-action-btn" data-ef-action="all">All</button>'
+            + '<button class="event-filter-action-btn" data-ef-action="none">None</button></div>';
+        Object.keys(EVENT_NAMES).forEach(function (code) {
+            var checked = eventsState.codeFilter[code] !== false ? 'checked' : '';
+            var codeCol = EVENT_CODE_COLORS[code] || 'var(--accent-blue)';
+            html += '<label class="event-filter-item"><input type="checkbox" data-event-code="' + code + '" ' + checked + '>'
+                + '<span class="event-filter-code" style="color:' + codeCol + '">' + code + '</span>'
+                + EVENT_NAMES[code] + '</label>';
+        });
+        panel.innerHTML = html;
+        panel.addEventListener('click', function (ev) { ev.stopPropagation(); });
+
+        document.body.appendChild(panel);
+        var rect = button.getBoundingClientRect();
+        panel.style.top = (rect.bottom + 4) + 'px';
+        panel.style.left = Math.max(4, rect.right - 260) + 'px';
+
+        panel.querySelectorAll('input[data-event-code]').forEach(function (cb) {
+            cb.addEventListener('change', function () {
+                eventsState.codeFilter[cb.dataset.eventCode] = cb.checked;
+                saveEventFilter();
+                updateEventFilterHint(body);
+                renderEventRows(body, events);
+            });
+        });
+
+        var all = panel.querySelector('[data-ef-action="all"]');
+        if (all) {
+            all.addEventListener('click', function () {
+                Object.keys(EVENT_NAMES).forEach(function (code) { eventsState.codeFilter[code] = true; });
+                panel.querySelectorAll('input[data-event-code]').forEach(function (cb) { cb.checked = true; });
+                saveEventFilter();
+                updateEventFilterHint(body);
+                renderEventRows(body, events);
+            });
+        }
+
+        var none = panel.querySelector('[data-ef-action="none"]');
+        if (none) {
+            none.addEventListener('click', function () {
+                Object.keys(EVENT_NAMES).forEach(function (code) { eventsState.codeFilter[code] = false; });
+                panel.querySelectorAll('input[data-event-code]').forEach(function (cb) { cb.checked = false; });
+                saveEventFilter();
+                updateEventFilterHint(body);
+                renderEventRows(body, events);
+            });
+        }
+
+        eventsState.panel = panel;
+        eventsState.panelButton = button;
+        button.classList.add('active');
+    }
+
+    function updateEventFilterHint(body) {
+        if (!body) return;
+        var selectedCount = Object.keys(EVENT_NAMES).reduce(function (acc, code) {
+            return acc + (eventsState.codeFilter[code] === false ? 0 : 1);
+        }, 0);
+        var hint = body.querySelector('.ev-filter-hint');
+        if (!hint) return;
+        hint.textContent = 'Event filters (' + selectedCount + '/' + Object.keys(EVENT_NAMES).length + ')';
+        hint.title = 'Selected event types: ' + selectedCount;
     }
 
     function renderEvents(body) {
@@ -734,13 +855,11 @@
 
         body.innerHTML = ''
             + '<div class="ev-toolbar">'
-            +   '<div class="ev-chips">'
-            +     '<button class="ev-chip" data-f="all">All</button>'
-            +     '<button class="ev-chip" data-f="flags">Flags</button>'
-            +     '<button class="ev-chip" data-f="overtakes">Overtakes</button>'
-            +     '<button class="ev-chip" data-f="penalties">Penalties</button>'
-            +     '<button class="ev-chip" data-f="fastest">Fastest Laps</button>'
-            +     '<button class="ev-chip" data-f="drs">DRS</button>'
+            +   '<div class="ev-tools">'
+            +     '<button class="event-filter-toggle ev-filter-toggle" id="evFilterBtn" title="Filter events" aria-label="Filter events">'
+            +       '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg>'
+            +     '</button>'
+            +     '<span class="ev-filter-hint">Event filters</span>'
             +   '</div>'
             +   '<input type="search" class="ev-search" placeholder="Filter driver…"/>'
             + '</div>'
@@ -748,14 +867,28 @@
             +   '<tr><th>Time</th><th>Lap</th><th>Event</th><th>Driver</th><th>Details</th></tr>'
             + '</thead><tbody id="evTbody"></tbody></table>';
 
-        body.querySelectorAll('.ev-chip').forEach(function (c) {
-            if (c.dataset.f === eventsState.filter) c.classList.add('active');
-            c.addEventListener('click', function () {
-                eventsState.filter = c.dataset.f;
-                body.querySelectorAll('.ev-chip').forEach(function (x) { x.classList.toggle('active', x === c); });
-                renderEventRows(body, events);
+        closeEventsFilterPanel();
+        var filterButton = body.querySelector('#evFilterBtn');
+        if (filterButton) {
+            filterButton.addEventListener('click', function (e) {
+                e.stopPropagation();
+                if (eventsState.panel) {
+                    closeEventsFilterPanel();
+                    return;
+                }
+                openEventsFilterPanel(filterButton, body, events);
             });
-        });
+        }
+
+        if (!eventsState._outsideClickBound) {
+            document.addEventListener('click', onEventsPanelOutsideClick);
+            eventsState._outsideClickBound = true;
+        }
+
+        updateEventFilterHint(body);
+
+        if (filterButton) filterButton.classList.remove('active');
+
         var search = body.querySelector('.ev-search');
         search.value = eventsState.query;
         search.addEventListener('input', function () {
@@ -770,11 +903,10 @@
         var sess = state.session;
         var tbody = body.querySelector('#evTbody');
         if (!tbody) return;
-        var filter = eventsState.filter;
         var query = eventsState.query;
 
         var rows = events.filter(function (e) {
-            if (filter !== 'all' && categoryOf(e.code) !== filter) return false;
+            if (eventsState.codeFilter[e.code] === false) return false;
             if (query) {
                 var name = e.carIdx != null && sess.drivers && sess.drivers[e.carIdx]
                     ? sess.drivers[e.carIdx].name.toLowerCase() : '';
