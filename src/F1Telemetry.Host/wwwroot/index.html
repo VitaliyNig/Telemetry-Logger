@@ -211,7 +211,18 @@
                             <input type="checkbox" id="enableSessionLogging" checked>
                             <span class="toggle-slider"></span>
                         </label>
-                        <span class="setting-hint">Record session data to Logs/ folder. Disabling stops recording but Live mode continues to work.</span>
+                        <span class="setting-hint">Record session data to the History folder. Disabling stops recording but Live mode continues to work.</span>
+                    </div>
+                    <div class="setting-row">
+                        <label for="historyFolderInput">History Folder</label>
+                        <div class="setting-input-row history-folder-input-row">
+                            <input type="text" id="historyFolderInput" placeholder="Logs (default)" autocomplete="off" spellcheck="false">
+                            <button type="button" class="btn btn-small btn-secondary" id="btnSettingsBrowseFolder">Browse…</button>
+                            <button type="button" class="btn btn-small btn-secondary" id="btnSettingsResetFolder" hidden>Reset</button>
+                        </div>
+                        <span class="setting-hint">Persisted root for reading <strong>and</strong> writing session logs. Leave blank for the default <code>Logs/</code> folder. Existing recordings stay where they are — only future sessions land in the new location.</span>
+                        <span class="setting-hint history-folder-resolved" id="historyFolderResolved" hidden></span>
+                        <span class="setting-hint history-folder-error" id="historyFolderError" hidden></span>
                     </div>
                 </div>
 
