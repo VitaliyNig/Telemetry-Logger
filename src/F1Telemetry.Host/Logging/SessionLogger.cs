@@ -139,6 +139,9 @@ public sealed class SessionLogger
                 case LapDataPacket lapData:
                     ProcessLapData(entry, header, lapData);
                     break;
+                case CarStatusPacket carStatus:
+                    LatchBlueFlags(entry, carStatus);
+                    break;
             }
         }
     }
@@ -284,6 +287,7 @@ public sealed class SessionLogger
             TyreWearEnd = tyre?.Wear ?? new float[4],
             Valid = lapValid,
             Pit = latest.NumPitStops > 0 && latest.PitStatus != 0,
+            BlueFlag = entry.LapBlueFlag[idx],
             Position = latest.CarPosition,
             GapToLeaderMs = gapMs,
             RaceFlag = entry.LapMaxFlag[idx] == RaceFlag.Green ? null : entry.LapMaxFlag[idx],
@@ -292,9 +296,10 @@ public sealed class SessionLogger
         };
         driver.Laps.Add(lap);
 
-        // Reset sampling buffers for the next lap.
+        // Reset sampling buffers and per-car latches for the next lap.
         entry.CurrentLapSamples[idx] = null;
         entry.CurrentLapMotion[idx] = null;
+        entry.LapBlueFlag[idx] = false;
 
         // Checkpoint the session to disk on every Nth player lap so a crash only loses the tail.
         // We deliberately do NOT null out samples of prior laps afterwards: WriteSession serializes
@@ -303,6 +308,23 @@ public sealed class SessionLogger
         if (idx == entry.PlayerCarIndex && completedLapNum > 0 && completedLapNum % FlushEveryNPlayerLaps == 0)
         {
             WriteSession(header.SessionUid, entry);
+        }
+    }
+
+    /// <summary>
+    /// Latches a per-car blue-flag bit whenever the game flashes <c>VehicleFiaFlags == 2</c>
+    /// on any frame. The bit stays set until the lap completes and is cleared by
+    /// <see cref="CompleteLap"/>, so a blue flag shown for even a fraction of a second still
+    /// surfaces as a `B` tag on the lap cell.
+    /// </summary>
+    private static void LatchBlueFlags(SessionEntry entry, CarStatusPacket packet)
+    {
+        if (packet.CarStatusDataItems == null) return;
+        var count = Math.Min(packet.CarStatusDataItems.Length, MaxCars);
+        for (byte idx = 0; idx < count; idx++)
+        {
+            if (packet.CarStatusDataItems[idx].VehicleFiaFlags == 2)
+                entry.LapBlueFlag[idx] = true;
         }
     }
 
@@ -567,6 +589,9 @@ public sealed class SessionLogger
         public RaceFlag CurrentRaceFlag = RaceFlag.Green;
         /// <summary>Highest flag seen during the current lap per car (gets stamped at lap completion).</summary>
         public readonly RaceFlag[] LapMaxFlag = new RaceFlag[MaxCars];
+        /// <summary>Per-car latch: set true when CarStatusPacket.VehicleFiaFlags == 2 (blue) is
+        /// seen at any frame during the current lap. Cleared at lap completion.</summary>
+        public readonly bool[] LapBlueFlag = new bool[MaxCars];
     }
 
 }

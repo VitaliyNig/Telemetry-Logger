@@ -3840,34 +3840,27 @@
 .lap-cell {
     padding: 6px 8px;
     border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-    border-right: 1px solid rgba(255, 255, 255, 0.03);
     vertical-align: middle;
-    min-width: 200px;
-    max-width: 240px;
+    text-align: center;
 }
 
-.lap-cell__inner {
-    display: flex;
-    align-items: stretch;
-    gap: 6px;
-    min-height: 36px;
+/* Draw a heavier divider only on the LAST sub-column of each driver group, to
+   visually separate drivers without boxing every sub-column. */
+.lap-grid tbody td.lap-sub--wear:last-child,
+.lap-grid tbody td.lap-sub--perf,
+.lap-grid thead th.lap-grid__sub-th:nth-last-child(1 of .lap-grid__sub-th) {
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
 }
+.lap-grid tbody td.lap-sub--wear + td.lap-sub--perf { border-left: 1px solid rgba(255, 255, 255, 0.04); }
 
-.lap-cell--empty .lap-cell__inner {
-    justify-content: center;
-    align-items: center;
-    color: var(--text-dim);
-    font-family: var(--font-mono);
-}
+/* Per sub-column widths. Combine with media-queries below for smaller viewports. */
+.lap-sub--time    { min-width: 72px; text-align: left; }
+.lap-sub--sectors { min-width: 62px; padding-left: 4px; padding-right: 4px; }
+.lap-sub--wear    { min-width: 50px; padding-left: 4px; padding-right: 4px; border-left: 1px solid rgba(255, 255, 255, 0.04); }
+.lap-sub--delta   { min-width: 56px; padding-left: 4px; padding-right: 4px; border-left: 1px solid rgba(255, 255, 255, 0.04); }
+.lap-sub--perf    { min-width: 62px; padding-left: 4px; padding-right: 4px; border-left: 1px solid rgba(255, 255, 255, 0.04); }
 
-.lap-cell__left {
-    flex: 1;
-    min-width: 0;
-    display: flex;
-    flex-direction: column;
-    justify-content: center;
-    gap: 3px;
-}
+.lap-cell--empty { color: var(--text-dim); font-family: var(--font-mono); }
 
 .lap-cell__time {
     font-family: var(--font-mono);
@@ -3904,6 +3897,100 @@
 .lap-tag--vsc    { background: var(--accent-yellow); color: #000; }
 .lap-tag--rf     { background: var(--semantic-red); color: #fff; }
 .lap-tag--yellow { background: rgba(255, 215, 0, 0.55); color: #000; }
+.lap-tag--blue   { background: var(--accent-blue); color: #fff; }
+
+/* Second header row (sub-column labels). Sits right below the driver names and
+   stays sticky along with them while the body scrolls vertically. */
+.lap-grid__sub-th {
+    position: sticky;
+    top: 48px;
+    z-index: 2;
+    background: rgba(15, 17, 23, 0.95);
+    backdrop-filter: blur(4px);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 9px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    padding: 4px 6px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+}
+.lap-grid__sub-th--time { text-align: left; padding-left: 8px; }
+
+/* Delta column */
+.lap-delta {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 3px;
+    display: inline-block;
+    min-width: 44px;
+    text-align: center;
+}
+.lap-delta--ref        { background: var(--accent-brand); color: #fff; letter-spacing: 0.5px; }
+.lap-delta--ref--dirty { border-bottom: 1px dashed rgba(255, 255, 255, 0.5); }
+.lap-delta--faster     { color: var(--accent-green); }
+.lap-delta--neutral    { color: var(--text-secondary); }
+.lap-delta--warn       { color: var(--accent-orange); }
+.lap-delta--bad        { color: var(--semantic-red); font-weight: 700; }
+.lap-delta--outlap     { color: var(--text-dim); }
+
+/* Performance column */
+.lap-sub--perf {
+    line-height: 1.2;
+    white-space: nowrap;
+}
+.lap-perf-badge {
+    display: inline-block;
+    padding: 1px 5px;
+    font-family: var(--font-sans);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    border-radius: 3px;
+    color: #fff;
+    margin-right: 4px;
+    vertical-align: middle;
+}
+.lap-perf--push   { background: var(--accent-orange, #f97316); }
+.lap-perf--cruise { background: rgba(156, 163, 175, 0.55); color: #fff; }
+.lap-perf--save   { background: rgba(96, 165, 250, 0.45); color: #fff; }
+
+.lap-perf-ers {
+    position: relative;
+    display: inline-block;
+    width: 18px;
+    height: 5px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.08);
+    vertical-align: middle;
+    overflow: hidden;
+    margin-right: 2px;
+}
+.lap-perf-ers-fill {
+    display: block;
+    height: 100%;
+    background: var(--accent-brand);
+    border-radius: 2px;
+}
+.lap-perf-drs {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    vertical-align: middle;
+    background: rgba(255, 255, 255, 0.1);
+    border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.lap-perf-drs.is-on { background: var(--drs, #00d4ff); border-color: var(--drs, #00d4ff); }
+
+/* Perf cells on pit/SC/VSC laps where the metric is not representative. */
+.lap-cell--muted .lap-perf-badge,
+.lap-cell--muted .lap-perf-ers,
+.lap-cell--muted .lap-perf-drs { opacity: 0.4; }
 
 .lap-cell__sectors {
     display: flex;
@@ -3927,14 +4014,14 @@
 .lap-sector--pb    { background: var(--accent-green);  color: #000; font-weight: 700; }
 .lap-sector--empty { background: transparent; color: var(--text-dim); }
 
-.lap-cell__tyre {
-    position: relative;
+/* The wear <td> carries .lap-cell__tyre so attachTyrePopupHandlers still finds it;
+   an inner div handles the flex layout so we don't rely on display:flex-on-td. */
+td.lap-cell__tyre { cursor: default; }
+.lap-cell__wear-inner {
     display: flex;
     align-items: center;
+    justify-content: center;
     gap: 5px;
-    padding-left: 6px;
-    border-left: 1px solid rgba(255, 255, 255, 0.06);
-    cursor: default;
 }
 
 .lap-cell__wear {
@@ -4040,6 +4127,46 @@
 .delta-up   { color: var(--accent-green); font-weight: 700; }
 .delta-down { color: var(--semantic-red); font-weight: 700; }
 .delta-same { color: var(--text-dim); }
+
+@media (max-width: 960px) {
+    .lap-grid__driver-th { padding: 6px 8px; }
+    .lap-grid__driver-name { font-size: 12px; }
+    .lap-grid__driver-pb { font-size: 10px; }
+    .lap-grid__sub-th { font-size: 8px; padding: 3px 4px; top: 44px; }
+    .lap-sub--time    { min-width: 58px; }
+    .lap-sub--sectors { min-width: 52px; }
+    .lap-sub--wear    { min-width: 42px; }
+    .lap-sub--delta   { min-width: 46px; }
+    .lap-sub--perf    { min-width: 54px; }
+    .lap-cell__time   { font-size: 12px; }
+    .lap-cell__sectors { font-size: 10px; min-width: 48px; }
+    .lap-delta        { font-size: 11px; min-width: 38px; }
+    .lap-perf-badge   { font-size: 8px; padding: 1px 3px; margin-right: 3px; }
+    .lap-perf-ers     { width: 14px; }
+}
+
+@media (max-width: 600px) {
+    .lap-grid { font-size: 11px; }
+    .lap-grid__driver-th { padding: 5px 6px; }
+    .lap-grid__driver-name { font-size: 11px; }
+    .lap-grid__driver-pb { font-size: 9px; }
+    .lap-grid__lap-th { min-width: 34px; width: 34px; padding: 4px 4px; font-size: 10px; }
+    .lap-grid__sub-th { font-size: 8px; padding: 2px 3px; top: 40px; }
+    .lap-sub--time    { min-width: 50px; }
+    .lap-sub--sectors { min-width: 44px; }
+    .lap-sub--wear    { min-width: 36px; }
+    .lap-sub--delta   { min-width: 40px; }
+    .lap-sub--perf    { min-width: 46px; }
+    .lap-cell__time   { font-size: 11px; }
+    .lap-cell__sectors { font-size: 9px; min-width: 40px; }
+    .lap-sector { padding: 1px 3px; }
+    .lap-tag { font-size: 8px; padding: 1px 4px; }
+    .lap-delta { font-size: 10px; min-width: 34px; padding: 1px 3px; }
+    .lap-perf-badge { font-size: 7px; padding: 0 3px; }
+    .lap-perf-ers { width: 12px; height: 4px; }
+    .lap-perf-drs { width: 7px; height: 7px; }
+    .lap-cell__wear { font-size: 10px; min-width: 22px; }
+}
 
 /* ---------- Positions page ---------- */
 
