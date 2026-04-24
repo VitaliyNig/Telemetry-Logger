@@ -565,7 +565,8 @@
                     + '</div>';
             });
             tooltip.innerHTML = rows;
-            tooltip.style.left = Math.min(rect.width - 220, pct * rect.width + 8) + 'px';
+            var tipW = tooltip.offsetWidth || 220;
+            tooltip.style.left = Math.max(0, Math.min(rect.width - tipW - 4, pct * rect.width + 8)) + 'px';
 
             // Update map markers.
             updateMapMarkers(d, lapData, sess);

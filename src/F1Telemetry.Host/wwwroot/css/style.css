@@ -4246,10 +4246,41 @@
 
 /* ---------- Telemetry Compare ---------- */
 
-.tc-layout { display: flex; gap: 12px; padding: 4px; align-items: stretch; }
-.tc-side { flex: 0 0 260px; }
-.tc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.tc-map  { flex: 0 0 360px; }
+.tc-layout {
+    display: grid;
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) minmax(280px, 340px);
+    gap: 12px;
+    padding: 4px;
+    align-items: start;
+}
+
+.tc-side {
+    min-width: 0;
+    position: sticky;
+    top: 4px;
+    align-self: start;
+}
+.tc-side .history-driver-picker {
+    min-width: 0;
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+}
+
+.tc-main { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+
+.tc-map {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: sticky;
+    top: 4px;
+    align-self: start;
+    min-width: 0;
+}
 
 .tc-sector-badges {
     display: flex;
@@ -4277,7 +4308,7 @@
     color: var(--text-primary);
     padding: 4px 10px;
     font-size: 11px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--font-mono, 'Courier New', monospace);
     border-radius: 4px;
     cursor: pointer;
 }
@@ -4285,6 +4316,7 @@
 .tc-badge-reset { color: var(--text-dim); }
 
 .tc-charts {
+    --tc-label-w: 90px;
     position: relative;
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -4295,7 +4327,7 @@
 
 .tc-chart-row {
     display: grid;
-    grid-template-columns: 90px 1fr;
+    grid-template-columns: var(--tc-label-w) minmax(0, 1fr);
     grid-template-rows: var(--tc-row-h, auto) 4px;
     align-items: stretch;
     gap: 6px 6px;
@@ -4310,6 +4342,9 @@
     color: var(--text-dim);
     display: flex;
     align-items: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 
 .tc-chart-svg-host {
@@ -4335,7 +4370,10 @@
 
 .tc-hover-layer {
     position: absolute;
-    top: 0; left: 98px; right: 8px; bottom: 8px;
+    top: 0;
+    left: calc(var(--tc-label-w, 90px) + 14px);
+    right: 8px;
+    bottom: 8px;
     pointer-events: auto;
 }
 
@@ -4355,7 +4393,8 @@
     border: 1px solid var(--border);
     border-radius: 4px;
     padding: 6px 8px;
-    min-width: 220px;
+    min-width: 200px;
+    max-width: min(90%, 280px);
     font-size: 11px;
     pointer-events: none;
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
@@ -4367,18 +4406,8 @@
     gap: 6px;
     padding: 2px 0;
 }
-.tc-tip-label { flex: 1; color: var(--text-primary); font-weight: 500; }
-.tc-tip-val { color: var(--text-secondary); font-family: 'Courier New', monospace; }
-
-.tc-map {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
-}
+.tc-tip-label { flex: 1; color: var(--text-primary); font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-tip-val { color: var(--text-secondary); font-family: var(--font-mono, 'Courier New', monospace); }
 
 .tc-map-stage { position: relative; width: 100%; aspect-ratio: 1; }
 .tc-map-outline {
@@ -4454,7 +4483,7 @@
     font-size: 9px;
     font-weight: 700;
     fill: var(--text-secondary);
-    font-family: 'Courier New', monospace;
+    font-family: var(--font-mono, 'Courier New', monospace);
     letter-spacing: 0.5px;
     pointer-events: none;
 }
@@ -4462,6 +4491,43 @@
 /* DRS blocks (dedicated row) + faint overlay on the speed row. */
 .tc-drs-block { fill: var(--drs); opacity: 0.75; }
 .tc-drs-overlay { fill: var(--drs); opacity: 0.08; }
+
+@media (max-width: 1200px) {
+    .tc-layout {
+        grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+    }
+    .tc-map {
+        grid-column: 1 / -1;
+        position: static;
+        max-width: 420px;
+        width: 100%;
+        margin: 0 auto;
+    }
+}
+
+@media (max-width: 960px) {
+    .tc-layout {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 10px;
+    }
+    .tc-side { position: static; }
+    .tc-side .history-driver-picker { max-height: 260px; }
+    .tc-charts { --tc-label-w: 64px; }
+    .tc-chart-label { font-size: 9px; letter-spacing: 0.3px; }
+}
+
+@media (max-width: 600px) {
+    .tc-layout { padding: 0; }
+    .tc-sector-badges { gap: 6px; padding: 4px 0; }
+    .tc-badge, .tc-mode, .tc-metric-chip, .tc-size-chip {
+        padding: 3px 8px;
+        font-size: 10px;
+    }
+    .tc-charts { padding: 6px; --tc-label-w: 52px; }
+    .tc-chart-row { gap: 4px; }
+    .tc-tooltip { min-width: 160px; max-width: 240px; font-size: 10px; }
+    .tc-map { padding: 6px; max-width: 100%; }
+}
 
 /* ---------- Events page ---------- */
 
