@@ -3741,7 +3741,7 @@
 
 .lt-container { display: flex; flex-direction: column; gap: 12px; padding: 4px; }
 
-.lt-toolbar { display: flex; justify-content: flex-end; }
+.lt-toolbar { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 
 .lt-toggle { display: flex; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 
@@ -3758,6 +3758,9 @@
 
 /* Pivot lap grid: rows = laps, columns = drivers. */
 
+/* Horizontal-scroll shadow hints: solid "covers" ride along with the content
+   (background-attachment: local) and hide the fixed shadow bands underneath
+   until the user scrolls away from that edge. */
 .lap-grid-wrap {
     width: 100%;
     overflow-x: auto;
@@ -3765,7 +3768,21 @@
     max-height: calc(100vh - 240px);
     border: 1px solid var(--border);
     border-radius: 6px;
-    background: var(--bg-card);
+    background-color: var(--bg-card);
+    background-image:
+        linear-gradient(to right, var(--bg-card) 30%, rgba(20, 22, 28, 0)),
+        linear-gradient(to right, rgba(20, 22, 28, 0), var(--bg-card) 70%),
+        linear-gradient(to right, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0)),
+        linear-gradient(to left,  rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+    background-repeat: no-repeat;
+    background-position: left center, right center, left center, right center;
+    background-size: 32px 100%, 32px 100%, 14px 100%, 14px 100%;
+    background-attachment: local, local, scroll, scroll;
+}
+
+/* Use dvh where supported so mobile URL-bar toggling doesn't clip the table. */
+@supports (max-height: 100dvh) {
+    .lap-grid-wrap { max-height: calc(100dvh - 240px); }
 }
 
 .lap-grid {
@@ -3780,7 +3797,8 @@
     min-width: 200px;
     max-width: 240px;
     padding: 8px 10px;
-    background: rgba(0, 0, 0, 0.35);
+    background: rgba(15, 17, 23, 0.95);
+    backdrop-filter: blur(4px);
     border-bottom: 1px solid var(--border);
     border-right: 1px solid var(--border);
     border-top: 3px solid #9aa0a6;
@@ -3811,7 +3829,7 @@
     min-width: 48px;
     width: 48px;
     padding: 6px 8px;
-    background: rgba(0, 0, 0, 0.4);
+    background: rgba(15, 17, 23, 0.95);
     color: var(--text-dim);
     font-weight: 600;
     font-size: 11px;
@@ -4019,7 +4037,8 @@
 }
 
 .lt-virtual-grid {
-    width: 320px;
+    width: 100%;
+    max-width: 420px;
     flex-shrink: 0;
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -4040,6 +4059,67 @@
 .delta-up   { color: var(--accent-green); font-weight: 700; }
 .delta-down { color: var(--semantic-red); font-weight: 700; }
 .delta-same { color: var(--text-dim); }
+
+@media (max-width: 960px) {
+    .lap-grid-wrap { max-height: calc(100vh - 200px); }
+    @supports (max-height: 100dvh) {
+        .lap-grid-wrap { max-height: calc(100dvh - 200px); }
+    }
+    .lap-grid__driver-th {
+        min-width: 160px;
+        max-width: 200px;
+        padding: 6px 8px;
+    }
+    .lap-grid__driver-name { font-size: 12px; }
+    .lap-grid__driver-pb { font-size: 10px; }
+    .lap-cell {
+        min-width: 160px;
+        max-width: 200px;
+        padding: 5px 6px;
+    }
+    .lap-cell__time { font-size: 12px; }
+    .lap-cell__sectors { font-size: 10px; min-width: 52px; }
+}
+
+@media (max-width: 600px) {
+    .lt-container { gap: 8px; padding: 0; }
+    .lap-grid-wrap {
+        max-height: calc(100vh - 180px);
+        /* Simpler gradient on phone: just an inner box-shadow edge hint. */
+        background-image: none;
+        box-shadow: inset 8px 0 10px -10px rgba(0, 0, 0, 0.6), inset -8px 0 10px -10px rgba(0, 0, 0, 0.6);
+    }
+    @supports (max-height: 100dvh) {
+        .lap-grid-wrap { max-height: calc(100dvh - 180px); }
+    }
+    .lap-grid { font-size: 11px; }
+    .lap-grid__driver-th {
+        min-width: 136px;
+        max-width: 160px;
+        padding: 5px 6px;
+    }
+    .lap-grid__driver-name { font-size: 11px; }
+    .lap-grid__driver-pb { font-size: 9px; }
+    .lap-grid__lap-th {
+        min-width: 34px;
+        width: 34px;
+        padding: 4px 4px;
+        font-size: 10px;
+    }
+    .lap-cell {
+        min-width: 136px;
+        max-width: 160px;
+        padding: 4px 5px;
+    }
+    .lap-cell__inner { gap: 4px; min-height: 32px; }
+    .lap-cell__time { font-size: 11px; }
+    .lap-cell__sectors { font-size: 9px; min-width: 46px; }
+    .lap-sector { padding: 1px 3px; }
+    .lap-tag { font-size: 8px; padding: 1px 4px; }
+    .lap-cell__tyre { padding-left: 4px; gap: 3px; }
+    .lap-cell__wear { font-size: 10px; min-width: 22px; }
+    .lt-virtual-title { padding: 6px 10px; font-size: 10px; }
+}
 
 /* ---------- Positions page ---------- */
 
