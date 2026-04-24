@@ -57,6 +57,37 @@
     var ERS_MODE_NAMES = ['None', 'Medium', 'Hotlap', 'Overtake'];
     var ERS_MODE_TAGS = ['', 'MED', 'HOT', 'OT'];
 
+    // Y-axis min/max labels per metric. Compact so they don't eat plot space.
+    var AXIS_LABELS = {
+        delta: { max: '+1s',  min: '-1s'  },
+        spd:   { max: '370',  min: '0'    },
+        thr:   { max: '100%', min: '0%'   },
+        brk:   { max: '100%', min: '0%'   },
+        str:   { max: '+100', min: '-100' },
+        gr:    { max: '8',    min: 'R'    },
+        rpm:   { max: '14k',  min: '0'    },
+        ers:   { max: '100%', min: '0%'   },
+    };
+
+    // Compact chip-value formatter per metric. Returns string for a sample+metric pair.
+    function formatChipValue(metricKey, sample, deltaAt) {
+        if (!sample && metricKey !== 'delta') return '—';
+        switch (metricKey) {
+            case 'delta': return deltaAt == null ? '—'
+                : (deltaAt >= 0 ? '+' : '') + deltaAt.toFixed(3) + ' s';
+            case 'spd':   return Math.round(sample.spd) + ' km/h';
+            case 'thr':   return Math.round(sample.thr) + '%';
+            case 'brk':   return Math.round(sample.brk) + '%';
+            case 'str':   return Math.round(sample.str) + '°';
+            case 'gr':    return sample.gr > 0 ? 'G' + sample.gr : (sample.gr === 0 ? 'N' : 'R');
+            case 'rpm':   return Math.round(sample.rpm).toLocaleString();
+            case 'ers':   return Math.round(sample.ers || 0) + '% '
+                + (ERS_MODE_TAGS[sample.ersMd || 0] || '');
+            case 'drs':   return sample.drs ? 'ON' : 'OFF';
+            default:      return '';
+        }
+    }
+
     function render(body) {
         var sess = window.HistoryDetail.state.session;
         body.innerHTML = ''
@@ -240,7 +271,6 @@
         // Hover overlay spans the entire stack.
         html += '<div class="tc-hover-layer" id="tcHoverLayer">'
              + '<div class="tc-crosshair" id="tcCrosshair"></div>'
-             + '<div class="tc-tooltip" id="tcTooltip"></div>'
              + '</div>';
         host.innerHTML = html;
 
@@ -249,6 +279,9 @@
         visibleMetrics.forEach(function (m) {
             var row = host.querySelector('[data-metric="' + m.key + '"] .tc-chart-svg-host');
             row.innerHTML = renderChartSvg(m, lapData, selections, refSamples, xMin, xMax, sess, effectiveHeight(m));
+            // Per-row value chip that follows the crosshair. Hidden until the user hovers.
+            row.insertAdjacentHTML('beforeend',
+                '<div class="tc-row-chip" data-metric="' + m.key + '" hidden></div>');
         });
 
         wireResizeHandles(host, lapData);
@@ -408,8 +441,16 @@
             }
         });
 
+        // Y-axis min/max labels at the top-left and bottom-left corners of the plot.
+        var axis = '';
+        var ax = AXIS_LABELS[metric.key];
+        if (ax && plotH > 24) {
+            axis += '<text class="tc-axis-label" x="4" y="' + (PAD_T + 9) + '">' + ax.max + '</text>';
+            axis += '<text class="tc-axis-label" x="4" y="' + (PAD_T + plotH - 2) + '">' + ax.min + '</text>';
+        }
+
         return '<svg class="tc-chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
-            + ersBg + speedDrsOverlay + sectorMarkers + lines + '</svg>';
+            + ersBg + speedDrsOverlay + sectorMarkers + lines + axis + '</svg>';
     }
 
     // Resamples driverSamples onto reference sample distances and returns per-distance Δtime (seconds).
@@ -529,46 +570,57 @@
     function wireHover(host, lapData, selections, refSamples, xMin, xMax, sess) {
         var overlay = host.querySelector('#tcHoverLayer');
         var crosshair = host.querySelector('#tcCrosshair');
-        var tooltip = host.querySelector('#tcTooltip');
         if (!overlay) return;
 
+        var chips = Array.prototype.slice.call(host.querySelectorAll('.tc-row-chip'));
         var scheduled = false, lastX = 0;
+
+        // Pre-compute per-driver interp sample + color + delta series at hover time.
+        function resolvePerDriver(d) {
+            return selections.map(function (kv) {
+                var carIdx = kv[0];
+                var data = lapData && lapData.get(carIdx);
+                if (!data || !data.samples) return null;
+                var driver = sess.drivers[carIdx];
+                var color = (typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
+                var sample = interpAtDistance(data.samples, d);
+                var deltaVal = null;
+                if (carIdx !== selections[0][0] && refSamples && data.samples) {
+                    var refInterp = interpAtDistance(refSamples, d);
+                    if (refInterp && sample) deltaVal = sample.t - refInterp.t;
+                } else if (carIdx === selections[0][0]) {
+                    deltaVal = 0;
+                }
+                return { carIdx: carIdx, color: color, sample: sample, delta: deltaVal };
+            }).filter(Boolean);
+        }
 
         function update() {
             scheduled = false;
             var rect = overlay.getBoundingClientRect();
             var pct = Math.max(0, Math.min(1, lastX / rect.width));
             var d = xMin + pct * (xMax - xMin);
-
             crosshair.style.left = (pct * 100) + '%';
 
-            var rows = '';
-            rows += '<div class="tc-tip-row"><span class="tc-tip-label">Lap dist</span><span>' + d.toFixed(0) + ' m</span></div>';
-            selections.forEach(function (kv) {
-                var carIdx = kv[0];
-                var data = lapData && lapData.get(carIdx);
-                if (!data || !data.samples) return;
-                var driver = sess.drivers[carIdx];
-                var color = (typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
-                var s = interpAtDistance(data.samples, d);
-                if (!s) return;
-                var ersMode = ERS_MODE_NAMES[s.ersMd || 0] || 'None';
-                rows += '<div class="tc-tip-row">'
-                    + '<span class="driver-dot" style="background:' + color + '"></span>'
-                    + '<span class="tc-tip-label">' + escapeHtml(driver.name) + '</span>'
-                    + '<span class="tc-tip-val">' + Math.round(s.spd) + 'kph · '
-                    + Math.round(s.thr) + '% · '
-                    + Math.round(s.brk) + '% · G' + s.gr + ' · '
-                    + 'ERS ' + Math.round(s.ers || 0) + '% [' + ersMode + '] · '
-                    + 'DRS ' + ((s.drs || 0) ? 'ON' : 'OFF')
-                    + '</span>'
-                    + '</div>';
-            });
-            tooltip.innerHTML = rows;
-            var tipW = tooltip.offsetWidth || 220;
-            tooltip.style.left = Math.max(0, Math.min(rect.width - tipW - 4, pct * rect.width + 8)) + 'px';
+            var perDriver = resolvePerDriver(d);
 
-            // Update map markers.
+            chips.forEach(function (chip) {
+                var metricKey = chip.dataset.metric;
+                if (perDriver.length === 0) { chip.hidden = true; return; }
+                var rows = perDriver.map(function (pd) {
+                    var text = formatChipValue(metricKey, pd.sample, metricKey === 'delta' ? pd.delta : null);
+                    return '<span class="tc-chip-dot" style="background:' + pd.color + '"></span>'
+                        + '<span class="tc-chip-val">' + escapeHtml(text) + '</span>';
+                }).join('<span class="tc-chip-sep"></span>');
+                chip.innerHTML = rows;
+                chip.hidden = false;
+                // Chip is absolute-positioned inside the row's SVG host; track the crosshair x.
+                var chipHost = chip.parentElement;
+                var hostW = chipHost.clientWidth;
+                var chipW = chip.offsetWidth || 80;
+                chip.style.left = Math.max(2, Math.min(hostW - chipW - 2, pct * hostW + 6)) + 'px';
+            });
+
             updateMapMarkers(d, lapData, sess);
         }
 
@@ -582,7 +634,7 @@
         });
         overlay.addEventListener('mouseleave', function () {
             crosshair.style.left = '-9999px';
-            tooltip.innerHTML = '';
+            chips.forEach(function (chip) { chip.hidden = true; });
         });
     }
 
