@@ -26,7 +26,7 @@
         state.driverSelection = new Map();
         state.lapSamplesCache = new Map();
 
-        var list = document.getElementById('historySessionList');
+        var list = document.getElementById('historyListView') || document.getElementById('historySessionList');
         var detail = document.getElementById('historyDetailView');
         if (list) list.hidden = true;
         if (detail) detail.hidden = false;
@@ -59,7 +59,7 @@
     }
 
     function close() {
-        var list = document.getElementById('historySessionList');
+        var list = document.getElementById('historyListView') || document.getElementById('historySessionList');
         var detail = document.getElementById('historyDetailView');
         if (list) list.hidden = false;
         if (detail) detail.hidden = true;

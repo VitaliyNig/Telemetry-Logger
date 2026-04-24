@@ -97,6 +97,9 @@ static class Program
         var appSettings = builder.Configuration.GetSection(AppSettings.SectionName).Get<AppSettings>() ?? new AppSettings();
         builder.WebHost.UseUrls($"http://0.0.0.0:{appSettings.WebPort}");
 
+        // Apply persisted history-folder override (if any) before any History endpoint resolves a path.
+        HistoryRoot.Path = HistoryRoot.Resolve(appSettings.HistoryFolder);
+
         builder.Services.Configure<TelemetryUdpOptions>(
             builder.Configuration.GetSection(TelemetryUdpOptions.SectionName));
         builder.Services.Configure<AppSettings>(
@@ -232,7 +235,8 @@ static class Program
                 WebPort = body.WebPort,
                 DebugMode = body.DebugMode,
                 EnableSessionLogging = body.EnableSessionLogging,
-                LaunchBrowserOnStart = currentApp.LaunchBrowserOnStart
+                LaunchBrowserOnStart = currentApp.LaunchBrowserOnStart,
+                HistoryFolder = currentApp.HistoryFolder,
             };
 
             var newJson = JsonSerializer.Serialize(existing,
@@ -401,14 +405,13 @@ static class Program
 
         app.MapGet("/api/sessions", () =>
         {
-            var logsDir = Path.Combine(AppContext.BaseDirectory, "Logs");
+            var logsDir = HistoryRoot.Path;
             if (!Directory.Exists(logsDir))
                 return Results.Ok(Array.Empty<object>());
 
-            // Stat-only version: sum of top-dir + each subdir's last-write ticks.
-            // Cheaper than parsing every meta block and invalidates as soon as
-            // SessionLogger writes a new file (the weekend folder mtime changes).
-            long version = Directory.GetLastWriteTimeUtc(logsDir).Ticks;
+            // Stat-only version: sum of top-dir + each subdir's last-write ticks, plus the
+            // root path itself so switching to a different source folder always invalidates.
+            long version = HashCode.Combine(logsDir.GetHashCode(), Directory.GetLastWriteTimeUtc(logsDir).Ticks);
             foreach (var dir in Directory.EnumerateDirectories(logsDir))
                 version = HashCode.Combine(version, Directory.GetLastWriteTimeUtc(dir).Ticks);
 
@@ -629,7 +632,7 @@ static class Program
                 return Results.BadRequest(new { error = "no driver payload" });
 
             var safeFolder = Path.GetFileName(folder);
-            var ghostsDir = Path.Combine(AppContext.BaseDirectory, "Logs", safeFolder, "_ghosts");
+            var ghostsDir = Path.Combine(HistoryRoot.Path, safeFolder, "_ghosts");
             Directory.CreateDirectory(ghostsDir);
             var fileName = $"ghost_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.json";
             var path = Path.Combine(ghostsDir, fileName);
@@ -679,7 +682,7 @@ static class Program
                 return Results.NotFound(new { error = "session not found" });
 
             var safeFolder = Path.GetFileName(folder);
-            var ghostsDir = Path.Combine(AppContext.BaseDirectory, "Logs", safeFolder, "_ghosts");
+            var ghostsDir = Path.Combine(HistoryRoot.Path, safeFolder, "_ghosts");
             if (!Directory.Exists(ghostsDir)) return Results.Ok(Array.Empty<object>());
 
             var ghosts = new List<object>();
@@ -712,7 +715,7 @@ static class Program
 
             // Sanitize: only allow folder name, no path traversal
             var safeName = Path.GetFileName(req.Folder);
-            var fullPath = Path.Combine(AppContext.BaseDirectory, "Logs", safeName);
+            var fullPath = Path.Combine(HistoryRoot.Path, safeName);
 
             if (!Directory.Exists(fullPath))
                 return Results.NotFound(new { error = "folder not found" });
@@ -720,8 +723,104 @@ static class Program
             System.Diagnostics.Process.Start("explorer.exe", fullPath);
             return Results.Ok(new { opened = true });
         });
+
+        // --- History source folder ---
+
+        app.MapGet("/api/sessions/source", () =>
+        {
+            var path = HistoryRoot.Path;
+            return Results.Ok(new
+            {
+                path,
+                isDefault = HistoryRoot.IsDefault,
+                defaultPath = HistoryRoot.DefaultPath,
+                exists = Directory.Exists(path),
+            });
+        });
+
+        // Persist an absolute path (or null = reset to default Logs/) as the History view's source.
+        app.MapPost("/api/sessions/source", async (HttpContext ctx) =>
+        {
+            var body = await ctx.Request.ReadFromJsonAsync<HistorySourceUpdateRequest>();
+            string? newPath = body?.Path;
+
+            string resolved;
+            if (string.IsNullOrWhiteSpace(newPath))
+            {
+                resolved = HistoryRoot.DefaultPath;
+                newPath = null;
+            }
+            else
+            {
+                resolved = HistoryRoot.Resolve(newPath);
+                if (!Directory.Exists(resolved))
+                    return Results.BadRequest(new { error = "folder does not exist", path = resolved });
+            }
+
+            HistoryRoot.Path = resolved;
+
+            // Persist to user config so the choice survives restart.
+            var configPath = Path.Combine(AppContext.BaseDirectory, "appsettings.user.json");
+            var existing = new Dictionary<string, object>();
+            if (File.Exists(configPath))
+            {
+                var json = await File.ReadAllTextAsync(configPath);
+                existing = JsonSerializer.Deserialize<Dictionary<string, object>>(json)
+                           ?? new Dictionary<string, object>();
+            }
+
+            var currentApp = app.Configuration.GetSection(AppSettings.SectionName).Get<AppSettings>() ?? new AppSettings();
+            existing["App"] = new
+            {
+                WebPort = currentApp.WebPort,
+                DebugMode = currentApp.DebugMode,
+                EnableSessionLogging = currentApp.EnableSessionLogging,
+                LaunchBrowserOnStart = currentApp.LaunchBrowserOnStart,
+                HistoryFolder = newPath,
+            };
+
+            var newJson = JsonSerializer.Serialize(existing,
+                new JsonSerializerOptions { WriteIndented = true });
+            await File.WriteAllTextAsync(configPath, newJson);
+
+            return Results.Ok(new
+            {
+                path = resolved,
+                isDefault = HistoryRoot.IsDefault,
+            });
+        });
+
+        // Opens a native WPF folder picker on the app's UI thread and returns the chosen path.
+        // Returns 204 No Content if the user cancels. Only works when the WPF Application is alive
+        // (i.e. running as the tray app, not a headless web host).
+        app.MapPost("/api/sessions/source/browse", () =>
+        {
+            var wpfApp = System.Windows.Application.Current;
+            if (wpfApp == null)
+                return Results.Problem("native folder picker is unavailable in headless mode", statusCode: 503);
+
+            string? picked = null;
+            wpfApp.Dispatcher.Invoke(() =>
+            {
+                var dlg = new Microsoft.Win32.OpenFolderDialog
+                {
+                    Title = "Select History Source Folder",
+                    InitialDirectory = Directory.Exists(HistoryRoot.Path)
+                        ? HistoryRoot.Path
+                        : HistoryRoot.DefaultPath,
+                };
+                if (dlg.ShowDialog() == true)
+                    picked = dlg.FolderName;
+            });
+
+            return picked == null
+                ? Results.NoContent()
+                : Results.Ok(new { path = picked });
+        });
     }
 }
+
+record HistorySourceUpdateRequest(string? Path);
 
 record SettingsUpdateRequest(
     [property: JsonPropertyName("udpListenIp")] string UdpListenIp,

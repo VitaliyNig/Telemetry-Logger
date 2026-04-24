@@ -69,7 +69,41 @@
 
         <!-- History Tab -->
         <section class="tab-panel" id="panel-history">
-            <div class="history-container" id="historySessionList"></div>
+            <div class="history-list-view" id="historyListView">
+                <div class="history-toolbar" id="historyToolbar">
+                    <div class="history-toolbar-row history-toolbar-folder">
+                        <div class="history-folder">
+                            <span class="history-folder-label">Source folder</span>
+                            <span class="history-folder-path" id="historyFolderPath" title="Logs">Logs</span>
+                            <span class="history-folder-badge" id="historyFolderBadge" hidden>custom</span>
+                        </div>
+                        <div class="history-folder-actions">
+                            <button type="button" id="btnHistorySelectFolder" class="btn btn-small btn-secondary">Select Folder</button>
+                            <button type="button" id="btnHistoryResetFolder" class="btn btn-small btn-ghost" hidden title="Restore default Logs/ folder">Reset</button>
+                        </div>
+                    </div>
+                    <div class="history-toolbar-row history-toolbar-filters">
+                        <div class="history-filter">
+                            <label for="historyFilterTrack">Track</label>
+                            <select id="historyFilterTrack"><option value="">All tracks</option></select>
+                        </div>
+                        <div class="history-filter">
+                            <label for="historyFilterGame">Game</label>
+                            <select id="historyFilterGame"><option value="">All versions</option></select>
+                        </div>
+                        <div class="history-filter">
+                            <label for="historyFilterFrom">From</label>
+                            <input type="date" id="historyFilterFrom">
+                        </div>
+                        <div class="history-filter">
+                            <label for="historyFilterTo">To</label>
+                            <input type="date" id="historyFilterTo">
+                        </div>
+                        <button type="button" id="btnHistoryClearFilters" class="btn btn-small btn-ghost history-filter-clear" hidden>Clear filters</button>
+                    </div>
+                </div>
+                <div class="history-container" id="historySessionList"></div>
+            </div>
             <div class="history-detail" id="historyDetailView" hidden>
                 <nav class="history-breadcrumb">
                     <button class="history-back" data-action="back">&larr; All Sessions</button>

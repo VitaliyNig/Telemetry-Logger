@@ -23,7 +23,7 @@ public static class HistoryReader
 
     private static readonly ConcurrentDictionary<string, CachedSession> _cache = new();
 
-    /// <summary>Resolves "{folder}/{slug}" to an absolute file path under Logs/, rejecting traversal.</summary>
+    /// <summary>Resolves "{folder}/{slug}" to an absolute file path under the configured History root, rejecting traversal.</summary>
     public static string? ResolvePath(string folder, string slug)
     {
         var safeFolder = Path.GetFileName(folder);
@@ -31,7 +31,7 @@ public static class HistoryReader
         if (string.IsNullOrEmpty(safeFolder) || string.IsNullOrEmpty(safeSlug))
             return null;
 
-        var path = Path.Combine(AppContext.BaseDirectory, "Logs", safeFolder, safeSlug + ".json");
+        var path = Path.Combine(HistoryRoot.Path, safeFolder, safeSlug + ".json");
         return File.Exists(path) ? path : null;
     }
 
