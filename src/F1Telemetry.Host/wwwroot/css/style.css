@@ -3246,12 +3246,10 @@
     flex-shrink: 0;
 }
 
-.history-card-game {
-    font-size: 11px;
-    font-weight: 600;
-    color: var(--text-dim);
-    letter-spacing: 0.5px;
-    white-space: nowrap;
+.history-tag-game {
+    background: rgba(148, 163, 184, 0.14);
+    border-color: rgba(148, 163, 184, 0.32);
+    color: var(--text-secondary);
 }
 
 .history-card-tags {
