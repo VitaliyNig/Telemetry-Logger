@@ -103,8 +103,8 @@ static class Program
         var appSettings = builder.Configuration.GetSection(AppSettings.SectionName).Get<AppSettings>() ?? new AppSettings();
         builder.WebHost.UseUrls($"http://0.0.0.0:{appSettings.WebPort}");
 
-        // Apply persisted history-folder override (if any) before any History endpoint resolves a path.
-        HistoryRoot.Path = HistoryRoot.Resolve(appSettings.HistoryFolder);
+        // History source folder is intentionally process-local: every restart begins reading
+        // from the default Logs/ folder, even if the previous session pointed elsewhere.
 
         builder.Services.Configure<TelemetryUdpOptions>(
             builder.Configuration.GetSection(TelemetryUdpOptions.SectionName));
@@ -241,8 +241,7 @@ static class Program
                 WebPort = body.WebPort,
                 DebugMode = body.DebugMode,
                 EnableSessionLogging = body.EnableSessionLogging,
-                LaunchBrowserOnStart = currentApp.LaunchBrowserOnStart,
-                HistoryFolder = currentApp.HistoryFolder,
+                LaunchBrowserOnStart = currentApp.LaunchBrowserOnStart
             };
 
             var newJson = JsonSerializer.Serialize(existing,
@@ -772,17 +771,18 @@ static class Program
             });
         });
 
-        // Persist an absolute path (or null = reset to default Logs/) as the History view's source.
+        // Update the History view's source folder for the current process. Pass null/empty
+        // path to reset to the default Logs/. The choice is intentionally NOT persisted —
+        // every app restart begins from Logs/ again.
         app.MapPost("/api/sessions/source", async (HttpContext ctx) =>
         {
             var body = await ctx.Request.ReadFromJsonAsync<HistorySourceUpdateRequest>();
-            string? newPath = body?.Path;
+            var newPath = body?.Path;
 
             string resolved;
             if (string.IsNullOrWhiteSpace(newPath))
             {
                 resolved = HistoryRoot.DefaultPath;
-                newPath = null;
             }
             else
             {
@@ -792,30 +792,6 @@ static class Program
             }
 
             HistoryRoot.Path = resolved;
-
-            // Persist to user config so the choice survives restart.
-            var configPath = Path.Combine(AppContext.BaseDirectory, "appsettings.user.json");
-            var existing = new Dictionary<string, object>();
-            if (File.Exists(configPath))
-            {
-                var json = await File.ReadAllTextAsync(configPath);
-                existing = JsonSerializer.Deserialize<Dictionary<string, object>>(json)
-                           ?? new Dictionary<string, object>();
-            }
-
-            var currentApp = app.Configuration.GetSection(AppSettings.SectionName).Get<AppSettings>() ?? new AppSettings();
-            existing["App"] = new
-            {
-                WebPort = currentApp.WebPort,
-                DebugMode = currentApp.DebugMode,
-                EnableSessionLogging = currentApp.EnableSessionLogging,
-                LaunchBrowserOnStart = currentApp.LaunchBrowserOnStart,
-                HistoryFolder = newPath,
-            };
-
-            var newJson = JsonSerializer.Serialize(existing,
-                new JsonSerializerOptions { WriteIndented = true });
-            await File.WriteAllTextAsync(configPath, newJson);
 
             return Results.Ok(new
             {
