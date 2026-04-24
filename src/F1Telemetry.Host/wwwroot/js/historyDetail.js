@@ -588,63 +588,100 @@
         if (!totalLaps) totalLaps = 1;
         var totalDrivers = Math.max(20, Object.keys(sess.drivers || {}).length);
 
-        // SVG dims (intrinsic); CSS scales it. X pad leaves room for lap numbers & Y labels.
-        var W = 800, H = 360, PAD_L = 36, PAD_R = 12, PAD_T = 12, PAD_B = 28;
+        // SVG dims (intrinsic); CSS scales it. Extra L/R pad = driver-code labels.
+        var W = 960, H = 500, PAD_L = 58, PAD_R = 58, PAD_T = 32, PAD_B = 18;
         var plotW = W - PAD_L - PAD_R;
         var plotH = H - PAD_T - PAD_B;
+        var lapStep = plotW / Math.max(1, totalLaps - 1);
 
-        function x(lap) { return PAD_L + (lap - 1) / Math.max(1, totalLaps - 1) * plotW; }
+        function x(lap) { return PAD_L + (lap - 1) * lapStep; }
         function y(pos) { return PAD_T + (pos - 1) / Math.max(1, totalDrivers - 1) * plotH; }
 
-        // Race-flag bands: collect per-lap max flag across all drivers.
+        // Race-flag bands: max flag per lap, collapsed into consecutive same-flag ranges.
         var flagByLap = {};
         (sess.events || []).forEach(function (e) {
             if (e.flag != null && e.lap != null) flagByLap[e.lap] = Math.max(flagByLap[e.lap] || 0, e.flag);
         });
-
         var bands = '';
-        Object.keys(flagByLap).forEach(function (lap) {
-            var lapN = Number(lap);
-            var flag = flagByLap[lapN];
-            var cls = flag === 2 ? 'pos-band-sc' : flag === 3 ? 'pos-band-vsc' : flag === 4 ? 'pos-band-red' : 'pos-band-yellow';
-            bands += '<rect class="' + cls + '" x="' + (x(lapN) - 4) + '" y="' + PAD_T
-                + '" width="8" height="' + plotH + '"/>';
-        });
-
-        // Y-axis tick labels (P1, P5, P10, P15, P20).
-        var ticks = '';
-        [1, 5, 10, 15, 20].forEach(function (p) {
-            if (p > totalDrivers) return;
-            ticks += '<text class="pos-ytick" x="' + (PAD_L - 6) + '" y="' + (y(p) + 4) + '" text-anchor="end">P' + p + '</text>';
-            ticks += '<line class="pos-grid" x1="' + PAD_L + '" x2="' + (W - PAD_R) + '" y1="' + y(p) + '" y2="' + y(p) + '"/>';
-        });
-        // X-axis lap labels every 5.
-        for (var lx = 1; lx <= totalLaps; lx += 5) {
-            ticks += '<text class="pos-xtick" x="' + x(lx) + '" y="' + (H - PAD_B + 16) + '" text-anchor="middle">' + lx + '</text>';
+        var bandClass = function (f) {
+            return f === 2 ? 'pos-band-sc'
+                : f === 3 ? 'pos-band-vsc'
+                : f === 4 ? 'pos-band-red' : 'pos-band-yellow';
+        };
+        var groupStart = null, groupFlag = 0;
+        for (var lap = 1; lap <= totalLaps + 1; lap++) {
+            var f = flagByLap[lap] || 0;
+            if (f !== groupFlag) {
+                if (groupFlag > 0 && groupStart !== null) {
+                    var xs = x(groupStart) - lapStep / 2;
+                    var xe = x(lap - 1) + lapStep / 2;
+                    bands += '<rect class="' + bandClass(groupFlag) + '" x="' + xs + '" y="' + PAD_T
+                        + '" width="' + (xe - xs) + '" height="' + plotH + '"/>';
+                }
+                groupFlag = f;
+                groupStart = f > 0 ? lap : null;
+            }
         }
 
-        // Driver polylines + pit markers.
+        // Grid lines + Y labels at every position (bold at 1/5/10/15/20), lap labels at top.
+        var ticks = '';
+        for (var p = 1; p <= totalDrivers; p++) {
+            var yp = y(p);
+            ticks += '<line class="pos-grid" x1="' + PAD_L + '" x2="' + (W - PAD_R) + '" y1="' + yp + '" y2="' + yp + '"/>';
+            if (p === 1 || p % 5 === 0 || p === totalDrivers) {
+                ticks += '<text class="pos-ytick" x="' + (PAD_L - 8) + '" y="' + (yp + 4) + '" text-anchor="end">' + p + '</text>';
+                ticks += '<text class="pos-ytick" x="' + (W - PAD_R + 8) + '" y="' + (yp + 4) + '" text-anchor="start">' + p + '</text>';
+            }
+        }
+        for (var lx = 1; lx <= totalLaps; lx += 5) {
+            ticks += '<line class="pos-grid pos-grid--v" x1="' + x(lx) + '" x2="' + x(lx) + '" y1="' + PAD_T + '" y2="' + (H - PAD_B) + '"/>';
+            ticks += '<text class="pos-xtick" x="' + x(lx) + '" y="' + (PAD_T - 10) + '" text-anchor="middle">' + lx + '</text>';
+        }
+        if ((totalLaps - 1) % 5 !== 0) {
+            ticks += '<text class="pos-xtick" x="' + x(totalLaps) + '" y="' + (PAD_T - 10) + '" text-anchor="middle">' + totalLaps + '</text>';
+        }
+
+        // Driver polylines + pit badges + end/start code labels.
         var lines = '';
         var markers = '';
+        var labels = '';
         selected.forEach(function (k) {
             var d = sess.drivers[k];
             var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
-            var pts = (d.laps || []).filter(function (l) { return l.position > 0; })
-                .map(function (l) { return x(l.lapNum) + ',' + y(l.position); });
-            if (pts.length === 0) return;
+            var code = driverCode(d.name);
+            var validLaps = (d.laps || []).filter(function (l) { return l.position > 0; });
+            if (validLaps.length === 0) return;
+
+            var pts = validLaps.map(function (l) { return x(l.lapNum) + ',' + y(l.position); });
             lines += '<polyline class="pos-line" stroke="' + color + '" points="' + pts.join(' ') + '"/>';
 
             (d.laps || []).forEach(function (l) {
-                if (l.pit) {
+                if (l.pit && l.position > 0) {
                     var cx = x(l.lapNum), cy = y(l.position);
-                    markers += '<polygon class="pos-pit-marker" fill="' + color + '" points="'
-                        + cx + ',' + (cy - 5) + ' ' + (cx - 4) + ',' + (cy + 3) + ' ' + (cx + 4) + ',' + (cy + 3) + '"/>';
+                    markers += '<g class="pos-pit-badge">'
+                        + '<circle cx="' + cx + '" cy="' + cy + '" r="5" fill="' + color + '" stroke="#fff" stroke-width="1"/>'
+                        + '<text class="pos-pit-letter" x="' + cx + '" y="' + (cy + 2.5) + '" text-anchor="middle">P</text>'
+                        + '</g>';
                 }
             });
+
+            var first = validLaps[0];
+            var last = validLaps[validLaps.length - 1];
+            labels += '<text class="pos-driver-label" x="' + (PAD_L - 10) + '" y="' + (y(first.position) + 4)
+                + '" text-anchor="end" fill="' + color + '">' + escapeHtml(code) + '</text>';
+            labels += '<text class="pos-driver-label" x="' + (W - PAD_R + 10) + '" y="' + (y(last.position) + 4)
+                + '" text-anchor="start" fill="' + color + '">' + escapeHtml(code) + '</text>';
         });
 
         host.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="pos-svg" preserveAspectRatio="xMidYMid meet">'
-            + bands + ticks + lines + markers + '</svg>';
+            + bands + ticks + lines + markers + labels + '</svg>';
+    }
+
+    function driverCode(name) {
+        if (!name) return '?';
+        var parts = String(name).trim().split(/\s+/);
+        var base = parts.length > 1 ? parts[parts.length - 1] : parts[0];
+        return base.substring(0, 3).toUpperCase();
     }
 
     function drawStintStrips() {

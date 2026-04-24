@@ -4096,40 +4096,71 @@
 .pos-legend-chip--red    { background: rgba(225, 6, 0, 0.55); }
 .pos-legend-chip--yellow { background: rgba(255, 215, 0, 0.35); }
 .pos-legend-chip--pit {
-    width: 0;
-    height: 0;
-    border: none;
-    border-radius: 0;
-    border-left: 5px solid transparent;
-    border-right: 5px solid transparent;
-    border-bottom: 8px solid var(--text-secondary);
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    border: 1px solid #fff;
+    background: var(--text-secondary);
+    position: relative;
+}
+.pos-legend-chip--pit::after {
+    content: 'P';
+    position: absolute;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 700;
+    font-family: var(--font-mono, 'Courier New', monospace);
+    color: #fff;
+    line-height: 1;
 }
 
 .pos-chart-wrap {
     width: 100%;
-    min-height: 240px;
+    min-height: 260px;
+    overflow-x: auto;
 }
 
-.pos-svg { width: 100%; height: auto; display: block; }
+.pos-svg {
+    width: 100%;
+    min-width: 560px;
+    height: auto;
+    display: block;
+}
 
 .pos-line {
     fill: none;
-    stroke-width: 2;
+    stroke-width: 1.75;
     stroke-linejoin: round;
     stroke-linecap: round;
 }
 
-.pos-pit-marker {
-    stroke: #fff;
-    stroke-width: 0.75;
-    paint-order: stroke fill;
-}
+.pos-grid { stroke: rgba(255, 255, 255, 0.07); stroke-width: 1; }
+.pos-grid--v { stroke: rgba(255, 255, 255, 0.05); stroke-dasharray: 2 3; }
 
-.pos-grid { stroke: rgba(255, 255, 255, 0.08); stroke-width: 1; }
 .pos-ytick, .pos-xtick {
     font-size: 11px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--font-mono, 'Courier New', monospace);
     fill: var(--text-dim);
+}
+
+.pos-driver-label {
+    font-size: 11px;
+    font-weight: 700;
+    font-family: var(--font-mono, 'Courier New', monospace);
+}
+
+.pos-pit-badge circle {
+    paint-order: stroke fill;
+}
+.pos-pit-letter {
+    font-size: 6.5px;
+    font-weight: 700;
+    font-family: var(--font-mono, 'Courier New', monospace);
+    fill: #fff;
+    pointer-events: none;
 }
 
 .pos-band-sc     { fill: rgba(255, 140, 0, 0.18); }
