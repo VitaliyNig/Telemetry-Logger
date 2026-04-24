@@ -22,7 +22,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <None Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" />
+    <None Update="wwwroot\**\*" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" />
   </ItemGroup>
 
   <!-- Static files are served from project wwwroot during dotnet run; copy logo from assets before build. -->

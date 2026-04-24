@@ -987,13 +987,6 @@
     // ---------- Phase H: Events ----------
 
     var HISTORY_EVENT_FILTER_KEY = 'f1telemetry_event_filter_v1';
-    var eventsState = {
-        query: '',
-        codeFilter: loadEventFilter(),
-        panel: null,
-        panelButton: null,
-    };
-
     var EVENT_NAMES = {
         'SSTA': 'Session Start', 'SEND': 'Session End',
         'FTLP': 'Fastest Lap', 'RTMT': 'Retirement',
@@ -1005,6 +998,12 @@
         'FLBK': 'Flashback', 'BUTN': 'Buttons',
         'OVTK': 'Overtake', 'SCAR': 'Safety Car',
         'COLL': 'Collision', 'RDFL': 'Red Flag',
+    };
+    var eventsState = {
+        query: '',
+        codeFilter: loadEventFilter(),
+        panel: null,
+        panelButton: null,
     };
 
     var EVENT_CODE_COLORS = {

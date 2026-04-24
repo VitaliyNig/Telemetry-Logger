@@ -837,7 +837,7 @@ static class Program
                     Title = "Select History Source Folder",
                     InitialDirectory = Directory.Exists(HistoryRoot.Path)
                         ? HistoryRoot.Path
-                        : HistoryRoot.DefaultPath,
+                        : HistoryRoot.PersistentDefault,
                 };
                 if (dlg.ShowDialog() == true)
                     picked = dlg.FolderName;

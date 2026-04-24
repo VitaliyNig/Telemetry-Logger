@@ -19,7 +19,7 @@ namespace F1Telemetry.Host.Logging;
 public static class HistoryRoot
 {
     public static string BuiltInDefault { get; } =
-        Path.Combine(AppContext.BaseDirectory, "Logs");
+        System.IO.Path.Combine(AppContext.BaseDirectory, "Logs");
 
     private static string _persistentDefault = BuiltInDefault;
     private static string _path = BuiltInDefault;
