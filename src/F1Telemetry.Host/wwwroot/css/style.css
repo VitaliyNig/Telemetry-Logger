@@ -4340,7 +4340,7 @@
 .tc-chart-row {
     display: grid;
     grid-template-columns: var(--tc-label-w) minmax(0, 1fr);
-    grid-template-rows: var(--tc-row-h, auto) 4px;
+    grid-template-rows: var(--tc-row-h, auto) 6px;
     align-items: stretch;
     gap: 6px 6px;
     margin-bottom: 2px;
@@ -4423,13 +4423,26 @@
 
 .tc-resize-handle {
     grid-column: 1 / -1;
-    height: 4px;
+    height: 6px;
     cursor: row-resize;
     background: transparent;
     border-radius: 2px;
     transition: background 0.15s;
+    /* Sit above .tc-hover-layer (pointer-events: auto) so mousedown hits the handle first. */
+    position: relative;
+    z-index: 2;
 }
-.tc-resize-handle:hover { background: var(--accent-brand); opacity: 0.4; }
+/* Widen grab zone 3px above and below without changing the layout. */
+.tc-resize-handle::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -3px;
+    bottom: -3px;
+}
+.tc-resize-handle:hover { background: var(--accent-brand); opacity: 0.5; }
+.tc-resize-handle:active { background: var(--accent-brand); opacity: 0.85; }
 
 .tc-line { fill: none; stroke-width: 1.2; stroke-linejoin: round; stroke-linecap: round; }
 .tc-baseline { stroke: rgba(255, 255, 255, 0.08); stroke-width: 0.5; }
