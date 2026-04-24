@@ -79,6 +79,8 @@ public sealed class DriverLap
     public float[] TyreWearEnd { get; set; } = new float[4];
     public bool Valid { get; set; }
     public bool Pit { get; set; }
+    /// <summary>Latched during the lap: true if CarStatusPacket.VehicleFiaFlags == 2 (blue) at any frame.</summary>
+    public bool BlueFlag { get; set; }
     public byte Position { get; set; }
     public int? GapToLeaderMs { get; set; }
     public RaceFlag? RaceFlag { get; set; }

@@ -51,6 +51,35 @@ static class Program
         finally { _pitTimesLock.Release(); }
     }
 
+    /// <summary>
+    /// Aggregates a lap's 20 Hz sample stream into a compact "how hard was the car pushed?"
+    /// summary for the Race Lap Times view. Returns null when samples are unavailable so the
+    /// client can render an em-dash without guessing. ERS mode >= 2 = Hotlap/Overtake per the
+    /// UDP spec; DRS 1 = active. Fuel mix is left null — it isn't in LapSample yet.
+    /// </summary>
+    private static object? ComputeLapPerf(List<LapSample>? samples)
+    {
+        if (samples == null || samples.Count == 0) return null;
+        var total = samples.Count;
+        double ersSum = 0;
+        int ersHot = 0;
+        int drsOn = 0;
+        for (int i = 0; i < total; i++)
+        {
+            var s = samples[i];
+            ersSum += s.Ers;
+            if (s.ErsMd >= 2) ersHot++;
+            if (s.Drs == 1) drsOn++;
+        }
+        return new
+        {
+            ersAvg = (float)(ersSum / total),
+            ersHotFrac = (float)ersHot / total,
+            drsFrac = (float)drsOn / total,
+            fuelMixMode = (int?)null,
+        };
+    }
+
     [STAThread]
     static void Main(string[] args)
     {
@@ -469,6 +498,12 @@ static class Program
                         l.LapNum, l.LapTimeMs, l.S1Ms, l.S2Ms, l.S3Ms,
                         l.CompoundActual, l.CompoundVisual, l.TyreAge, l.TyreWearEnd,
                         l.Valid, l.Pit, l.Position, l.GapToLeaderMs, l.RaceFlag,
+                        l.BlueFlag,
+                        // Per-lap Performance aggregate for the Race Lap Times view. Computed
+                        // here (not persisted) from the lap's 20 Hz samples so old logs still
+                        // light up after an app upgrade — and so we don't pay for it when the
+                        // caller doesn't need it (samples themselves stay out of this payload).
+                        Perf = ComputeLapPerf(l.Samples),
                     }).ToArray(),
                     tyreByLap = kv.Value.TyreByLap,
                 });

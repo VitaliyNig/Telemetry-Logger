@@ -219,20 +219,55 @@
         return orderDriversByBest(drivers, useVirtual);
     }
 
+    // Which sub-columns appear under each driver's column group, per session category.
+    // The table itself is rendered by the same code for every category — only this spec
+    // + which renderers we call differ.
+    var LAP_COLUMNS_BY_CAT = {
+        practice:   ['time', 'wear'],
+        qualifying: ['time', 'sectors', 'wear'],
+        race:       ['time', 'delta', 'wear', 'perf'],
+        time_trial: ['time', 'sectors', 'wear'],
+        unknown:    ['time', 'wear'],
+    };
+
+    var SUB_COL_LABELS = {
+        time: 'Time', sectors: 'Sec', wear: 'Wear', delta: 'Δ', perf: 'Perf',
+    };
+
+    // Delta classification (seconds) relative to REF lap within a stint.
+    var DELTA_THRESHOLDS = { neutral: 0.8, warn: 1.5 };
+
+    // Performance blending — picked so a lap with ~50% Hotlap/Overtake + intermittent DRS
+    // lands in "PUSH" territory, while a quiet ERS-saving lap falls into "SAVE".
+    var PERF_WEIGHTS   = { ersHot: 0.6, drs: 0.4 };
+    var PERF_THRESHOLDS = { push: 0.55, cruise: 0.25 };
+
     function renderLapPivotTable(cat, sess, bests, pbByDriver, virtualMode, driverOrder, maxLap) {
         var drivers = sess.drivers || {};
+        var cols = LAP_COLUMNS_BY_CAT[cat] || LAP_COLUMNS_BY_CAT.unknown;
+        var colCount = cols.length;
 
-        // Header: driver columns with team-color line + full name.
-        var headCells = driverOrder.map(function (carIdx) {
+        // Race-only: precompute REF lap per (driver, stint) so every cell can just look it up.
+        var refIndex = cat === 'race' ? buildRefIndex(driverOrder, drivers) : null;
+
+        // Top header row: one <th> per driver, colspan = number of sub-columns.
+        var topCells = driverOrder.map(function (carIdx) {
             var d = drivers[carIdx];
             var teamColor = (typeof teamAccentColor === 'function')
                 ? teamAccentColor(d.teamId) : '#9aa0a6';
             var pb = pbByDriver[carIdx];
             var pbText = pb && pb.lap !== Infinity ? formatLapTime(pb.lap) : '—';
-            return '<th class="lap-grid__driver-th" style="border-top-color:' + teamColor + '">'
+            return '<th class="lap-grid__driver-th" colspan="' + colCount + '" style="border-top-color:' + teamColor + '">'
                 + '<div class="lap-grid__driver-name">' + escapeHtml(d.name || ('Car ' + carIdx)) + '</div>'
                 + '<div class="lap-grid__driver-pb">PB ' + pbText + '</div>'
                 + '</th>';
+        }).join('');
+
+        // Second header row: sub-column labels per driver.
+        var subCells = driverOrder.map(function () {
+            return cols.map(function (key) {
+                return '<th class="lap-grid__sub-th lap-grid__sub-th--' + key + '">' + SUB_COL_LABELS[key] + '</th>';
+            }).join('');
         }).join('');
 
         // Body: one row per lap.
@@ -241,8 +276,15 @@
             var rowCls = rowFlagClass(lapNum, drivers, driverOrder);
             var cells = driverOrder.map(function (carIdx) {
                 var lap = lapByNum(drivers[carIdx].laps, lapNum);
-                if (!lap) return '<td class="lap-cell lap-cell--empty"><div class="lap-cell__inner">—</div></td>';
-                return renderLapCell(lap, cat, bests, pbByDriver[carIdx], virtualMode);
+                if (!lap) {
+                    var filler = '';
+                    for (var k = 0; k < colCount; k++) {
+                        filler += '<td class="lap-cell lap-cell--empty lap-sub--' + cols[k] + '">—</td>';
+                    }
+                    return filler;
+                }
+                return renderLapCells(lap, cat, cols, bests, pbByDriver[carIdx], virtualMode,
+                    refIndex ? refIndex[carIdx] : null);
             }).join('');
             rowsHtml += '<tr class="' + rowCls + '">'
                 + '<th class="lap-grid__lap-th">' + lapNum + '</th>'
@@ -253,10 +295,15 @@
         return ''
             + '<div class="lap-grid-wrap">'
             +   '<table class="lap-grid lap-grid--' + cat + '">'
-            +     '<thead><tr>'
-            +       '<th class="lap-grid__lap-th lap-grid__lap-th--head">Lap</th>'
-            +       headCells
-            +     '</tr></thead>'
+            +     '<thead>'
+            +       '<tr class="lap-grid__head-row lap-grid__head-row--drivers">'
+            +         '<th class="lap-grid__lap-th lap-grid__lap-th--head" rowspan="2">Lap</th>'
+            +         topCells
+            +       '</tr>'
+            +       '<tr class="lap-grid__head-row lap-grid__head-row--sub">'
+            +         subCells
+            +       '</tr>'
+            +     '</thead>'
             +     '<tbody>' + rowsHtml + '</tbody>'
             +   '</table>'
             + '</div>';
@@ -288,47 +335,59 @@
         return 'lap-row';
     }
 
-    // Main cell: time + tags on the left, tyre (+ sectors in quali) on the right.
-    function renderLapCell(l, cat, bests, pb, virtualMode) {
+    // Emits one <td> per sub-column listed in `cols`. Each renderer receives the same
+    // (lap, ctx) bundle and decides what to draw.
+    function renderLapCells(l, cat, cols, bests, pb, virtualMode, refForDriver) {
+        var ctx = { cat: cat, bests: bests, pb: pb, virtualMode: virtualMode, refForDriver: refForDriver };
+        var out = '';
+        for (var i = 0; i < cols.length; i++) {
+            var key = cols[i];
+            switch (key) {
+                case 'time':    out += timeCellHtml(l, ctx); break;
+                case 'sectors': out += sectorsCellHtml(l, ctx); break;
+                case 'wear':    out += wearCellHtml(l); break;
+                case 'delta':   out += deltaCellHtml(l, ctx); break;
+                case 'perf':    out += perfCellHtml(l); break;
+                default:        out += '<td class="lap-cell lap-sub--' + key + '">—</td>';
+            }
+        }
+        return out;
+    }
+
+    function timeCellHtml(l, ctx) {
         var invalid = !l.valid;
         var timeMs = l.lapTimeMs;
         var timeCls = 'lap-cell__time';
         if (invalid) timeCls += ' lap-cell__time--invalid';
-        else if (bests.lap !== Infinity && timeMs === bests.lap) timeCls += ' lap-cell__time--sb';
-        else if (pb && pb.lap !== Infinity && timeMs === pb.lap) timeCls += ' lap-cell__time--pb';
+        else if (ctx.bests.lap !== Infinity && timeMs === ctx.bests.lap) timeCls += ' lap-cell__time--sb';
+        else if (ctx.pb && ctx.pb.lap !== Infinity && timeMs === ctx.pb.lap) timeCls += ' lap-cell__time--pb';
 
         var timeText = timeMs > 0 ? formatLapTime(timeMs) : '—';
-        if (cat === 'qualifying' && virtualMode) {
-            var vb = (pb && pb.s1 !== Infinity && pb.s2 !== Infinity && pb.s3 !== Infinity)
-                ? (pb.s1 + pb.s2 + pb.s3) : 0;
+        if (ctx.cat === 'qualifying' && ctx.virtualMode) {
+            var vb = (ctx.pb && ctx.pb.s1 !== Infinity && ctx.pb.s2 !== Infinity && ctx.pb.s3 !== Infinity)
+                ? (ctx.pb.s1 + ctx.pb.s2 + ctx.pb.s3) : 0;
             if (vb > 0) {
                 timeText = formatLapTime(vb);
                 timeCls = 'lap-cell__time lap-cell__time--virtual';
             }
         }
 
-        var tags = lapTagsHtml(l, cat);
-        var timeBlock = ''
-            + '<div class="lap-cell__left">'
-            +   '<div class="' + timeCls + '">' + timeText + '</div>'
-            +   (tags ? '<div class="lap-cell__tags">' + tags + '</div>' : '')
-            + '</div>';
-
-        var rightBlocks = '';
-        if (cat === 'qualifying') {
-            rightBlocks += sectorsStackHtml(l, bests, pb);
-        }
-        rightBlocks += tyreCellHtml(l);
-
-        var cellCls = 'lap-cell lap-cell--' + cat;
+        var tags = lapTagsHtml(l, ctx.cat);
+        var cellCls = 'lap-cell lap-sub--time';
         if (invalid) cellCls += ' lap-cell--invalid';
-        return '<td class="' + cellCls + '"><div class="lap-cell__inner">' + timeBlock + rightBlocks + '</div></td>';
+        return '<td class="' + cellCls + '">'
+            + '<div class="' + timeCls + '">' + timeText + '</div>'
+            + (tags ? '<div class="lap-cell__tags">' + tags + '</div>' : '')
+            + '</td>';
     }
 
     function lapTagsHtml(l, cat) {
         var out = '';
         if (cat !== 'qualifying' && l.pit) {
             out += '<span class="lap-tag lap-tag--pit" title="Pit Stop">PIT</span>';
+        }
+        if (cat === 'race' && l.blueFlag) {
+            out += '<span class="lap-tag lap-tag--blue" title="Blue Flag">B</span>';
         }
         if (l.raceFlag === 2) out += '<span class="lap-tag lap-tag--sc" title="Safety Car">SC</span>';
         else if (l.raceFlag === 3) out += '<span class="lap-tag lap-tag--vsc" title="Virtual Safety Car">VSC</span>';
@@ -337,24 +396,26 @@
         return out;
     }
 
-    function sectorsStackHtml(l, bests, pb) {
+    function sectorsCellHtml(l, ctx) {
         function seg(ms, bestField) {
             if (!ms || ms <= 0) {
                 return '<span class="lap-sector lap-sector--empty">—</span>';
             }
             var cls = 'lap-sector';
-            if (bests[bestField] !== Infinity && ms === bests[bestField]) cls += ' lap-sector--sb';
-            else if (pb && pb[bestField] !== Infinity && ms === pb[bestField]) cls += ' lap-sector--pb';
+            if (ctx.bests[bestField] !== Infinity && ms === ctx.bests[bestField]) cls += ' lap-sector--sb';
+            else if (ctx.pb && ctx.pb[bestField] !== Infinity && ms === ctx.pb[bestField]) cls += ' lap-sector--pb';
             return '<span class="' + cls + '">' + formatSectorTime(ms) + '</span>';
         }
-        return '<div class="lap-cell__sectors">'
-            + seg(l.s1Ms, 's1')
-            + seg(l.s2Ms, 's2')
-            + seg(l.s3Ms, 's3')
-            + '</div>';
+        return '<td class="lap-cell lap-sub--sectors">'
+            + '<div class="lap-cell__sectors">'
+            +   seg(l.s1Ms, 's1') + seg(l.s2Ms, 's2') + seg(l.s3Ms, 's3')
+            + '</div>'
+            + '</td>';
     }
 
-    function tyreCellHtml(l) {
+    // The <td> itself carries the `.lap-cell__tyre` class + data-* attrs that
+    // attachTyrePopupHandlers looks for, so the existing popup works without changes.
+    function wearCellHtml(l) {
         var visual = l.compoundVisual;
         var name = (typeof VISUAL_COMPOUNDS !== 'undefined' && VISUAL_COMPOUNDS[visual])
             ? VISUAL_COMPOUNDS[visual] : '?';
@@ -366,8 +427,6 @@
         var avg = hasWear ? Math.round((wearArr[0] + wearArr[1] + wearArr[2] + wearArr[3]) / 4) : null;
 
         // tyreWearEnd order matches UDP spec: [RL, RR, FL, FR].
-        // Encode wear data as data-* attributes — hover handler renders a floating popup
-        // in <body> so it isn't clipped by the grid's overflow container.
         var dataAttrs = 'data-tyre-name="' + escapeHtml(name) + '"';
         if (l.tyreAge != null) dataAttrs += ' data-tyre-age="' + l.tyreAge + '"';
         if (hasWear) {
@@ -377,10 +436,179 @@
                       +  ' data-wear-rr="' + Math.round(wearArr[1]) + '"';
         }
 
-        return '<div class="lap-cell__tyre" ' + dataAttrs + '>'
-            + '<span class="compound-badge" style="background:' + color + '">' + label + '</span>'
-            + (avg != null ? '<span class="lap-cell__wear">' + avg + '%</span>' : '')
-            + '</div>';
+        return '<td class="lap-cell lap-sub--wear lap-cell__tyre" ' + dataAttrs + '>'
+            + '<div class="lap-cell__wear-inner">'
+            +   '<span class="compound-badge" style="background:' + color + '">' + label + '</span>'
+            +   (avg != null ? '<span class="lap-cell__wear">' + avg + '%</span>' : '')
+            + '</div>'
+            + '</td>';
+    }
+
+    function deltaCellHtml(l, ctx) {
+        var ref = ctx.refForDriver;
+        if (!ref) return '<td class="lap-cell lap-sub--delta">—</td>';
+        var info = ref.byLap && ref.byLap[l.lapNum];
+        if (!info) return '<td class="lap-cell lap-sub--delta">—</td>';
+
+        // Out-lap of the stint — no meaningful reference.
+        if (info.stintLapIdx === 1) {
+            return '<td class="lap-cell lap-sub--delta lap-delta--outlap">—</td>';
+        }
+        // In-lap (pit stop on this lap) carries pit-lane time that would dwarf any stint
+        // degradation — render a placeholder instead of a misleading huge delta.
+        if (l.pit) {
+            return '<td class="lap-cell lap-sub--delta lap-delta--outlap">—</td>';
+        }
+        // The REF lap itself.
+        if (info.isRef) {
+            var cls = 'lap-delta lap-delta--ref';
+            var title = 'Reference lap for this stint';
+            if (info.refUnderSc || info.refFallback) {
+                cls += ' lap-delta--ref--dirty';
+                title = info.refUnderSc
+                    ? 'REF was chosen under SC/VSC — delta values may be optimistic'
+                    : 'Fallback REF — no clean laps in the stint start';
+            }
+            return '<td class="lap-cell lap-sub--delta"><span class="' + cls + '" title="' + title + '">REF</span></td>';
+        }
+        // Missing / zero lap time → no comparison.
+        if (!l.lapTimeMs || !info.refLapTimeMs) {
+            return '<td class="lap-cell lap-sub--delta">—</td>';
+        }
+
+        var delta = (l.lapTimeMs - info.refLapTimeMs) / 1000;
+        var deltaCls = 'lap-delta';
+        if (delta < 0) deltaCls += ' lap-delta--faster';
+        else if (delta <= DELTA_THRESHOLDS.neutral) deltaCls += ' lap-delta--neutral';
+        else if (delta <= DELTA_THRESHOLDS.warn) deltaCls += ' lap-delta--warn';
+        else deltaCls += ' lap-delta--bad';
+
+        var sign = delta >= 0 ? '+' : '';
+        var text = sign + delta.toFixed(3);
+        var cellCls = 'lap-cell lap-sub--delta';
+        if (!l.valid || l.pit) cellCls += ' lap-cell--invalid';
+        return '<td class="' + cellCls + '"><span class="' + deltaCls + '">' + text + '</span></td>';
+    }
+
+    function perfCellHtml(l) {
+        var p = l.perf;
+        if (!p) return '<td class="lap-cell lap-sub--perf">—</td>';
+
+        var ersHot = typeof p.ersHotFrac === 'number' ? p.ersHotFrac : 0;
+        var drsFrac = typeof p.drsFrac === 'number' ? p.drsFrac : 0;
+        var score = ersHot * PERF_WEIGHTS.ersHot + drsFrac * PERF_WEIGHTS.drs;
+
+        var bucket = 'save';
+        if (score >= PERF_THRESHOLDS.push) bucket = 'push';
+        else if (score >= PERF_THRESHOLDS.cruise) bucket = 'cruise';
+        var label = bucket === 'push' ? 'PUSH' : bucket === 'cruise' ? 'CRUISE' : 'SAVE';
+
+        // ERS bar width follows ersHotFrac; DRS is binary past a small 5% dead-band.
+        var ersPct = Math.round(Math.max(0, Math.min(1, ersHot)) * 100);
+        var drsOn = drsFrac > 0.05;
+        var title = 'ERS avg ' + (typeof p.ersAvg === 'number' ? Math.round(p.ersAvg) + '%' : '—')
+            + ' · ERS hot ' + ersPct + '%'
+            + ' · DRS ' + Math.round(drsFrac * 100) + '%';
+
+        var cellCls = 'lap-cell lap-sub--perf';
+        if (l.pit || l.raceFlag === 2 || l.raceFlag === 3) cellCls += ' lap-cell--muted';
+        return '<td class="' + cellCls + '" title="' + title + '">'
+            + '<span class="lap-perf-badge lap-perf--' + bucket + '">' + label + '</span>'
+            + '<span class="lap-perf-ers" title="ERS Hotlap/Overtake ' + ersPct + '%">'
+            +   '<span class="lap-perf-ers-fill" style="width:' + ersPct + '%"></span>'
+            + '</span>'
+            + '<span class="lap-perf-drs ' + (drsOn ? 'is-on' : 'is-off') + '" title="DRS"></span>'
+            + '</td>';
+    }
+
+    // Maps lapNum → stint info for one driver, so deltaCellHtml can look up the REF lap
+    // in O(1). Stints are split on pit-in between adjacent laps (matches the spec) with a
+    // fallback to compound changes for sessions where pit bits are missing.
+    function raceStintsForDriver(sess, carIdx) {
+        var driver = sess.drivers && sess.drivers[carIdx];
+        if (!driver || !driver.laps || driver.laps.length === 0) return [];
+        var laps = driver.laps.slice().sort(function (a, b) { return a.lapNum - b.lapNum; });
+        var stints = [];
+        var current = { startLap: laps[0].lapNum, endLap: laps[0].lapNum,
+                        visual: laps[0].compoundVisual, actual: laps[0].compoundActual,
+                        laps: [laps[0]] };
+        for (var i = 1; i < laps.length; i++) {
+            var prev = laps[i - 1];
+            var l = laps[i];
+            var splitOnPit = !!prev.pit;
+            var splitOnCompound = l.compoundVisual !== prev.compoundVisual;
+            if (splitOnPit || splitOnCompound) {
+                stints.push(current);
+                current = { startLap: l.lapNum, endLap: l.lapNum,
+                            visual: l.compoundVisual, actual: l.compoundActual,
+                            laps: [l] };
+            } else {
+                current.endLap = l.lapNum;
+                current.laps.push(l);
+            }
+        }
+        stints.push(current);
+        return stints;
+    }
+
+    // Picks the REF lap of a stint per the product spec:
+    //  - skip the out-lap (stint position 1)
+    //  - prefer the best valid clean lap within the first 3 laps (positions 2..4)
+    //  - widen to the first 5 (positions 2..6) if none
+    //  - then drop the SC/VSC filter and flag refUnderSc
+    //  - finally fall back to the out-lap itself
+    function pickRefLap(stintLaps) {
+        if (!stintLaps || stintLaps.length === 0) return null;
+        function isClean(l) { return l.valid && l.raceFlag !== 2 && l.raceFlag !== 3; }
+        function argminBy(list, sel) {
+            var best = null;
+            for (var i = 0; i < list.length; i++) {
+                if (best == null || sel(list[i]) < sel(best)) best = list[i];
+            }
+            return best;
+        }
+        function byLapTime(l) { return l.lapTimeMs > 0 ? l.lapTimeMs : Infinity; }
+
+        // Out-lap is stint position 1 → slice starts at index 1.
+        var pool = stintLaps.slice(1, 4).filter(isClean);
+        if (pool.length === 0) pool = stintLaps.slice(1, 6).filter(isClean);
+        if (pool.length > 0) {
+            var best = argminBy(pool, byLapTime);
+            return { refLapNum: best.lapNum, refLapTimeMs: best.lapTimeMs };
+        }
+
+        var dirty = stintLaps.slice(1, 6).filter(function (l) { return l.valid; });
+        if (dirty.length > 0) {
+            var bestDirty = argminBy(dirty, byLapTime);
+            return { refLapNum: bestDirty.lapNum, refLapTimeMs: bestDirty.lapTimeMs, refUnderSc: true };
+        }
+
+        var firstLap = stintLaps[0];
+        return { refLapNum: firstLap.lapNum, refLapTimeMs: firstLap.lapTimeMs, refFallback: true };
+    }
+
+    // Builds { carIdx -> { byLap: {lapNum -> { stintLapIdx, refLapNum, refLapTimeMs, isRef, refUnderSc, refFallback }}}}.
+    function buildRefIndex(driverOrder, drivers) {
+        var out = {};
+        driverOrder.forEach(function (carIdx) {
+            var stints = raceStintsForDriver({ drivers: drivers }, carIdx);
+            var byLap = {};
+            stints.forEach(function (stint) {
+                var ref = pickRefLap(stint.laps);
+                stint.laps.forEach(function (l, idx) {
+                    byLap[l.lapNum] = {
+                        stintLapIdx: idx + 1,
+                        refLapNum: ref ? ref.refLapNum : null,
+                        refLapTimeMs: ref ? ref.refLapTimeMs : 0,
+                        isRef: ref ? l.lapNum === ref.refLapNum : false,
+                        refUnderSc: ref ? !!ref.refUnderSc : false,
+                        refFallback: ref ? !!ref.refFallback : false,
+                    };
+                });
+            });
+            out[carIdx] = { byLap: byLap };
+        });
+        return out;
     }
 
     // Singleton tyre-info popup floater rendered in <body>. Positioned relative to the
