@@ -915,9 +915,11 @@
             +   '</div>'
             +   '<input type="search" class="ev-search" placeholder="Filter driver…"/>'
             + '</div>'
-            + '<table class="ev-table"><thead>'
-            +   '<tr><th>Time</th><th>Lap</th><th>Event</th><th>Driver</th><th>Details</th></tr>'
-            + '</thead><tbody id="evTbody"></tbody></table>';
+            + '<div class="ev-table-wrap">'
+            +   '<table class="ev-table"><thead>'
+            +     '<tr><th class="ev-col-time">Time</th><th class="ev-col-lap">Lap</th><th class="ev-col-event">Event</th><th class="ev-col-driver">Driver</th><th class="ev-col-details">Details</th></tr>'
+            +   '</thead><tbody id="evTbody"></tbody></table>'
+            + '</div>';
 
         closeEventsFilterPanel();
         var filterButton = body.querySelector('#evFilterBtn');
@@ -970,12 +972,15 @@
             var dot = driver
                 ? '<span class="driver-dot" style="background:' + (typeof teamAccentColor === 'function' ? teamAccentColor(driver.teamId) : '#9aa0a6') + '"></span> '
                 : '';
-            return '<tr>'
-                + '<td>' + formatSessionTime(e.timeS) + '</td>'
-                + '<td>' + (e.lap || '—') + '</td>'
-                + '<td><strong>' + (EVENT_NAMES[e.code] || e.code) + '</strong></td>'
-                + '<td>' + dot + escapeHtml(driver ? driver.name : '') + '</td>'
-                + '<td>' + formatEventDetails(e, sess) + '</td>'
+            var codeColor = EVENT_CODE_COLORS[e.code] || 'var(--text-dim)';
+            var codeChip = '<span class="ev-code-chip" style="color:' + codeColor
+                + ';border-color:' + codeColor + '">' + escapeHtml(e.code) + '</span>';
+            return '<tr style="--event-color:' + codeColor + '">'
+                + '<td data-label="Time">' + formatSessionTime(e.timeS) + '</td>'
+                + '<td data-label="Lap">' + (e.lap || '—') + '</td>'
+                + '<td data-label="Event">' + codeChip + '<span class="ev-name">' + (EVENT_NAMES[e.code] || e.code) + '</span></td>'
+                + '<td data-label="Driver">' + dot + escapeHtml(driver ? driver.name : '—') + '</td>'
+                + '<td data-label="Details">' + (formatEventDetails(e, sess) || '<span class="ev-muted">—</span>') + '</td>'
                 + '</tr>';
         });
 
