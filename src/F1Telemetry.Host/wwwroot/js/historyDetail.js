@@ -97,7 +97,7 @@
 
     // ---------- Phase C: Lap Times ----------
 
-    // Session category drives column set.
+    // Session category drives cell layout.
     function sessionCategory(type) {
         if (type >= 1 && type <= 4) return 'practice';
         if (type >= 5 && type <= 14) return 'qualifying';
@@ -114,8 +114,14 @@
         var cat = sessionCategory(sess.meta.sessionType);
         var isQuali = cat === 'qualifying';
 
-        // Compute field bests across all drivers.
         var bests = computeBests(sess.drivers);
+        var pbByDriver = {};
+        Object.keys(sess.drivers || {}).forEach(function (k) {
+            pbByDriver[k] = personalBest(sess.drivers[k].laps);
+        });
+
+        var driverOrder = orderDriversForTable(cat, sess, isQuali && lapTimesState.virtualMode);
+        var maxLap = computeMaxLap(sess.drivers);
 
         var toolbar = '';
         if (isQuali) {
@@ -127,35 +133,25 @@
                 + '</div>';
         }
 
-        // Driver tables.
-        var driverHtml = '';
-        var driverOrder = orderDriversByBest(sess.drivers, isQuali && lapTimesState.virtualMode);
-        driverOrder.forEach(function (carIdx) {
-            driverHtml += renderDriverLapTable(sess.drivers[carIdx], cat, bests);
-        });
-
-        // Virtual vs actual grid (only in quali).
-        var virtualGrid = '';
-        if (isQuali) {
-            virtualGrid = renderVirtualGrid(sess.drivers);
-        }
+        var pivot = renderLapPivotTable(cat, sess, bests, pbByDriver, lapTimesState.virtualMode, driverOrder, maxLap);
+        var virtualGrid = isQuali ? renderVirtualGrid(sess.drivers) : '';
 
         body.innerHTML =
             '<div class="lt-container">'
             + toolbar
-            + '<div class="lt-main">'
-            +   '<div class="lt-drivers">' + driverHtml + '</div>'
-            +   virtualGrid
-            + '</div>'
+            + pivot
+            + virtualGrid
             + '</div>';
 
-        // Toggle handler.
         body.querySelectorAll('.lt-mode').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 lapTimesState.virtualMode = btn.dataset.mode === 'virtual';
                 renderLapTimes(body);
             });
         });
+
+        var wrap = body.querySelector('.lap-grid-wrap');
+        if (wrap) attachTyrePopupHandlers(wrap);
     }
 
     function computeBests(drivers) {
@@ -200,82 +196,253 @@
         return keys;
     }
 
-    function renderDriverLapTable(driver, cat, bests) {
-        var pb = personalBest(driver.laps);
-        var teamColor = (typeof teamAccentColor === 'function')
-            ? teamAccentColor(driver.teamId) : '#9aa0a6';
-
-        var head = '';
+    // Race: final position from FinalClassification packet; fallback to best lap.
+    // Quali/practice: best lap (virtual sum in virtualMode).
+    function orderDriversForTable(cat, sess, useVirtual) {
+        var drivers = sess.drivers || {};
         if (cat === 'race') {
-            head = '<tr><th>Lap</th><th>Time</th><th>Comp</th><th>Wear</th><th>Pit</th><th>Pos</th><th>Gap</th><th>Flag</th></tr>';
-        } else if (cat === 'qualifying') {
-            head = '<tr><th>Lap</th><th>Time</th><th>S1</th><th>S2</th><th>S3</th><th>Comp</th><th>Wear</th><th>Valid</th></tr>';
-        } else {
-            head = '<tr><th>Lap</th><th>Time</th><th>Comp</th><th>Wear</th><th>Valid</th></tr>';
+            var fc = sess.finalClassification;
+            var cd = fc && fc.classificationData;
+            if (cd && cd.length) {
+                var keys = Object.keys(drivers);
+                var withPos = keys.map(function (k) {
+                    var idx = Number(k);
+                    var pos = (cd[idx] && cd[idx].position) ? cd[idx].position : 999;
+                    return { key: k, pos: pos };
+                });
+                withPos.sort(function (a, b) { return a.pos - b.pos; });
+                return withPos.map(function (r) { return r.key; });
+            }
         }
+        return orderDriversByBest(drivers, useVirtual);
+    }
 
-        var rows = (driver.laps || []).map(function (l) {
-            return renderLapRow(l, cat, bests, pb);
+    function renderLapPivotTable(cat, sess, bests, pbByDriver, virtualMode, driverOrder, maxLap) {
+        var drivers = sess.drivers || {};
+
+        // Header: driver columns with team-color line + full name.
+        var headCells = driverOrder.map(function (carIdx) {
+            var d = drivers[carIdx];
+            var teamColor = (typeof teamAccentColor === 'function')
+                ? teamAccentColor(d.teamId) : '#9aa0a6';
+            var pb = pbByDriver[carIdx];
+            var pbText = pb && pb.lap !== Infinity ? formatLapTime(pb.lap) : '—';
+            return '<th class="lap-grid__driver-th" style="border-top-color:' + teamColor + '">'
+                + '<div class="lap-grid__driver-name">' + escapeHtml(d.name || ('Car ' + carIdx)) + '</div>'
+                + '<div class="lap-grid__driver-pb">PB ' + pbText + '</div>'
+                + '</th>';
         }).join('');
 
+        // Body: one row per lap.
+        var rowsHtml = '';
+        for (var lapNum = 1; lapNum <= maxLap; lapNum++) {
+            var rowCls = rowFlagClass(lapNum, drivers, driverOrder);
+            var cells = driverOrder.map(function (carIdx) {
+                var lap = lapByNum(drivers[carIdx].laps, lapNum);
+                if (!lap) return '<td class="lap-cell lap-cell--empty"><div class="lap-cell__inner">—</div></td>';
+                return renderLapCell(lap, cat, bests, pbByDriver[carIdx], virtualMode);
+            }).join('');
+            rowsHtml += '<tr class="' + rowCls + '">'
+                + '<th class="lap-grid__lap-th">' + lapNum + '</th>'
+                + cells
+                + '</tr>';
+        }
+
         return ''
-            + '<div class="lt-driver-block">'
-            +   '<div class="lt-driver-header">'
-            +     '<span class="driver-dot" style="background:' + teamColor + '"></span>'
-            +     '<span class="lt-driver-name">' + escapeHtml(driver.name) + '</span>'
-            +     '<span class="lt-driver-best">PB ' + formatLapTime(pb.lap === Infinity ? 0 : pb.lap) + '</span>'
-            +   '</div>'
-            +   '<table class="lt-table"><thead>' + head + '</thead><tbody>' + rows + '</tbody></table>'
+            + '<div class="lap-grid-wrap">'
+            +   '<table class="lap-grid lap-grid--' + cat + '">'
+            +     '<thead><tr>'
+            +       '<th class="lap-grid__lap-th lap-grid__lap-th--head">Lap</th>'
+            +       headCells
+            +     '</tr></thead>'
+            +     '<tbody>' + rowsHtml + '</tbody>'
+            +   '</table>'
             + '</div>';
     }
 
-    function renderLapRow(l, cat, bests, pb) {
-        var rowCls = l.valid ? '' : 'lt-invalid';
-        if (cat === 'race' && l.raceFlag === 4) rowCls += ' lt-red-flag-row';
+    function lapByNum(laps, n) {
+        if (!laps) return null;
+        for (var i = 0; i < laps.length; i++) {
+            if (laps[i].lapNum === n) return laps[i];
+        }
+        return null;
+    }
 
-        function timeCell(ms, bestField) {
-            if (!ms || ms <= 0) return '<td class="lt-cell">—</td>';
-            var cls = 'lt-cell';
-            if (bests[bestField] !== Infinity && ms === bests[bestField]) cls += ' lt-purple';
-            else if (pb[bestField] !== Infinity && ms === pb[bestField]) cls += ' lt-green';
-            var s = (bestField === 'lap') ? formatLapTime(ms) : formatSectorTime(ms);
-            return '<td class="' + cls + '">' + s + '</td>';
+    // Row background when SC / VSC / Red Flag was active for most drivers on this lap.
+    function rowFlagClass(lapNum, drivers, driverOrder) {
+        var counts = { 1: 0, 2: 0, 3: 0, 4: 0, total: 0 };
+        driverOrder.forEach(function (carIdx) {
+            var lap = lapByNum(drivers[carIdx].laps, lapNum);
+            if (!lap) return;
+            counts.total++;
+            if (lap.raceFlag && counts[lap.raceFlag] != null) counts[lap.raceFlag]++;
+        });
+        if (counts.total === 0) return '';
+        var half = counts.total / 2;
+        if (counts[4] >= half) return 'lap-row lap-row--rf';
+        if (counts[2] >= half) return 'lap-row lap-row--sc';
+        if (counts[3] >= half) return 'lap-row lap-row--vsc';
+        if (counts[1] >= half) return 'lap-row lap-row--yellow';
+        return 'lap-row';
+    }
+
+    // Main cell: time + tags on the left, tyre (+ sectors in quali) on the right.
+    function renderLapCell(l, cat, bests, pb, virtualMode) {
+        var invalid = !l.valid;
+        var timeMs = l.lapTimeMs;
+        var timeCls = 'lap-cell__time';
+        if (invalid) timeCls += ' lap-cell__time--invalid';
+        else if (bests.lap !== Infinity && timeMs === bests.lap) timeCls += ' lap-cell__time--sb';
+        else if (pb && pb.lap !== Infinity && timeMs === pb.lap) timeCls += ' lap-cell__time--pb';
+
+        var timeText = timeMs > 0 ? formatLapTime(timeMs) : '—';
+        if (cat === 'qualifying' && virtualMode) {
+            var vb = (pb && pb.s1 !== Infinity && pb.s2 !== Infinity && pb.s3 !== Infinity)
+                ? (pb.s1 + pb.s2 + pb.s3) : 0;
+            if (vb > 0) {
+                timeText = formatLapTime(vb);
+                timeCls = 'lap-cell__time lap-cell__time--virtual';
+            }
         }
 
-        var compoundBadge = compoundBadgeHtml(l.compoundVisual);
-        var wear = tyreWearSummary(l.tyreWearEnd);
+        var tags = lapTagsHtml(l, cat);
+        var timeBlock = ''
+            + '<div class="lap-cell__left">'
+            +   '<div class="' + timeCls + '">' + timeText + '</div>'
+            +   (tags ? '<div class="lap-cell__tags">' + tags + '</div>' : '')
+            + '</div>';
 
-        if (cat === 'race') {
-            return '<tr class="' + rowCls + '">'
-                 + '<td>' + l.lapNum + '</td>'
-                 + timeCell(l.lapTimeMs, 'lap')
-                 + '<td>' + compoundBadge + '</td>'
-                 + '<td>' + wear + '</td>'
-                 + '<td>' + (l.pit ? 'P' : '') + '</td>'
-                 + '<td>' + (l.position || '') + '</td>'
-                 + '<td>' + (l.gapToLeaderMs != null ? '+' + (l.gapToLeaderMs / 1000).toFixed(3) : '') + '</td>'
-                 + '<td>' + raceFlagIcon(l.raceFlag) + '</td>'
-                 + '</tr>';
-        }
+        var rightBlocks = '';
         if (cat === 'qualifying') {
-            return '<tr class="' + rowCls + '">'
-                 + '<td>' + l.lapNum + '</td>'
-                 + timeCell(l.lapTimeMs, 'lap')
-                 + timeCell(l.s1Ms, 's1')
-                 + timeCell(l.s2Ms, 's2')
-                 + timeCell(l.s3Ms, 's3')
-                 + '<td>' + compoundBadge + '</td>'
-                 + '<td>' + wear + '</td>'
-                 + '<td>' + (l.valid ? '✓' : '✗') + '</td>'
-                 + '</tr>';
+            rightBlocks += sectorsStackHtml(l, bests, pb);
         }
-        return '<tr class="' + rowCls + '">'
-             + '<td>' + l.lapNum + '</td>'
-             + timeCell(l.lapTimeMs, 'lap')
-             + '<td>' + compoundBadge + '</td>'
-             + '<td>' + wear + '</td>'
-             + '<td>' + (l.valid ? '✓' : '✗') + '</td>'
-             + '</tr>';
+        rightBlocks += tyreCellHtml(l);
+
+        var cellCls = 'lap-cell lap-cell--' + cat;
+        if (invalid) cellCls += ' lap-cell--invalid';
+        return '<td class="' + cellCls + '"><div class="lap-cell__inner">' + timeBlock + rightBlocks + '</div></td>';
+    }
+
+    function lapTagsHtml(l, cat) {
+        var out = '';
+        if (cat !== 'qualifying' && l.pit) {
+            out += '<span class="lap-tag lap-tag--pit" title="Pit Stop">PIT</span>';
+        }
+        if (l.raceFlag === 2) out += '<span class="lap-tag lap-tag--sc" title="Safety Car">SC</span>';
+        else if (l.raceFlag === 3) out += '<span class="lap-tag lap-tag--vsc" title="Virtual Safety Car">VSC</span>';
+        else if (l.raceFlag === 4) out += '<span class="lap-tag lap-tag--rf" title="Red Flag">RF</span>';
+        else if (l.raceFlag === 1) out += '<span class="lap-tag lap-tag--yellow" title="Yellow">Y</span>';
+        return out;
+    }
+
+    function sectorsStackHtml(l, bests, pb) {
+        function seg(ms, bestField) {
+            if (!ms || ms <= 0) {
+                return '<span class="lap-sector lap-sector--empty">—</span>';
+            }
+            var cls = 'lap-sector';
+            if (bests[bestField] !== Infinity && ms === bests[bestField]) cls += ' lap-sector--sb';
+            else if (pb && pb[bestField] !== Infinity && ms === pb[bestField]) cls += ' lap-sector--pb';
+            return '<span class="' + cls + '">' + formatSectorTime(ms) + '</span>';
+        }
+        return '<div class="lap-cell__sectors">'
+            + seg(l.s1Ms, 's1')
+            + seg(l.s2Ms, 's2')
+            + seg(l.s3Ms, 's3')
+            + '</div>';
+    }
+
+    function tyreCellHtml(l) {
+        var visual = l.compoundVisual;
+        var name = (typeof VISUAL_COMPOUNDS !== 'undefined' && VISUAL_COMPOUNDS[visual])
+            ? VISUAL_COMPOUNDS[visual] : '?';
+        var color = (typeof COMPOUND_DOT_COLORS !== 'undefined' && COMPOUND_DOT_COLORS[visual])
+            ? COMPOUND_DOT_COLORS[visual] : '#666';
+        var label = name.charAt(0);
+        var wearArr = l.tyreWearEnd;
+        var hasWear = wearArr && wearArr.length === 4;
+        var avg = hasWear ? Math.round((wearArr[0] + wearArr[1] + wearArr[2] + wearArr[3]) / 4) : null;
+
+        // tyreWearEnd order matches UDP spec: [RL, RR, FL, FR].
+        // Encode wear data as data-* attributes — hover handler renders a floating popup
+        // in <body> so it isn't clipped by the grid's overflow container.
+        var dataAttrs = 'data-tyre-name="' + escapeHtml(name) + '"';
+        if (l.tyreAge != null) dataAttrs += ' data-tyre-age="' + l.tyreAge + '"';
+        if (hasWear) {
+            dataAttrs += ' data-wear-fl="' + Math.round(wearArr[2]) + '"'
+                      +  ' data-wear-fr="' + Math.round(wearArr[3]) + '"'
+                      +  ' data-wear-rl="' + Math.round(wearArr[0]) + '"'
+                      +  ' data-wear-rr="' + Math.round(wearArr[1]) + '"';
+        }
+
+        return '<div class="lap-cell__tyre" ' + dataAttrs + '>'
+            + '<span class="compound-badge" style="background:' + color + '">' + label + '</span>'
+            + (avg != null ? '<span class="lap-cell__wear">' + avg + '%</span>' : '')
+            + '</div>';
+    }
+
+    // Singleton tyre-info popup floater rendered in <body>. Positioned relative to the
+    // hovered .lap-cell__tyre element via getBoundingClientRect so it escapes the
+    // lap-grid-wrap's overflow clipping.
+    var tyrePopupEl = null;
+    function ensureTyrePopupEl() {
+        if (tyrePopupEl) return tyrePopupEl;
+        tyrePopupEl = document.createElement('div');
+        tyrePopupEl.className = 'tyre-popup';
+        tyrePopupEl.style.display = 'none';
+        document.body.appendChild(tyrePopupEl);
+        return tyrePopupEl;
+    }
+
+    function showTyrePopup(anchor) {
+        var popup = ensureTyrePopupEl();
+        var name = anchor.getAttribute('data-tyre-name') || '';
+        var age = anchor.getAttribute('data-tyre-age');
+        var fl = anchor.getAttribute('data-wear-fl');
+        if (fl == null) { hideTyrePopup(); return; }
+        var fr = anchor.getAttribute('data-wear-fr');
+        var rl = anchor.getAttribute('data-wear-rl');
+        var rr = anchor.getAttribute('data-wear-rr');
+        popup.innerHTML = ''
+            + '<div class="tyre-popup__title">' + escapeHtml(name)
+            +   (age != null ? ' <span class="tyre-popup__age">(' + age + ' laps)</span>' : '')
+            + '</div>'
+            + '<div class="tyre-popup__grid">'
+            +   '<div class="tyre-popup__cell"><span class="tyre-popup__lbl">FL</span><span class="tyre-popup__val">' + fl + '%</span></div>'
+            +   '<div class="tyre-popup__cell"><span class="tyre-popup__lbl">FR</span><span class="tyre-popup__val">' + fr + '%</span></div>'
+            +   '<div class="tyre-popup__cell"><span class="tyre-popup__lbl">RL</span><span class="tyre-popup__val">' + rl + '%</span></div>'
+            +   '<div class="tyre-popup__cell"><span class="tyre-popup__lbl">RR</span><span class="tyre-popup__val">' + rr + '%</span></div>'
+            + '</div>';
+        popup.style.display = 'block';
+        var r = anchor.getBoundingClientRect();
+        var pw = popup.offsetWidth;
+        var ph = popup.offsetHeight;
+        var x = r.right - pw;
+        if (x < 8) x = r.left;
+        if (x + pw > window.innerWidth - 8) x = window.innerWidth - pw - 8;
+        var y = r.bottom + 6;
+        if (y + ph > window.innerHeight - 8) y = r.top - ph - 6;
+        popup.style.left = Math.max(8, x) + 'px';
+        popup.style.top = Math.max(8, y) + 'px';
+    }
+
+    function hideTyrePopup() {
+        if (tyrePopupEl) tyrePopupEl.style.display = 'none';
+    }
+
+    function attachTyrePopupHandlers(root) {
+        root.addEventListener('mouseover', function (e) {
+            var t = e.target.closest ? e.target.closest('.lap-cell__tyre') : null;
+            if (t && root.contains(t)) showTyrePopup(t);
+        });
+        root.addEventListener('mouseout', function (e) {
+            var t = e.target.closest ? e.target.closest('.lap-cell__tyre') : null;
+            if (!t) return;
+            var next = e.relatedTarget;
+            if (next && next.closest && next.closest('.lap-cell__tyre') === t) return;
+            hideTyrePopup();
+        });
+        root.addEventListener('scroll', hideTyrePopup, true);
     }
 
     function raceFlagIcon(flag) {
