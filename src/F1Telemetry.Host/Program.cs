@@ -51,6 +51,12 @@ static class Program
         finally { _pitTimesLock.Release(); }
     }
 
+    private static bool TryGetAttributes(string path, out FileAttributes attrs)
+    {
+        try { attrs = File.GetAttributes(path); return true; }
+        catch { attrs = default; return false; }
+    }
+
     /// <summary>
     /// Aggregates a lap's 20 Hz sample stream into a compact "how hard was the car pushed?"
     /// summary for the Race Lap Times view. Returns null when samples are unavailable so the
@@ -426,6 +432,14 @@ static class Program
             foreach (var dir in Directory.GetDirectories(logsDir).OrderByDescending(d => d))
             {
                 var folder = Path.GetFileName(dir);
+
+                // Skip hidden / system / dot- / underscore-prefixed dirs (e.g. _ghosts, .git,
+                // node_modules artifacts) so a user-picked folder full of unrelated content
+                // doesn't pollute the History grid.
+                if (folder.Length == 0 || folder[0] == '.' || folder[0] == '_') continue;
+                if (TryGetAttributes(dir, out var dirAttrs) &&
+                    (dirAttrs & (FileAttributes.Hidden | FileAttributes.System)) != 0) continue;
+
                 var files = Directory.GetFiles(dir, "*.json");
                 if (files.Length == 0) continue;
 
@@ -436,22 +450,42 @@ static class Program
 
                 foreach (var file in files.OrderBy(f => f))
                 {
+                    var fileName = Path.GetFileName(file);
+                    if (fileName.Length == 0 || fileName[0] == '.' || fileName[0] == '_') continue;
+
                     try
                     {
                         using var stream = System.IO.File.OpenRead(file);
                         using var doc = JsonDocument.Parse(stream);
-                        var meta = doc.RootElement.GetProperty("meta");
+                        var root = doc.RootElement;
 
-                        trackId ??= meta.GetProperty("trackId").GetInt32();
-                        trackName ??= meta.GetProperty("trackName").GetString();
-                        if (!gameYear.HasValue && meta.TryGetProperty("gameYear", out var gy))
+                        // Only accept files with our session-log shape: a top-level "meta" object
+                        // carrying the four required fields. Anything else (random JSON, exports,
+                        // unrelated configs) is silently ignored.
+                        if (root.ValueKind != JsonValueKind.Object) continue;
+                        if (!root.TryGetProperty("meta", out var meta) ||
+                            meta.ValueKind != JsonValueKind.Object) continue;
+                        if (!meta.TryGetProperty("trackId", out var tidEl) ||
+                            tidEl.ValueKind != JsonValueKind.Number) continue;
+                        if (!meta.TryGetProperty("trackName", out var tnEl) ||
+                            tnEl.ValueKind != JsonValueKind.String) continue;
+                        if (!meta.TryGetProperty("sessionTypeName", out var stEl) ||
+                            stEl.ValueKind != JsonValueKind.String) continue;
+                        if (!meta.TryGetProperty("savedAt", out var saEl) ||
+                            saEl.ValueKind != JsonValueKind.String) continue;
+
+                        trackId ??= tidEl.GetInt32();
+                        trackName ??= tnEl.GetString();
+                        if (!gameYear.HasValue &&
+                            meta.TryGetProperty("gameYear", out var gy) &&
+                            gy.ValueKind == JsonValueKind.Number)
                             gameYear = gy.GetByte();
 
                         sessions.Add(new
                         {
                             slug = Path.GetFileNameWithoutExtension(file),
-                            typeName = meta.GetProperty("sessionTypeName").GetString(),
-                            savedAt = meta.GetProperty("savedAt").GetString(),
+                            typeName = stEl.GetString(),
+                            savedAt = saEl.GetString(),
                         });
                     }
                     catch { /* skip corrupt files */ }
