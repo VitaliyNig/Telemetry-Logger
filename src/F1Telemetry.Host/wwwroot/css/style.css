@@ -4246,10 +4246,41 @@
 
 /* ---------- Telemetry Compare ---------- */
 
-.tc-layout { display: flex; gap: 12px; padding: 4px; align-items: stretch; }
-.tc-side { flex: 0 0 260px; }
-.tc-main { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.tc-map  { flex: 0 0 360px; }
+.tc-layout {
+    display: grid;
+    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) minmax(280px, 340px);
+    gap: 12px;
+    padding: 4px;
+    align-items: start;
+}
+
+.tc-side {
+    min-width: 0;
+    position: sticky;
+    top: 4px;
+    align-self: start;
+}
+.tc-side .history-driver-picker {
+    min-width: 0;
+    max-height: calc(100vh - 200px);
+    overflow-y: auto;
+}
+
+.tc-main { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+
+.tc-map {
+    background: var(--bg-card);
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    position: sticky;
+    top: 4px;
+    align-self: start;
+    min-width: 0;
+}
 
 .tc-sector-badges {
     display: flex;
@@ -4277,7 +4308,7 @@
     color: var(--text-primary);
     padding: 4px 10px;
     font-size: 11px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--font-mono, 'Courier New', monospace);
     border-radius: 4px;
     cursor: pointer;
 }
@@ -4285,6 +4316,7 @@
 .tc-badge-reset { color: var(--text-dim); }
 
 .tc-charts {
+    --tc-label-w: 90px;
     position: relative;
     background: var(--bg-card);
     border: 1px solid var(--border);
@@ -4293,10 +4325,22 @@
     overflow: hidden;
 }
 
+/* Per-metric accent color. Drives label color and the tinted row background. */
+.tc-chart-row { --tc-metric-color: #9aa0a6; }
+.tc-chart-row[data-metric="delta"] { --tc-metric-color: #a855f7; }
+.tc-chart-row[data-metric="spd"]   { --tc-metric-color: #60a5fa; }
+.tc-chart-row[data-metric="thr"]   { --tc-metric-color: #22c55e; }
+.tc-chart-row[data-metric="brk"]   { --tc-metric-color: #ef4444; }
+.tc-chart-row[data-metric="str"]   { --tc-metric-color: #c084fc; }
+.tc-chart-row[data-metric="gr"]    { --tc-metric-color: #eab308; }
+.tc-chart-row[data-metric="rpm"]   { --tc-metric-color: #f97316; }
+.tc-chart-row[data-metric="ers"]   { --tc-metric-color: #38bdf8; }
+.tc-chart-row[data-metric="drs"]   { --tc-metric-color: var(--drs, #00d4ff); }
+
 .tc-chart-row {
     display: grid;
-    grid-template-columns: 90px 1fr;
-    grid-template-rows: var(--tc-row-h, auto) 4px;
+    grid-template-columns: var(--tc-label-w) minmax(0, 1fr);
+    grid-template-rows: var(--tc-row-h, auto) 6px;
     align-items: stretch;
     gap: 6px 6px;
     margin-bottom: 2px;
@@ -4304,30 +4348,101 @@
 
 .tc-chart-label {
     font-size: 10px;
-    font-weight: 600;
+    font-weight: 700;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
-    color: var(--text-dim);
+    letter-spacing: 0.8px;
+    color: var(--tc-metric-color);
     display: flex;
     align-items: center;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    border-left: 2px solid var(--tc-metric-color);
+    padding-left: 6px;
 }
 
 .tc-chart-svg-host {
+    position: relative;
     min-width: 0;
     height: var(--tc-row-h, auto);
     overflow: hidden;
+    border-radius: 3px;
+    background:
+        linear-gradient(
+            180deg,
+            color-mix(in srgb, var(--tc-metric-color) 10%, transparent) 0%,
+            color-mix(in srgb, var(--tc-metric-color) 3%, transparent) 100%
+        );
 }
 .tc-chart { width: 100%; height: 100%; display: block; }
 
+/* Y-axis min/max labels drawn inside the SVG. */
+.tc-axis-label {
+    font-size: 9px;
+    font-family: var(--font-mono, 'Courier New', monospace);
+    fill: var(--text-dim);
+    opacity: 0.7;
+    pointer-events: none;
+}
+
+/* Floating value chip that follows the crosshair inside each row. */
+.tc-row-chip {
+    position: absolute;
+    top: 50%;
+    transform: translateY(-50%);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px;
+    background: rgba(15, 17, 23, 0.92);
+    border: 1px solid color-mix(in srgb, var(--tc-metric-color) 60%, transparent);
+    border-radius: 3px;
+    font-size: 10px;
+    font-family: var(--font-mono, 'Courier New', monospace);
+    color: var(--text-primary);
+    white-space: nowrap;
+    pointer-events: none;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.5);
+}
+.tc-row-chip[hidden] { display: none; }
+.tc-chip-dot {
+    display: inline-block;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.tc-chip-val { color: var(--text-primary); }
+.tc-chip-sep {
+    display: inline-block;
+    width: 1px;
+    height: 10px;
+    background: rgba(255, 255, 255, 0.15);
+    margin: 0 2px;
+}
+
 .tc-resize-handle {
     grid-column: 1 / -1;
-    height: 4px;
+    height: 6px;
     cursor: row-resize;
     background: transparent;
     border-radius: 2px;
     transition: background 0.15s;
+    /* Sit above .tc-hover-layer (pointer-events: auto) so mousedown hits the handle first. */
+    position: relative;
+    z-index: 2;
 }
-.tc-resize-handle:hover { background: var(--accent-brand); opacity: 0.4; }
+/* Widen grab zone 3px above and below without changing the layout. */
+.tc-resize-handle::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    right: 0;
+    top: -3px;
+    bottom: -3px;
+}
+.tc-resize-handle:hover { background: var(--accent-brand); opacity: 0.5; }
+.tc-resize-handle:active { background: var(--accent-brand); opacity: 0.85; }
 
 .tc-line { fill: none; stroke-width: 1.2; stroke-linejoin: round; stroke-linecap: round; }
 .tc-baseline { stroke: rgba(255, 255, 255, 0.08); stroke-width: 0.5; }
@@ -4335,7 +4450,10 @@
 
 .tc-hover-layer {
     position: absolute;
-    top: 0; left: 98px; right: 8px; bottom: 8px;
+    top: 0;
+    left: calc(var(--tc-label-w, 90px) + 14px);
+    right: 8px;
+    bottom: 8px;
     pointer-events: auto;
 }
 
@@ -4346,38 +4464,6 @@
     background: rgba(155, 63, 245, 0.6);
     left: -9999px;
     pointer-events: none;
-}
-
-.tc-tooltip {
-    position: absolute;
-    top: 8px;
-    background: rgba(15, 17, 23, 0.95);
-    border: 1px solid var(--border);
-    border-radius: 4px;
-    padding: 6px 8px;
-    min-width: 220px;
-    font-size: 11px;
-    pointer-events: none;
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
-}
-
-.tc-tip-row {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    padding: 2px 0;
-}
-.tc-tip-label { flex: 1; color: var(--text-primary); font-weight: 500; }
-.tc-tip-val { color: var(--text-secondary); font-family: 'Courier New', monospace; }
-
-.tc-map {
-    background: var(--bg-card);
-    border: 1px solid var(--border);
-    border-radius: 6px;
-    padding: 8px;
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
 }
 
 .tc-map-stage { position: relative; width: 100%; aspect-ratio: 1; }
@@ -4454,7 +4540,7 @@
     font-size: 9px;
     font-weight: 700;
     fill: var(--text-secondary);
-    font-family: 'Courier New', monospace;
+    font-family: var(--font-mono, 'Courier New', monospace);
     letter-spacing: 0.5px;
     pointer-events: none;
 }
@@ -4462,6 +4548,43 @@
 /* DRS blocks (dedicated row) + faint overlay on the speed row. */
 .tc-drs-block { fill: var(--drs); opacity: 0.75; }
 .tc-drs-overlay { fill: var(--drs); opacity: 0.08; }
+
+@media (max-width: 1200px) {
+    .tc-layout {
+        grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+    }
+    .tc-map {
+        grid-column: 1 / -1;
+        position: static;
+        max-width: 420px;
+        width: 100%;
+        margin: 0 auto;
+    }
+}
+
+@media (max-width: 960px) {
+    .tc-layout {
+        grid-template-columns: minmax(0, 1fr);
+        gap: 10px;
+    }
+    .tc-side { position: static; }
+    .tc-side .history-driver-picker { max-height: 260px; }
+    .tc-charts { --tc-label-w: 64px; }
+    .tc-chart-label { font-size: 9px; letter-spacing: 0.3px; }
+}
+
+@media (max-width: 600px) {
+    .tc-layout { padding: 0; }
+    .tc-sector-badges { gap: 6px; padding: 4px 0; }
+    .tc-badge, .tc-mode, .tc-metric-chip, .tc-size-chip {
+        padding: 3px 8px;
+        font-size: 10px;
+    }
+    .tc-charts { padding: 6px; --tc-label-w: 52px; }
+    .tc-chart-row { gap: 4px; }
+    .tc-row-chip { font-size: 9px; padding: 1px 4px; }
+    .tc-map { padding: 6px; max-width: 100%; }
+}
 
 /* ---------- Events page ---------- */
 
