@@ -83,6 +83,9 @@
     // --- History ---
     // TRACK_FLAG_MAP is defined in telemetry.js and available globally
     var _historyLoaded = false;
+    var _historyWeekends = [];
+    var _historyFilters = { track: '', game: '', from: '', to: '' };
+    var _historyToolbarBound = false;
 
     function loadHistorySessions() {
         var container = document.getElementById('historySessionList');
@@ -90,6 +93,8 @@
 
         // Hide the detail view when returning to the list.
         if (window.HistoryDetail) window.HistoryDetail.close();
+
+        ensureHistoryToolbar();
 
         // Show loading only on first load
         if (!_historyLoaded) {
@@ -100,85 +105,305 @@
             .then(function (r) { return r.json(); })
             .then(function (weekends) {
                 _historyLoaded = true;
-                if (!weekends || weekends.length === 0) {
-                    container.innerHTML =
-                        '<div class="history-empty">' +
-                            '<div class="placeholder-icon">&#128202;</div>' +
-                            '<h2>No Sessions</h2>' +
-                            '<p>Recorded sessions will appear here after completing a session.</p>' +
-                        '</div>';
-                    return;
-                }
-
-                var folderIcon = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">'
-                    + '<path fill="currentColor" d="M1.75 3A1.75 1.75 0 0 0 0 4.75v6.5C0 12.216.784 13 1.75 13h12.5A1.75 1.75 0 0 0 16 11.25V5.75A1.75 1.75 0 0 0 14.25 4H7.5L6 2.5H1.75A1.75 1.75 0 0 0 0 4.25V3z"/>'
-                    + '</svg>';
-
-                var html = '<div class="history-grid">';
-                weekends.forEach(function (w) {
-                    var flagCode = (typeof TRACK_FLAG_MAP !== 'undefined' && w.trackId != null)
-                        ? TRACK_FLAG_MAP[w.trackId] : null;
-                    var flagHtml = flagCode
-                        ? '<img class="history-card-flag" src="/assets/flags/' + flagCode + '.svg" alt="' + flagCode + '" width="32" height="20">'
-                        : '';
-                    var gameLabel = w.gameYear ? 'F1 ' + w.gameYear : '';
-
-                    var tags = gameLabel
-                        ? '<span class="history-tag history-tag-game">' + escapeHtml(gameLabel) + '</span>'
-                        : '';
-                    var firstDate = '';
-                    if (w.sessions && w.sessions.length > 0) {
-                        w.sessions.forEach(function (s) {
-                            tags += '<span class="history-tag">' + escapeHtml(s.typeName || s.slug) + '</span>';
-                        });
-                        firstDate = formatSessionDate(w.sessions[0].savedAt);
-                    }
-
-                    html += '<div class="history-card" data-folder="' + escapeHtml(w.folder) + '"'
-                        + ' data-weekend-name="' + escapeHtml(w.trackName || w.folder) + '">' +
-                        '<button type="button" class="history-card-open-folder" title="Open folder in Explorer" aria-label="Open folder">' +
-                            folderIcon +
-                        '</button>' +
-                        '<div class="history-card-header">' +
-                            '<div class="history-card-title">' + flagHtml + '<span>' + escapeHtml(w.trackName || w.folder) + '</span></div>' +
-                        '</div>' +
-                        '<div class="history-card-tags">' + tags + '</div>' +
-                        '<div class="history-card-date">' + firstDate + '</div>' +
-                    '</div>';
-                });
-                html += '</div>';
-                container.innerHTML = html;
-
-                // Clicking the card opens the session (picker modal when >1 session). The small
-                // folder button in the corner is the only way to trigger Open-In-Explorer now.
-                container.querySelectorAll('.history-card').forEach(function (card) {
-                    card.addEventListener('click', function (e) {
-                        if (e.target.closest('.history-card-open-folder')) return;
-                        var weekend = weekends.find(function (x) { return x.folder === card.dataset.folder; });
-                        if (!weekend || !window.HistoryDetail) return;
-                        if (weekend.sessions.length === 1) {
-                            window.HistoryDetail.open(weekend.folder, weekend.sessions[0].slug, card.dataset.weekendName);
-                        } else {
-                            openSessionPickerModal(weekend, card.dataset.weekendName);
-                        }
-                    });
-                });
-                container.querySelectorAll('.history-card-open-folder').forEach(function (btn) {
-                    btn.addEventListener('click', function (e) {
-                        e.stopPropagation();
-                        var card = btn.closest('.history-card');
-                        if (!card) return;
-                        fetch('/api/sessions/open-folder', {
-                            method: 'POST',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ folder: card.dataset.folder })
-                        });
-                    });
-                });
+                _historyWeekends = Array.isArray(weekends) ? weekends : [];
+                populateHistoryFilterOptions(_historyWeekends);
+                renderHistorySessions();
             })
             .catch(function () {
+                _historyWeekends = [];
                 container.innerHTML = '<div class="history-empty"><p>Failed to load sessions.</p></div>';
             });
+    }
+
+    function renderHistorySessions() {
+        var container = document.getElementById('historySessionList');
+        if (!container) return;
+
+        if (!_historyWeekends || _historyWeekends.length === 0) {
+            container.innerHTML =
+                '<div class="history-empty">' +
+                    '<div class="placeholder-icon">&#128202;</div>' +
+                    '<h2>No Sessions</h2>' +
+                    '<p>Recorded sessions will appear here after completing a session.</p>' +
+                '</div>';
+            return;
+        }
+
+        var filtered = _historyWeekends.filter(matchesHistoryFilters);
+        if (filtered.length === 0) {
+            container.innerHTML =
+                '<div class="history-empty">' +
+                    '<div class="placeholder-icon">&#128269;</div>' +
+                    '<h2>No matches</h2>' +
+                    '<p>No sessions match the current filters. Try widening the date range or clearing filters.</p>' +
+                '</div>';
+            return;
+        }
+
+        var folderIcon = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">'
+            + '<path fill="currentColor" d="M1.75 3A1.75 1.75 0 0 0 0 4.75v6.5C0 12.216.784 13 1.75 13h12.5A1.75 1.75 0 0 0 16 11.25V5.75A1.75 1.75 0 0 0 14.25 4H7.5L6 2.5H1.75A1.75 1.75 0 0 0 0 4.25V3z"/>'
+            + '</svg>';
+
+        var html = '<div class="history-grid">';
+        filtered.forEach(function (w) {
+            var flagCode = (typeof TRACK_FLAG_MAP !== 'undefined' && w.trackId != null)
+                ? TRACK_FLAG_MAP[w.trackId] : null;
+            var flagHtml = flagCode
+                ? '<img class="history-card-flag" src="/assets/flags/' + flagCode + '.svg" alt="' + flagCode + '" width="32" height="20">'
+                : '';
+            var gameLabel = w.gameYear ? 'F1 ' + w.gameYear : '';
+
+            var tags = gameLabel
+                ? '<span class="history-tag history-tag-game">' + escapeHtml(gameLabel) + '</span>'
+                : '';
+            var firstDate = '';
+            if (w.sessions && w.sessions.length > 0) {
+                w.sessions.forEach(function (s) {
+                    tags += '<span class="history-tag">' + escapeHtml(s.typeName || s.slug) + '</span>';
+                });
+                firstDate = formatSessionDate(w.sessions[0].savedAt);
+            }
+
+            html += '<div class="history-card" data-folder="' + escapeHtml(w.folder) + '"'
+                + ' data-weekend-name="' + escapeHtml(w.trackName || w.folder) + '">' +
+                '<button type="button" class="history-card-open-folder" title="Open folder in Explorer" aria-label="Open folder">' +
+                    folderIcon +
+                '</button>' +
+                '<div class="history-card-header">' +
+                    '<div class="history-card-title">' + flagHtml + '<span>' + escapeHtml(w.trackName || w.folder) + '</span></div>' +
+                '</div>' +
+                '<div class="history-card-tags">' + tags + '</div>' +
+                '<div class="history-card-date">' + firstDate + '</div>' +
+            '</div>';
+        });
+        html += '</div>';
+        container.innerHTML = html;
+
+        // Clicking the card opens the session (picker modal when >1 session). The small
+        // folder button in the corner is the only way to trigger Open-In-Explorer now.
+        container.querySelectorAll('.history-card').forEach(function (card) {
+            card.addEventListener('click', function (e) {
+                if (e.target.closest('.history-card-open-folder')) return;
+                var weekend = _historyWeekends.find(function (x) { return x.folder === card.dataset.folder; });
+                if (!weekend || !window.HistoryDetail) return;
+                if (weekend.sessions.length === 1) {
+                    window.HistoryDetail.open(weekend.folder, weekend.sessions[0].slug, card.dataset.weekendName);
+                } else {
+                    openSessionPickerModal(weekend, card.dataset.weekendName);
+                }
+            });
+        });
+        container.querySelectorAll('.history-card-open-folder').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var card = btn.closest('.history-card');
+                if (!card) return;
+                fetch('/api/sessions/open-folder', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ folder: card.dataset.folder })
+                });
+            });
+        });
+    }
+
+    // ---------- History toolbar (filters + folder selector) ----------
+
+    function matchesHistoryFilters(w) {
+        if (_historyFilters.track && String(w.trackId) !== _historyFilters.track) return false;
+        if (_historyFilters.game && String(w.gameYear || '') !== _historyFilters.game) return false;
+        var from = _historyFilters.from ? new Date(_historyFilters.from + 'T00:00:00') : null;
+        // Use end-of-day for the "to" bound so the picked date is inclusive.
+        var to = _historyFilters.to ? new Date(_historyFilters.to + 'T23:59:59.999') : null;
+        if (!from && !to) return true;
+
+        // A weekend matches when at least one of its sessions falls in range.
+        if (!w.sessions || w.sessions.length === 0) return false;
+        return w.sessions.some(function (s) {
+            if (!s.savedAt) return false;
+            var d = new Date(s.savedAt);
+            if (isNaN(d.getTime())) return false;
+            if (from && d < from) return false;
+            if (to && d > to) return false;
+            return true;
+        });
+    }
+
+    function populateHistoryFilterOptions(weekends) {
+        var trackSel = document.getElementById('historyFilterTrack');
+        var gameSel = document.getElementById('historyFilterGame');
+        if (!trackSel || !gameSel) return;
+
+        var tracks = new Map();
+        var games = new Set();
+        weekends.forEach(function (w) {
+            if (w.trackId != null) {
+                var key = String(w.trackId);
+                if (!tracks.has(key)) tracks.set(key, w.trackName || ('Track ' + key));
+            }
+            if (w.gameYear) games.add(String(w.gameYear));
+        });
+
+        var trackArr = Array.from(tracks.entries())
+            .sort(function (a, b) { return a[1].localeCompare(b[1]); });
+        rebuildSelect(trackSel, trackArr, _historyFilters.track, 'All tracks');
+
+        var gameArr = Array.from(games)
+            .sort(function (a, b) { return Number(b) - Number(a); })
+            .map(function (g) { return [g, 'F1 ' + g]; });
+        rebuildSelect(gameSel, gameArr, _historyFilters.game, 'All versions');
+
+        updateClearFiltersVisibility();
+    }
+
+    function rebuildSelect(sel, entries, currentValue, allLabel) {
+        var prev = currentValue || '';
+        var hadCurrent = entries.some(function (e) { return e[0] === prev; });
+        sel.innerHTML = '';
+        var optAll = document.createElement('option');
+        optAll.value = '';
+        optAll.textContent = allLabel;
+        sel.appendChild(optAll);
+        entries.forEach(function (e) {
+            var opt = document.createElement('option');
+            opt.value = e[0];
+            opt.textContent = e[1];
+            sel.appendChild(opt);
+        });
+        sel.value = hadCurrent ? prev : '';
+    }
+
+    function updateClearFiltersVisibility() {
+        var btn = document.getElementById('btnHistoryClearFilters');
+        if (!btn) return;
+        var any = !!(_historyFilters.track || _historyFilters.game || _historyFilters.from || _historyFilters.to);
+        btn.hidden = !any;
+    }
+
+    function ensureHistoryToolbar() {
+        if (_historyToolbarBound) return;
+        _historyToolbarBound = true;
+
+        var trackSel = document.getElementById('historyFilterTrack');
+        var gameSel = document.getElementById('historyFilterGame');
+        var fromInp = document.getElementById('historyFilterFrom');
+        var toInp = document.getElementById('historyFilterTo');
+        var clearBtn = document.getElementById('btnHistoryClearFilters');
+        var selectFolderBtn = document.getElementById('btnHistorySelectFolder');
+        var resetFolderBtn = document.getElementById('btnHistoryResetFolder');
+
+        if (trackSel) trackSel.addEventListener('change', function () {
+            _historyFilters.track = trackSel.value;
+            updateClearFiltersVisibility();
+            renderHistorySessions();
+        });
+        if (gameSel) gameSel.addEventListener('change', function () {
+            _historyFilters.game = gameSel.value;
+            updateClearFiltersVisibility();
+            renderHistorySessions();
+        });
+        if (fromInp) fromInp.addEventListener('change', function () {
+            _historyFilters.from = fromInp.value;
+            updateClearFiltersVisibility();
+            renderHistorySessions();
+        });
+        if (toInp) toInp.addEventListener('change', function () {
+            _historyFilters.to = toInp.value;
+            updateClearFiltersVisibility();
+            renderHistorySessions();
+        });
+        if (clearBtn) clearBtn.addEventListener('click', function () {
+            _historyFilters = { track: '', game: '', from: '', to: '' };
+            if (trackSel) trackSel.value = '';
+            if (gameSel) gameSel.value = '';
+            if (fromInp) fromInp.value = '';
+            if (toInp) toInp.value = '';
+            updateClearFiltersVisibility();
+            renderHistorySessions();
+        });
+
+        if (selectFolderBtn) selectFolderBtn.addEventListener('click', onSelectHistoryFolder);
+        if (resetFolderBtn) resetFolderBtn.addEventListener('click', function () {
+            setHistorySource(null);
+        });
+
+        refreshHistorySource();
+    }
+
+    function refreshHistorySource() {
+        fetch('/api/sessions/source')
+            .then(function (r) { return r.json(); })
+            .then(updateHistoryFolderUi)
+            .catch(function () { /* leave default label */ });
+    }
+
+    function updateHistoryFolderUi(info) {
+        var pathEl = document.getElementById('historyFolderPath');
+        var badgeEl = document.getElementById('historyFolderBadge');
+        var resetBtn = document.getElementById('btnHistoryResetFolder');
+        if (pathEl) {
+            pathEl.textContent = info && info.path ? info.path : 'Logs';
+            pathEl.title = pathEl.textContent;
+        }
+        var isDefault = !info || info.isDefault !== false;
+        if (badgeEl) badgeEl.hidden = isDefault;
+        if (resetBtn) resetBtn.hidden = isDefault;
+    }
+
+    function onSelectHistoryFolder() {
+        var btn = document.getElementById('btnHistorySelectFolder');
+        if (btn) btn.disabled = true;
+
+        // Try the host's native folder picker first (works in the WPF tray app).
+        // Fall back to a manual path prompt for browsers / headless mode.
+        fetch('/api/sessions/source/browse', { method: 'POST' })
+            .then(function (r) {
+                if (r.status === 204) return null;        // user cancelled
+                if (r.status === 503) return 'fallback';  // no native UI available
+                if (!r.ok) throw new Error('browse failed: ' + r.status);
+                return r.json();
+            })
+            .then(function (data) {
+                if (data === null) return null;
+                if (data === 'fallback') {
+                    var current = (document.getElementById('historyFolderPath') || {}).textContent || '';
+                    var typed = window.prompt('Enter the absolute path to the History source folder:', current);
+                    return typed ? { path: typed.trim() } : null;
+                }
+                return data;
+            })
+            .then(function (picked) {
+                if (!picked || !picked.path) return;
+                return setHistorySource(picked.path);
+            })
+            .catch(function (err) {
+                window.alert('Failed to select folder: ' + (err.message || err));
+            })
+            .finally(function () {
+                if (btn) btn.disabled = false;
+            });
+    }
+
+    function setHistorySource(path) {
+        return fetch('/api/sessions/source', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ path: path })
+        }).then(function (r) {
+            if (!r.ok) {
+                return r.json().then(function (e) {
+                    throw new Error(e && e.error ? e.error : ('HTTP ' + r.status));
+                });
+            }
+            return r.json();
+        }).then(function (info) {
+            updateHistoryFolderUi(info);
+            // Force-reload the session list from the new source.
+            _historyLoaded = false;
+            loadHistorySessions();
+        }).catch(function (err) {
+            window.alert('Could not set folder: ' + (err.message || err));
+        });
     }
 
     function openSessionPickerModal(weekend, weekendName) {

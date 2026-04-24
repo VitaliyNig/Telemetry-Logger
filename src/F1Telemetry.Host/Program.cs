@@ -51,6 +51,12 @@ static class Program
         finally { _pitTimesLock.Release(); }
     }
 
+    private static bool TryGetAttributes(string path, out FileAttributes attrs)
+    {
+        try { attrs = File.GetAttributes(path); return true; }
+        catch { attrs = default; return false; }
+    }
+
     /// <summary>
     /// Aggregates a lap's 20 Hz sample stream into a compact "how hard was the car pushed?"
     /// summary for the Race Lap Times view. Returns null when samples are unavailable so the
@@ -96,6 +102,9 @@ static class Program
 
         var appSettings = builder.Configuration.GetSection(AppSettings.SectionName).Get<AppSettings>() ?? new AppSettings();
         builder.WebHost.UseUrls($"http://0.0.0.0:{appSettings.WebPort}");
+
+        // History source folder is intentionally process-local: every restart begins reading
+        // from the default Logs/ folder, even if the previous session pointed elsewhere.
 
         builder.Services.Configure<TelemetryUdpOptions>(
             builder.Configuration.GetSection(TelemetryUdpOptions.SectionName));
@@ -401,14 +410,13 @@ static class Program
 
         app.MapGet("/api/sessions", () =>
         {
-            var logsDir = Path.Combine(AppContext.BaseDirectory, "Logs");
+            var logsDir = HistoryRoot.Path;
             if (!Directory.Exists(logsDir))
                 return Results.Ok(Array.Empty<object>());
 
-            // Stat-only version: sum of top-dir + each subdir's last-write ticks.
-            // Cheaper than parsing every meta block and invalidates as soon as
-            // SessionLogger writes a new file (the weekend folder mtime changes).
-            long version = Directory.GetLastWriteTimeUtc(logsDir).Ticks;
+            // Stat-only version: sum of top-dir + each subdir's last-write ticks, plus the
+            // root path itself so switching to a different source folder always invalidates.
+            long version = HashCode.Combine(logsDir.GetHashCode(), Directory.GetLastWriteTimeUtc(logsDir).Ticks);
             foreach (var dir in Directory.EnumerateDirectories(logsDir))
                 version = HashCode.Combine(version, Directory.GetLastWriteTimeUtc(dir).Ticks);
 
@@ -423,6 +431,14 @@ static class Program
             foreach (var dir in Directory.GetDirectories(logsDir).OrderByDescending(d => d))
             {
                 var folder = Path.GetFileName(dir);
+
+                // Skip hidden / system / dot- / underscore-prefixed dirs (e.g. _ghosts, .git,
+                // node_modules artifacts) so a user-picked folder full of unrelated content
+                // doesn't pollute the History grid.
+                if (folder.Length == 0 || folder[0] == '.' || folder[0] == '_') continue;
+                if (TryGetAttributes(dir, out var dirAttrs) &&
+                    (dirAttrs & (FileAttributes.Hidden | FileAttributes.System)) != 0) continue;
+
                 var files = Directory.GetFiles(dir, "*.json");
                 if (files.Length == 0) continue;
 
@@ -433,22 +449,42 @@ static class Program
 
                 foreach (var file in files.OrderBy(f => f))
                 {
+                    var fileName = Path.GetFileName(file);
+                    if (fileName.Length == 0 || fileName[0] == '.' || fileName[0] == '_') continue;
+
                     try
                     {
                         using var stream = System.IO.File.OpenRead(file);
                         using var doc = JsonDocument.Parse(stream);
-                        var meta = doc.RootElement.GetProperty("meta");
+                        var root = doc.RootElement;
 
-                        trackId ??= meta.GetProperty("trackId").GetInt32();
-                        trackName ??= meta.GetProperty("trackName").GetString();
-                        if (!gameYear.HasValue && meta.TryGetProperty("gameYear", out var gy))
+                        // Only accept files with our session-log shape: a top-level "meta" object
+                        // carrying the four required fields. Anything else (random JSON, exports,
+                        // unrelated configs) is silently ignored.
+                        if (root.ValueKind != JsonValueKind.Object) continue;
+                        if (!root.TryGetProperty("meta", out var meta) ||
+                            meta.ValueKind != JsonValueKind.Object) continue;
+                        if (!meta.TryGetProperty("trackId", out var tidEl) ||
+                            tidEl.ValueKind != JsonValueKind.Number) continue;
+                        if (!meta.TryGetProperty("trackName", out var tnEl) ||
+                            tnEl.ValueKind != JsonValueKind.String) continue;
+                        if (!meta.TryGetProperty("sessionTypeName", out var stEl) ||
+                            stEl.ValueKind != JsonValueKind.String) continue;
+                        if (!meta.TryGetProperty("savedAt", out var saEl) ||
+                            saEl.ValueKind != JsonValueKind.String) continue;
+
+                        trackId ??= tidEl.GetInt32();
+                        trackName ??= tnEl.GetString();
+                        if (!gameYear.HasValue &&
+                            meta.TryGetProperty("gameYear", out var gy) &&
+                            gy.ValueKind == JsonValueKind.Number)
                             gameYear = gy.GetByte();
 
                         sessions.Add(new
                         {
                             slug = Path.GetFileNameWithoutExtension(file),
-                            typeName = meta.GetProperty("sessionTypeName").GetString(),
-                            savedAt = meta.GetProperty("savedAt").GetString(),
+                            typeName = stEl.GetString(),
+                            savedAt = saEl.GetString(),
                         });
                     }
                     catch { /* skip corrupt files */ }
@@ -629,7 +665,7 @@ static class Program
                 return Results.BadRequest(new { error = "no driver payload" });
 
             var safeFolder = Path.GetFileName(folder);
-            var ghostsDir = Path.Combine(AppContext.BaseDirectory, "Logs", safeFolder, "_ghosts");
+            var ghostsDir = Path.Combine(HistoryRoot.Path, safeFolder, "_ghosts");
             Directory.CreateDirectory(ghostsDir);
             var fileName = $"ghost_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.json";
             var path = Path.Combine(ghostsDir, fileName);
@@ -679,7 +715,7 @@ static class Program
                 return Results.NotFound(new { error = "session not found" });
 
             var safeFolder = Path.GetFileName(folder);
-            var ghostsDir = Path.Combine(AppContext.BaseDirectory, "Logs", safeFolder, "_ghosts");
+            var ghostsDir = Path.Combine(HistoryRoot.Path, safeFolder, "_ghosts");
             if (!Directory.Exists(ghostsDir)) return Results.Ok(Array.Empty<object>());
 
             var ghosts = new List<object>();
@@ -712,7 +748,7 @@ static class Program
 
             // Sanitize: only allow folder name, no path traversal
             var safeName = Path.GetFileName(req.Folder);
-            var fullPath = Path.Combine(AppContext.BaseDirectory, "Logs", safeName);
+            var fullPath = Path.Combine(HistoryRoot.Path, safeName);
 
             if (!Directory.Exists(fullPath))
                 return Results.NotFound(new { error = "folder not found" });
@@ -720,8 +756,81 @@ static class Program
             System.Diagnostics.Process.Start("explorer.exe", fullPath);
             return Results.Ok(new { opened = true });
         });
+
+        // --- History source folder ---
+
+        app.MapGet("/api/sessions/source", () =>
+        {
+            var path = HistoryRoot.Path;
+            return Results.Ok(new
+            {
+                path,
+                isDefault = HistoryRoot.IsDefault,
+                defaultPath = HistoryRoot.DefaultPath,
+                exists = Directory.Exists(path),
+            });
+        });
+
+        // Update the History view's source folder for the current process. Pass null/empty
+        // path to reset to the default Logs/. The choice is intentionally NOT persisted —
+        // every app restart begins from Logs/ again.
+        app.MapPost("/api/sessions/source", async (HttpContext ctx) =>
+        {
+            var body = await ctx.Request.ReadFromJsonAsync<HistorySourceUpdateRequest>();
+            var newPath = body?.Path;
+
+            string resolved;
+            if (string.IsNullOrWhiteSpace(newPath))
+            {
+                resolved = HistoryRoot.DefaultPath;
+            }
+            else
+            {
+                resolved = HistoryRoot.Resolve(newPath);
+                if (!Directory.Exists(resolved))
+                    return Results.BadRequest(new { error = "folder does not exist", path = resolved });
+            }
+
+            HistoryRoot.Path = resolved;
+
+            return Results.Ok(new
+            {
+                path = resolved,
+                isDefault = HistoryRoot.IsDefault,
+            });
+        });
+
+        // Opens a native WPF folder picker on the app's UI thread and returns the chosen path.
+        // Returns 204 No Content if the user cancels. Only works when the WPF Application is alive
+        // (i.e. running as the tray app, not a headless web host).
+        app.MapPost("/api/sessions/source/browse", () =>
+        {
+            var wpfApp = System.Windows.Application.Current;
+            if (wpfApp == null)
+                return Results.Problem("native folder picker is unavailable in headless mode", statusCode: 503);
+
+            string? picked = null;
+            wpfApp.Dispatcher.Invoke(() =>
+            {
+                var dlg = new Microsoft.Win32.OpenFolderDialog
+                {
+                    Title = "Select History Source Folder",
+                    InitialDirectory = Directory.Exists(HistoryRoot.Path)
+                        ? HistoryRoot.Path
+                        : HistoryRoot.DefaultPath,
+                };
+                if (dlg.ShowDialog() == true)
+                    picked = dlg.FolderName;
+            });
+
+            return picked == null
+                ? Results.NoContent()
+                : Results.Ok(new { path = picked });
+        });
     }
 }
+
+record HistorySourceUpdateRequest(string? Path);
 
 record SettingsUpdateRequest(
     [property: JsonPropertyName("udpListenIp")] string UdpListenIp,
