@@ -123,7 +123,9 @@
                         : '';
                     var gameLabel = w.gameYear ? 'F1 ' + w.gameYear : '';
 
-                    var tags = '';
+                    var tags = gameLabel
+                        ? '<span class="history-tag history-tag-game">' + escapeHtml(gameLabel) + '</span>'
+                        : '';
                     var firstDate = '';
                     if (w.sessions && w.sessions.length > 0) {
                         w.sessions.forEach(function (s) {
@@ -139,7 +141,6 @@
                         '</button>' +
                         '<div class="history-card-header">' +
                             '<div class="history-card-title">' + flagHtml + '<span>' + escapeHtml(w.trackName || w.folder) + '</span></div>' +
-                            (gameLabel ? '<span class="history-card-game">' + gameLabel + '</span>' : '') +
                         '</div>' +
                         '<div class="history-card-tags">' + tags + '</div>' +
                         '<div class="history-card-date">' + firstDate + '</div>' +
