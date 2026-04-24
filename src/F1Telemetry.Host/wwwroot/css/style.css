@@ -455,6 +455,24 @@
     flex-wrap: wrap;
 }
 
+.history-folder-input-row input[type="text"] {
+    flex: 1 1 280px;
+    min-width: 200px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 12px;
+}
+
+.history-folder-resolved {
+    color: var(--text-secondary);
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 11px;
+    word-break: break-all;
+}
+
+.history-folder-error {
+    color: #f59e9e;
+}
+
 .restart-badge[hidden] {
     display: none;
 }

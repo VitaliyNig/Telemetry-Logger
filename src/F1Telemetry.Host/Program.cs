@@ -103,8 +103,10 @@ static class Program
         var appSettings = builder.Configuration.GetSection(AppSettings.SectionName).Get<AppSettings>() ?? new AppSettings();
         builder.WebHost.UseUrls($"http://0.0.0.0:{appSettings.WebPort}");
 
-        // History source folder is intentionally process-local: every restart begins reading
-        // from the default Logs/ folder, even if the previous session pointed elsewhere.
+        // Apply the persisted History folder (Settings tab) so reads and writes both target it
+        // from the very first request. The History tab's "Select Folder" can temporarily
+        // override the read root on top of this baseline, but never persists.
+        HistoryRoot.PersistentDefault = HistoryRoot.Resolve(appSettings.HistoryFolder);
 
         builder.Services.Configure<TelemetryUdpOptions>(
             builder.Configuration.GetSection(TelemetryUdpOptions.SectionName));
@@ -215,7 +217,10 @@ static class Program
                 udpListenPort = udpSection.GetValue<int?>("Port") ?? 20777,
                 webPort = s.WebPort,
                 debugMode = s.DebugMode,
-                enableSessionLogging = s.EnableSessionLogging
+                enableSessionLogging = s.EnableSessionLogging,
+                historyFolder = s.HistoryFolder,
+                historyFolderResolved = HistoryRoot.PersistentDefault,
+                historyFolderDefault = HistoryRoot.BuiltInDefault,
             });
         });
 
@@ -224,6 +229,16 @@ static class Program
             var body = await ctx.Request.ReadFromJsonAsync<SettingsUpdateRequest>();
             if (body is null)
                 return Results.BadRequest("Invalid request body");
+
+            // Validate the History folder before touching anything else: a non-empty value
+            // that points nowhere should fail loudly so the UI can show an error.
+            string? historyFolder = string.IsNullOrWhiteSpace(body.HistoryFolder) ? null : body.HistoryFolder!.Trim();
+            if (historyFolder != null)
+            {
+                var resolved = HistoryRoot.Resolve(historyFolder);
+                if (!Directory.Exists(resolved))
+                    return Results.BadRequest(new { error = "history folder does not exist", path = resolved });
+            }
 
             var configPath = Path.Combine(AppContext.BaseDirectory, "appsettings.user.json");
             var existing = new Dictionary<string, object>();
@@ -241,8 +256,13 @@ static class Program
                 WebPort = body.WebPort,
                 DebugMode = body.DebugMode,
                 EnableSessionLogging = body.EnableSessionLogging,
-                LaunchBrowserOnStart = currentApp.LaunchBrowserOnStart
+                LaunchBrowserOnStart = currentApp.LaunchBrowserOnStart,
+                HistoryFolder = historyFolder,
             };
+
+            // Apply immediately so subsequent reads/writes target the new path without
+            // needing a restart. PersistentDefault setter also clears any ephemeral override.
+            HistoryRoot.PersistentDefault = HistoryRoot.Resolve(historyFolder);
 
             var newJson = JsonSerializer.Serialize(existing,
                 new JsonSerializerOptions { WriteIndented = true });
@@ -766,37 +786,37 @@ static class Program
             {
                 path,
                 isDefault = HistoryRoot.IsDefault,
-                defaultPath = HistoryRoot.DefaultPath,
+                defaultPath = HistoryRoot.PersistentDefault,
+                builtInDefault = HistoryRoot.BuiltInDefault,
                 exists = Directory.Exists(path),
             });
         });
 
-        // Update the History view's source folder for the current process. Pass null/empty
-        // path to reset to the default Logs/. The choice is intentionally NOT persisted —
-        // every app restart begins from Logs/ again.
+        // Set the History view's read root for the current process. Pass null/empty to revert
+        // to the persisted default (Settings tab). The override is intentionally NOT persisted —
+        // every app restart re-reads from the persisted default.
         app.MapPost("/api/sessions/source", async (HttpContext ctx) =>
         {
             var body = await ctx.Request.ReadFromJsonAsync<HistorySourceUpdateRequest>();
             var newPath = body?.Path;
 
-            string resolved;
             if (string.IsNullOrWhiteSpace(newPath))
             {
-                resolved = HistoryRoot.DefaultPath;
+                HistoryRoot.OverrideForSession(null);
             }
             else
             {
-                resolved = HistoryRoot.Resolve(newPath);
+                var resolved = HistoryRoot.Resolve(newPath);
                 if (!Directory.Exists(resolved))
                     return Results.BadRequest(new { error = "folder does not exist", path = resolved });
+                HistoryRoot.OverrideForSession(resolved);
             }
-
-            HistoryRoot.Path = resolved;
 
             return Results.Ok(new
             {
-                path = resolved,
+                path = HistoryRoot.Path,
                 isDefault = HistoryRoot.IsDefault,
+                defaultPath = HistoryRoot.PersistentDefault,
             });
         });
 
@@ -837,7 +857,8 @@ record SettingsUpdateRequest(
     [property: JsonPropertyName("udpListenPort")] int UdpListenPort,
     [property: JsonPropertyName("webPort")] int WebPort,
     [property: JsonPropertyName("debugMode")] bool DebugMode,
-    [property: JsonPropertyName("enableSessionLogging")] bool EnableSessionLogging);
+    [property: JsonPropertyName("enableSessionLogging")] bool EnableSessionLogging,
+    [property: JsonPropertyName("historyFolder")] string? HistoryFolder);
 
 record OpenFolderRequest(string Folder);
 

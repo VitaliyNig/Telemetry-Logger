@@ -27,6 +27,12 @@
     var autoSwitchPreset = document.getElementById('autoSwitchPreset');
     var enableSessionLogging = document.getElementById('enableSessionLogging');
 
+    var historyFolderInput = document.getElementById('historyFolderInput');
+    var historyFolderResolved = document.getElementById('historyFolderResolved');
+    var historyFolderError = document.getElementById('historyFolderError');
+    var btnSettingsBrowseFolder = document.getElementById('btnSettingsBrowseFolder');
+    var btnSettingsResetFolder = document.getElementById('btnSettingsResetFolder');
+
     var totalPacketsEl = document.getElementById('totalPackets');
     var packetCountsList = document.getElementById('packetCountsList');
     var debugConsole = document.getElementById('debugConsole');
@@ -95,6 +101,8 @@
         if (window.HistoryDetail) window.HistoryDetail.close();
 
         ensureHistoryToolbar();
+        // Sync the toolbar's folder display in case Settings changed the persisted root.
+        refreshHistorySource();
 
         // Show loading only on first load
         if (!_historyLoaded) {
@@ -326,8 +334,6 @@
         if (resetFolderBtn) resetFolderBtn.addEventListener('click', function () {
             setHistorySource(null);
         });
-
-        refreshHistorySource();
     }
 
     function refreshHistorySource() {
@@ -461,6 +467,8 @@
                 initialWebPort = parseInt(data.webPort, 10);
                 debugModeToggle.checked = data.debugMode;
                 if (enableSessionLogging) enableSessionLogging.checked = data.enableSessionLogging;
+                if (historyFolderInput) historyFolderInput.value = data.historyFolder || '';
+                updateHistoryFolderSettingsUi(data, null);
                 setDebugMode(data.debugMode);
                 syncDashboardTogglesFromStorage();
                 updateWebPortRestartBadge();
@@ -477,12 +485,14 @@
         if (autoSaveTimer) clearTimeout(autoSaveTimer);
         autoSaveTimer = setTimeout(function () {
             autoSaveTimer = null;
+            var historyFolderRaw = historyFolderInput ? historyFolderInput.value.trim() : '';
             var body = {
                 udpListenIp: udpListenIp.value.trim(),
                 udpListenPort: parseInt(udpListenPort.value, 10),
                 webPort: parseInt(webPort.value, 10),
                 debugMode: debugModeToggle.checked,
-                enableSessionLogging: !!(enableSessionLogging && enableSessionLogging.checked)
+                enableSessionLogging: !!(enableSessionLogging && enableSessionLogging.checked),
+                historyFolder: historyFolderRaw || null
             };
 
             fetch('/api/settings', {
@@ -490,18 +500,56 @@
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify(body)
             })
-                .then(function (r) { return r.json(); })
-                .then(function () {
+                .then(function (r) {
+                    return r.json().then(function (b) { return { ok: r.ok, body: b }; });
+                })
+                .then(function (res) {
+                    if (!res.ok) {
+                        var msg = (res.body && res.body.error) ? res.body.error : 'Save failed';
+                        if (historyFolderError) {
+                            historyFolderError.textContent = msg + (res.body && res.body.path ? ' (' + res.body.path + ')' : '');
+                            historyFolderError.hidden = false;
+                        }
+                        return;
+                    }
+                    if (historyFolderError) historyFolderError.hidden = true;
                     localStorage.setItem(AUTO_SWITCH_KEY, autoSwitchPreset && autoSwitchPreset.checked ? 'true' : 'false');
                     if (typeof window.applyDashboardLayoutLock === 'function') {
                         window.applyDashboardLayoutLock();
                     }
                     updateWebPortRestartBadge();
+                    // The persisted History root may have changed — refresh whatever the History
+                    // toolbar shows next time it opens, and invalidate cached weekend data.
+                    refreshHistorySource();
+                    _historyLoaded = false;
                 })
                 .catch(function (err) {
                     console.error('Failed to save settings:', err);
                 });
         }, 400);
+    }
+
+    function updateHistoryFolderSettingsUi(settingsData, errorMsg) {
+        if (!historyFolderResolved && !btnSettingsResetFolder) return;
+        var raw = (historyFolderInput && historyFolderInput.value || '').trim();
+        var hasCustom = raw.length > 0;
+        if (btnSettingsResetFolder) btnSettingsResetFolder.hidden = !hasCustom;
+        if (historyFolderResolved) {
+            if (settingsData && settingsData.historyFolderResolved && hasCustom) {
+                historyFolderResolved.textContent = 'Resolved: ' + settingsData.historyFolderResolved;
+                historyFolderResolved.hidden = false;
+            } else {
+                historyFolderResolved.hidden = true;
+            }
+        }
+        if (historyFolderError) {
+            if (errorMsg) {
+                historyFolderError.textContent = errorMsg;
+                historyFolderError.hidden = false;
+            } else {
+                historyFolderError.hidden = true;
+            }
+        }
     }
 
     function setDebugMode(enabled) {
@@ -531,6 +579,54 @@
     }
     if (enableSessionLogging) {
         enableSessionLogging.addEventListener('change', autoSaveSettings);
+    }
+
+    if (historyFolderInput) {
+        historyFolderInput.addEventListener('input', function () {
+            updateHistoryFolderSettingsUi(null, null);
+            autoSaveSettings();
+        });
+    }
+    if (btnSettingsBrowseFolder) {
+        btnSettingsBrowseFolder.addEventListener('click', function () {
+            btnSettingsBrowseFolder.disabled = true;
+            fetch('/api/sessions/source/browse', { method: 'POST' })
+                .then(function (r) {
+                    if (r.status === 204) return null;
+                    if (r.status === 503) return 'fallback';
+                    if (!r.ok) throw new Error('browse failed: ' + r.status);
+                    return r.json();
+                })
+                .then(function (data) {
+                    if (data === null) return null;
+                    if (data === 'fallback') {
+                        var current = historyFolderInput ? historyFolderInput.value : '';
+                        var typed = window.prompt('Enter the absolute path for the History folder:', current);
+                        return typed ? { path: typed.trim() } : null;
+                    }
+                    return data;
+                })
+                .then(function (picked) {
+                    if (!picked || !picked.path) return;
+                    if (historyFolderInput) historyFolderInput.value = picked.path;
+                    updateHistoryFolderSettingsUi(null, null);
+                    autoSaveSettings();
+                })
+                .catch(function (err) {
+                    if (historyFolderError) {
+                        historyFolderError.textContent = 'Browse failed: ' + (err.message || err);
+                        historyFolderError.hidden = false;
+                    }
+                })
+                .finally(function () { btnSettingsBrowseFolder.disabled = false; });
+        });
+    }
+    if (btnSettingsResetFolder) {
+        btnSettingsResetFolder.addEventListener('click', function () {
+            if (historyFolderInput) historyFolderInput.value = '';
+            updateHistoryFolderSettingsUi(null, null);
+            autoSaveSettings();
+        });
     }
 
     [udpListenIp, udpListenPort, webPort].forEach(function (el) {

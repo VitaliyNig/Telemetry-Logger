@@ -2,18 +2,17 @@ using System.Diagnostics;
 using System.IO;
 using System.Windows;
 using System.Windows.Controls;
+using F1Telemetry.Host.Logging;
 
 namespace F1Telemetry.Tray;
 
 public partial class TrayPopup : UserControl
 {
     private readonly int _webPort;
-    private readonly string _dataFolder;
 
-    public TrayPopup(int webPort, string udpAddress, int udpPort, string dataFolder)
+    public TrayPopup(int webPort, string udpAddress, int udpPort)
     {
         _webPort = webPort;
-        _dataFolder = dataFolder;
 
         InitializeComponent();
 
@@ -36,7 +35,10 @@ public partial class TrayPopup : UserControl
 
     private void OpenDataFolder_Click(object sender, RoutedEventArgs e)
     {
-        var target = Directory.Exists(_dataFolder) ? _dataFolder : AppContext.BaseDirectory;
+        // Resolve the live persisted root each click so a Settings change is picked up
+        // without recreating the tray popup.
+        var dataFolder = HistoryRoot.PersistentDefault;
+        var target = Directory.Exists(dataFolder) ? dataFolder : AppContext.BaseDirectory;
         try
         {
             Process.Start(new ProcessStartInfo

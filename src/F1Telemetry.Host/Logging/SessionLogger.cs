@@ -464,7 +464,9 @@ public sealed class SessionLogger
         try
         {
             var slug = F125SessionTypes.GetSlug(entry.SessionType);
-            var logsDir = Path.Combine(AppContext.BaseDirectory, "Logs", entry.WeekendFolder);
+            // Writes always target the persisted root (Settings tab), not any ephemeral
+            // History "Select Folder" override that might be active for read-only browsing.
+            var logsDir = Path.Combine(HistoryRoot.PersistentDefault, entry.WeekendFolder);
             Directory.CreateDirectory(logsDir);
 
             var filePath = Path.Combine(logsDir, $"{slug}.json");
