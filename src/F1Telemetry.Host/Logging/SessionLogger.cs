@@ -125,6 +125,10 @@ public sealed class SessionLogger
                     HandleEvent(entry, header, evt);
                     if (evt.EventCode == "SEND")
                     {
+                        // The chequered flag holds CurrentLapNum at TotalLaps instead of
+                        // incrementing it, so the lap-boundary path in ProcessLapData never
+                        // fires for the final lap of a race. Finalize it here from history.
+                        FinalizeOpenLaps(entry, uid);
                         WriteSession(uid, entry);
                         _sessions.Remove(uid);
                         return;
@@ -234,7 +238,7 @@ public sealed class SessionLogger
             if (currentNum != prevNum)
             {
                 // Lap boundary crossed — the lap we just left (prevNum) is now complete.
-                CompleteLap(entry, idx, prevNum, lap, header);
+                CompleteLap(entry, idx, prevNum, lap, header.SessionUid);
                 entry.CurrentLapNum[idx] = currentNum;
                 entry.CurrentLapStartSessionTimeS[idx] = header.SessionTime;
                 entry.LapMaxFlag[idx] = entry.CurrentRaceFlag;
@@ -242,7 +246,40 @@ public sealed class SessionLogger
         }
     }
 
-    private void CompleteLap(SessionEntry entry, byte idx, byte completedLapNum, LapData latest, TelemetryPacketHeader header)
+    /// <summary>
+    /// Completes any car's currently-open lap that the game has actually finished but the
+    /// lap-boundary path in <see cref="ProcessLapData"/> never observed (e.g. the race's
+    /// final lap, where CurrentLapNum doesn't advance after the chequered flag).
+    /// SessionHistory is the gate: a non-zero LapTimeInMs means the car crossed the line on
+    /// that lap, which excludes quali in/out-laps and mid-lap retirements.
+    /// </summary>
+    private void FinalizeOpenLaps(SessionEntry entry, ulong sessionUid)
+    {
+        var lapPacket = entry.LatestPackets.GetValueOrDefault("LapData") as LapDataPacket;
+
+        for (byte idx = 0; idx < MaxCars; idx++)
+        {
+            var openLapNum = entry.CurrentLapNum[idx];
+            if (openLapNum == 0)
+                continue;
+
+            if (!entry.LapHistories.TryGetValue(idx, out var hist))
+                continue;
+            if (openLapNum > hist.LapHistoryDataItems.Length)
+                continue;
+            if (hist.LapHistoryDataItems[openLapNum - 1].LapTimeInMs == 0)
+                continue;
+
+            var latest = (lapPacket != null && idx < lapPacket.LapDataItems.Length)
+                ? lapPacket.LapDataItems[idx]
+                : new LapData();
+
+            CompleteLap(entry, idx, openLapNum, latest, sessionUid);
+            entry.CurrentLapNum[idx] = 0;
+        }
+    }
+
+    private void CompleteLap(SessionEntry entry, byte idx, byte completedLapNum, LapData latest, ulong sessionUid)
     {
         var driver = GetOrCreateDriver(entry, idx);
 
@@ -307,7 +344,7 @@ public sealed class SessionLogger
         // previously persisted. Accept ~100 MB peak RAM for a 60-lap race.
         if (idx == entry.PlayerCarIndex && completedLapNum > 0 && completedLapNum % FlushEveryNPlayerLaps == 0)
         {
-            WriteSession(header.SessionUid, entry);
+            WriteSession(sessionUid, entry);
         }
     }
 
@@ -425,7 +462,10 @@ public sealed class SessionLogger
         lock (_lock)
         {
             foreach (var (uid, entry) in _sessions)
+            {
+                FinalizeOpenLaps(entry, uid);
                 WriteSession(uid, entry);
+            }
 
             _sessions.Clear();
         }
