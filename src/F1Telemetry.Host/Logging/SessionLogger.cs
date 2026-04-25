@@ -102,6 +102,7 @@ public sealed class SessionLogger
 
             entry.PlayerCarIndex = header.PlayerCarIndex;
             entry.GameYear = header.GameYear;
+            entry.LastKnownSessionTimeS = header.SessionTime;
 
             // Update latest snapshot for every non-high-frequency packet. Motion / MotionEx
             // would otherwise balloon the in-memory snapshot dictionary.
@@ -125,6 +126,7 @@ public sealed class SessionLogger
                     HandleEvent(entry, header, evt);
                     if (evt.EventCode == "SEND")
                     {
+                        FinalizePendingLaps(entry, header);
                         WriteSession(uid, entry);
                         _sessions.Remove(uid);
                         return;
@@ -234,7 +236,7 @@ public sealed class SessionLogger
             if (currentNum != prevNum)
             {
                 // Lap boundary crossed — the lap we just left (prevNum) is now complete.
-                CompleteLap(entry, idx, prevNum, lap, header);
+                CompleteLap(entry, idx, prevNum, lap, header.SessionUid);
                 entry.CurrentLapNum[idx] = currentNum;
                 entry.CurrentLapStartSessionTimeS[idx] = header.SessionTime;
                 entry.LapMaxFlag[idx] = entry.CurrentRaceFlag;
@@ -242,7 +244,7 @@ public sealed class SessionLogger
         }
     }
 
-    private void CompleteLap(SessionEntry entry, byte idx, byte completedLapNum, LapData latest, TelemetryPacketHeader header)
+    private void CompleteLap(SessionEntry entry, byte idx, byte completedLapNum, LapData latest, ulong sessionUid)
     {
         var driver = GetOrCreateDriver(entry, idx);
 
@@ -307,7 +309,7 @@ public sealed class SessionLogger
         // previously persisted. Accept ~100 MB peak RAM for a 60-lap race.
         if (idx == entry.PlayerCarIndex && completedLapNum > 0 && completedLapNum % FlushEveryNPlayerLaps == 0)
         {
-            WriteSession(header.SessionUid, entry);
+            WriteSession(sessionUid, entry);
         }
     }
 
@@ -425,9 +427,46 @@ public sealed class SessionLogger
         lock (_lock)
         {
             foreach (var (uid, entry) in _sessions)
+            {
+                FinalizePendingLaps(entry, uid, entry.LastKnownSessionTimeS);
                 WriteSession(uid, entry);
+            }
 
             _sessions.Clear();
+        }
+    }
+
+
+    private void FinalizePendingLaps(SessionEntry entry, TelemetryPacketHeader header)
+    {
+        FinalizePendingLaps(entry, header.SessionUid, header.SessionTime);
+    }
+
+    private void FinalizePendingLaps(SessionEntry entry, ulong sessionUid, float sessionTime)
+    {
+        var lapData = entry.LatestPackets.GetValueOrDefault("LapData") as LapDataPacket;
+        if (lapData == null || lapData.LapDataItems == null)
+            return;
+
+        var count = Math.Min(lapData.LapDataItems.Length, MaxCars);
+        for (byte carIdx = 0; carIdx < count; carIdx++)
+        {
+            var currentNum = entry.CurrentLapNum[carIdx];
+            if (currentNum == 0)
+                continue;
+
+            var driver = GetOrCreateDriver(entry, carIdx);
+            if (driver.Laps.Any(l => l.LapNum == currentNum))
+                continue;
+
+            var lapCompleted =
+                (entry.LapHistories.TryGetValue(carIdx, out var hist) && hist.NumLaps >= currentNum) ||
+                lapData.LapDataItems[carIdx].LastLapTimeInMs > 0;
+
+            if (!lapCompleted)
+                continue;
+
+            CompleteLap(entry, carIdx, currentNum, lapData.LapDataItems[carIdx], sessionUid);
         }
     }
 
@@ -594,6 +633,8 @@ public sealed class SessionLogger
         /// <summary>Per-car latch: set true when CarStatusPacket.VehicleFiaFlags == 2 (blue) is
         /// seen at any frame during the current lap. Cleared at lap completion.</summary>
         public readonly bool[] LapBlueFlag = new bool[MaxCars];
+
+        public float LastKnownSessionTimeS { get; set; }
     }
 
 }
