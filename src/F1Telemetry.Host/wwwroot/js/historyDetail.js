@@ -502,7 +502,8 @@
 
         var title = 'Performance ' + perfPct + '%'
             + ' · ERS usage ' + ersPct + '%'
-            + ' · DRS usage ' + drsPct + '%';
+            + ' · DRS usage ' + drsPct + '%'
+            + (p.drsZoneBased ? ' (track zones)' : ' (whole-lap fallback)');
         var tone = perfPct >= 75 ? 'push' : (perfPct >= 40 ? 'cruise' : 'save');
 
         var cellCls = 'lap-cell lap-sub--perf';
