@@ -707,13 +707,6 @@
     // ---------- Phase H: Events ----------
 
     var HISTORY_EVENT_FILTER_KEY = 'f1telemetry_event_filter_v1';
-    var eventsState = {
-        query: '',
-        codeFilter: loadEventFilter(),
-        panel: null,
-        panelButton: null,
-    };
-
     var EVENT_NAMES = {
         'SSTA': 'Session Start', 'SEND': 'Session End',
         'FTLP': 'Fastest Lap', 'RTMT': 'Retirement',
@@ -735,6 +728,12 @@
         'DRSE': '#38bdf8', 'DRSD': '#38bdf8', 'SPTP': '#38bdf8', 'STLG': '#38bdf8',
         'OVTK': '#fb923c', 'RTMT': '#fb923c', 'TMPT': '#fb923c',
         'BUTN': '#6b7280',
+    };
+    var eventsState = {
+        query: '',
+        codeFilter: loadEventFilter(),
+        panel: null,
+        panelButton: null,
     };
 
     function loadEventFilter() {
