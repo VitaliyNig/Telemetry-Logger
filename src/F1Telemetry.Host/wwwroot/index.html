@@ -276,6 +276,29 @@
                     </div>
                 </div>
             </div>
+
+            <div class="debug-drs-capture">
+                <h3>Capture DRS Zones (TT)</h3>
+                <p class="muted">Drive a clean Time Trial lap; the app records zones from <code>DrsAllowed</code> transitions and writes them to <code>wwwroot/data/drs-zones.json</code>.</p>
+                <div class="drs-cap-status">
+                    <span class="drs-cap-state" id="drsCapState">Ready</span>
+                    <span class="drs-cap-track muted" id="drsCapTrack"></span>
+                </div>
+                <div class="drs-cap-actions">
+                    <button class="btn btn-primary" id="btnDrsCapStart">Start capture</button>
+                    <button class="btn btn-secondary" id="btnDrsCapCancel" disabled>Cancel</button>
+                    <button class="btn btn-success" id="btnDrsCapSave" disabled>Save</button>
+                </div>
+                <div class="drs-cap-error" id="drsCapError" hidden></div>
+
+                <div class="drs-cap-overwrite" id="drsCapOverwrite" hidden>
+                    <p id="drsCapOverwriteMsg"></p>
+                    <div class="drs-cap-actions">
+                        <button class="btn btn-danger" id="btnDrsCapOverwriteConfirm">Overwrite</button>
+                        <button class="btn btn-secondary" id="btnDrsCapOverwriteCancel">Keep existing</button>
+                    </div>
+                </div>
+            </div>
         </section>
     </main>
 

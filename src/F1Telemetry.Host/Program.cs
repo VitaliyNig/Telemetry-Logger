@@ -7,6 +7,7 @@ using Microsoft.Extensions.Options;
 using F1Telemetry.Config;
 using F1Telemetry.Debug;
 using F1Telemetry.F125;
+using F1Telemetry.F125.Packets;
 using F1Telemetry.F125.Protocol;
 using F1Telemetry.Host.Hubs;
 using F1Telemetry.Host.Ingress;
@@ -25,6 +26,8 @@ static class Program
     // Static DRS geometry cache loaded from wwwroot/data/drs-zones.json.
     private static readonly object _drsZonesLock = new();
     private static Dictionary<int, (float Start, float End)[]>? _drsZonesCache;
+    private static readonly string _drsZonesPath =
+        Path.Combine(AppContext.BaseDirectory, "wwwroot", "data", "drs-zones.json");
 
     // /api/sessions cache — invalidated automatically when any Logs/ subdir changes mtime.
     private static readonly object _sessionsCacheLock = new();
@@ -108,6 +111,62 @@ static class Program
                 _drsZonesCache = new Dictionary<int, (float Start, float End)[]>();
                 return _drsZonesCache;
             }
+        }
+    }
+
+    private static object SerializeCaptureSnapshot(DrsCaptureSnapshot s) => new
+    {
+        state = s.State.ToString(),
+        trackId = s.TrackId,
+        currentLapNum = s.CurrentLapNum,
+        currentLapFraction = s.CurrentLapFraction,
+        capturedZoneCount = s.CapturedZoneCount,
+        zones = s.Zones.Select(z => new[] { z.Start, z.End }).ToArray(),
+        error = s.Error,
+    };
+
+    /// <summary>
+    /// Sets/replaces the zones for one track in <c>drs-zones.json</c> and invalidates the cache.
+    /// Atomic: writes via a sibling .tmp + rename so a crash never truncates the live file.
+    /// </summary>
+    private static async Task SaveDrsZonesAsync(int trackId, IReadOnlyList<DrsZoneRange> zones)
+    {
+        // Read the existing file (if any) outside the lock — load can take I/O. The lock is
+        // only held for the swap so concurrent ComputeLapPerf calls don't see a torn cache.
+        Dictionary<string, List<List<float>>> raw;
+        if (File.Exists(_drsZonesPath))
+        {
+            try
+            {
+                var text = await File.ReadAllTextAsync(_drsZonesPath);
+                raw = JsonSerializer.Deserialize<Dictionary<string, List<List<float>>>>(text)
+                      ?? new Dictionary<string, List<List<float>>>();
+            }
+            catch
+            {
+                raw = new Dictionary<string, List<List<float>>>();
+            }
+        }
+        else
+        {
+            raw = new Dictionary<string, List<List<float>>>();
+        }
+
+        raw[trackId.ToString(System.Globalization.CultureInfo.InvariantCulture)] =
+            zones.Select(z => new List<float> { z.Start, z.End }).ToList();
+
+        var dir = Path.GetDirectoryName(_drsZonesPath);
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+            Directory.CreateDirectory(dir);
+
+        var json = JsonSerializer.Serialize(raw, new JsonSerializerOptions { WriteIndented = true });
+        var tmpPath = _drsZonesPath + ".tmp";
+        await File.WriteAllTextAsync(tmpPath, json);
+        File.Move(tmpPath, _drsZonesPath, overwrite: true);
+
+        lock (_drsZonesLock)
+        {
+            _drsZonesCache = null;
         }
     }
 
@@ -208,6 +267,7 @@ static class Program
         builder.Services.AddSingleton<SessionLogger>();
         builder.Services.AddHostedService<SessionLoggerWriter>();
         builder.Services.AddSingleton<DebugPacketTracker>();
+        builder.Services.AddSingleton<DrsZoneCaptureService>();
         builder.Services.AddSingleton<ITelemetryIngress, TelemetryPipelineIngress>();
         builder.Services.AddTelemetryUdpListener();
         builder.Services.AddSignalR()
@@ -242,7 +302,6 @@ static class Program
         builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(3));
 
         var app = builder.Build();
-        var drsZonesPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "data", "drs-zones.json");
 
         app.Services.GetRequiredService<DebugPacketTracker>().PacketNameResolver = F125PacketNames.Get;
 
@@ -515,6 +574,90 @@ static class Program
             return Results.Ok(new { reset = true });
         });
 
+        // --- DRS-zone capture (Debug Mode only) ---
+        // Workflow: start -> drive a clean TT lap -> save (or cancel). Status is polled by the
+        // UI at 1 Hz while a capture is active. Start and Save are gated on DebugMode so the
+        // file write isn't reachable from a vanilla deployment.
+
+        app.MapGet("/api/debug/drs-zones/capture/status", (DrsZoneCaptureService capture) =>
+            Results.Ok(SerializeCaptureSnapshot(capture.Snapshot())));
+
+        app.MapPost("/api/debug/drs-zones/capture/start",
+            async (HttpContext ctx, IOptionsMonitor<AppSettings> appSettings,
+                   TelemetryState state, DrsZoneCaptureService capture) =>
+        {
+            if (!appSettings.CurrentValue.DebugMode)
+                return Results.NotFound();
+
+            var session = state.Get<SessionPacket>((byte)F125PacketId.Session);
+            if (session == null)
+                return Results.BadRequest(new { error = "no Session packet received yet" });
+            if (session.SessionType != 18)
+                return Results.BadRequest(new { error = "current session is not Time Trial", sessionType = session.SessionType });
+            if (session.TrackLength <= 0)
+                return Results.BadRequest(new { error = "track length unknown" });
+
+            bool overwriteExisting = false;
+            if (ctx.Request.ContentLength is > 0)
+            {
+                var body = await ctx.Request.ReadFromJsonAsync<DrsCaptureStartRequest>();
+                overwriteExisting = body?.OverwriteExisting ?? false;
+            }
+
+            int trackId = session.TrackId;
+            if (!overwriteExisting)
+            {
+                var existing = LoadDrsZones(_drsZonesPath);
+                if (existing.TryGetValue(trackId, out var zones) && zones.Length > 0)
+                {
+                    return Results.Json(new
+                    {
+                        alreadyExists = true,
+                        trackId,
+                        existingZones = zones.Select(z => new[] { z.Start, z.End }).ToArray(),
+                    }, statusCode: 409);
+                }
+            }
+
+            var snapshot = capture.Arm(trackId, session.TrackLength);
+            return Results.Ok(SerializeCaptureSnapshot(snapshot));
+        });
+
+        app.MapPost("/api/debug/drs-zones/capture/cancel", (DrsZoneCaptureService capture) =>
+        {
+            capture.Cancel();
+            return Results.Ok(SerializeCaptureSnapshot(capture.Snapshot()));
+        });
+
+        app.MapPost("/api/debug/drs-zones/capture/save",
+            async (IOptionsMonitor<AppSettings> appSettings, DrsZoneCaptureService capture) =>
+        {
+            if (!appSettings.CurrentValue.DebugMode)
+                return Results.NotFound();
+
+            if (!capture.TryPeek(out var trackId, out var zones) || zones.Length == 0)
+                return Results.BadRequest(new { error = "no completed capture to save" });
+
+            try
+            {
+                await SaveDrsZonesAsync(trackId, zones);
+            }
+            catch (Exception ex)
+            {
+                // Capture state stays in Completed so the user can retry without re-driving.
+                return Results.Problem($"Failed to write {Path.GetFileName(_drsZonesPath)}: {ex.Message}");
+            }
+
+            capture.CommitSave();
+
+            return Results.Ok(new
+            {
+                ok = true,
+                trackId,
+                zones = zones.Select(z => new[] { z.Start, z.End }).ToArray(),
+            });
+        });
+
         // --- Sessions (History) ---
 
         app.MapGet("/api/sessions", () =>
@@ -652,7 +795,7 @@ static class Program
                             l.Samples,
                             data.Meta?.TrackId ?? -1,
                             data.Meta?.TrackLengthM ?? 0f,
-                            drsZonesPath),
+                            _drsZonesPath),
                     }).ToArray(),
                     tyreByLap = kv.Value.TyreByLap,
                 });
@@ -952,6 +1095,9 @@ record SettingsUpdateRequest(
     [property: JsonPropertyName("debugMode")] bool DebugMode,
     [property: JsonPropertyName("enableSessionLogging")] bool EnableSessionLogging,
     [property: JsonPropertyName("historyFolder")] string? HistoryFolder);
+
+record DrsCaptureStartRequest(
+    [property: JsonPropertyName("overwriteExisting")] bool OverwriteExisting);
 
 record OpenFolderRequest(string Folder);
 
