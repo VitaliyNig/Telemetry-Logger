@@ -22,6 +22,10 @@ namespace F1Telemetry;
 
 static class Program
 {
+    // Static DRS geometry cache loaded from wwwroot/data/drs-zones.json.
+    private static readonly object _drsZonesLock = new();
+    private static Dictionary<int, (float Start, float End)[]>? _drsZonesCache;
+
     // /api/sessions cache — invalidated automatically when any Logs/ subdir changes mtime.
     private static readonly object _sessionsCacheLock = new();
     private static long? _sessionsCacheVersion;
@@ -57,32 +61,116 @@ static class Program
         catch { attrs = default; return false; }
     }
 
+    private static Dictionary<int, (float Start, float End)[]> LoadDrsZones(string path)
+    {
+        lock (_drsZonesLock)
+        {
+            if (_drsZonesCache != null) return _drsZonesCache;
+            if (!File.Exists(path))
+            {
+                _drsZonesCache = new Dictionary<int, (float Start, float End)[]>();
+                return _drsZonesCache;
+            }
+
+            try
+            {
+                var json = File.ReadAllText(path);
+                var raw = JsonSerializer.Deserialize<Dictionary<string, List<List<float>>>>(json);
+                if (raw == null)
+                {
+                    _drsZonesCache = new Dictionary<int, (float Start, float End)[]>();
+                    return _drsZonesCache;
+                }
+
+                var parsed = new Dictionary<int, (float Start, float End)[]>();
+                foreach (var (trackKey, zoneLists) in raw)
+                {
+                    if (!int.TryParse(trackKey, out var trackId) || zoneLists == null)
+                        continue;
+
+                    var zones = new List<(float Start, float End)>();
+                    foreach (var z in zoneLists)
+                    {
+                        if (z == null || z.Count < 2) continue;
+                        var start = Math.Clamp(z[0], 0f, 1f);
+                        var end = Math.Clamp(z[1], 0f, 1f);
+                        if (end <= start) continue;
+                        zones.Add((start, end));
+                    }
+                    if (zones.Count > 0) parsed[trackId] = zones.ToArray();
+                }
+
+                _drsZonesCache = parsed;
+                return _drsZonesCache;
+            }
+            catch
+            {
+                _drsZonesCache = new Dictionary<int, (float Start, float End)[]>();
+                return _drsZonesCache;
+            }
+        }
+    }
+
     /// <summary>
-    /// Aggregates a lap's 20 Hz sample stream into a compact "how hard was the car pushed?"
-    /// summary for the Race Lap Times view. Returns null when samples are unavailable so the
-    /// client can render an em-dash without guessing. ERS mode >= 2 = Hotlap/Overtake per the
-    /// UDP spec; DRS 1 = active. Fuel mix is left null — it isn't in LapSample yet.
+    /// Aggregates a lap's 20 Hz samples into a single normalized resource-usage percentage:
+    /// 100% means max allowed ERS deployment for the lap + DRS used across all configured
+    /// static DRS zones for this track. DRS is normalized by zone coverage (not whole lap) so
+    /// non-DRS parts of the lap do not dilute the score.
+    /// Returns null when samples are unavailable so the client can render an em-dash.
     /// </summary>
-    private static object? ComputeLapPerf(List<LapSample>? samples)
+    private static object? ComputeLapPerf(List<LapSample>? samples, int trackId, float trackLengthM, string drsZonesPath)
     {
         if (samples == null || samples.Count == 0) return null;
-        var total = samples.Count;
-        double ersSum = 0;
-        int ersHot = 0;
-        int drsOn = 0;
-        for (int i = 0; i < total; i++)
+        const float ErsMaxLapJ = 4_000_000f; // 4 MJ capacity baseline for normalization.
+        const float Wers = 0.7f;
+        const float Wdrs = 0.3f;
+
+        var drsZonesByTrack = LoadDrsZones(drsZonesPath);
+        var hasZones = trackLengthM > 0 &&
+            drsZonesByTrack.TryGetValue(trackId, out var zones) &&
+            zones != null && zones.Length > 0;
+        int drsZoneSamples = 0;
+        int drsOnInZone = 0;
+        float minErsDepLapJ = float.MaxValue;
+        float maxErsDepLapJ = 0f;
+
+        for (int i = 0; i < samples.Count; i++)
         {
             var s = samples[i];
-            ersSum += s.Ers;
-            if (s.ErsMd >= 2) ersHot++;
-            if (s.Drs == 1) drsOn++;
+            if (hasZones)
+            {
+                var dNorm = Math.Clamp(s.D / trackLengthM, 0f, 1f);
+                for (int z = 0; z < zones!.Length; z++)
+                {
+                    var (start, end) = zones[z];
+                    if (dNorm >= start && dNorm <= end)
+                    {
+                        drsZoneSamples++;
+                        if (s.Drs == 1) drsOnInZone++;
+                        break;
+                    }
+                }
+            }
+
+            var dep = s.ErsDepLapJ;
+            if (dep < minErsDepLapJ) minErsDepLapJ = dep;
+            if (dep > maxErsDepLapJ) maxErsDepLapJ = dep;
         }
+
+        var ersUsedLapJ = Math.Max(0f, maxErsDepLapJ - minErsDepLapJ);
+        var ersUsage = Math.Clamp(ersUsedLapJ / ErsMaxLapJ, 0f, 1f);
+        var drsUsage = hasZones
+            ? (drsZoneSamples > 0 ? (float)drsOnInZone / drsZoneSamples : 0f)
+            : (float)samples.Count(s => s.Drs == 1) / samples.Count;
+        var perfPct = Math.Clamp((ersUsage * Wers + drsUsage * Wdrs) * 100f, 0f, 100f);
+
         return new
         {
-            ersAvg = (float)(ersSum / total),
-            ersHotFrac = (float)ersHot / total,
-            drsFrac = (float)drsOn / total,
-            fuelMixMode = (int?)null,
+            perfPct = (byte)MathF.Round(perfPct),
+            ersUsagePct = (byte)MathF.Round(ersUsage * 100f),
+            drsUsagePct = (byte)MathF.Round(drsUsage * 100f),
+            drsZoneBased = hasZones,
+            weights = new { ers = Wers, drs = Wdrs },
         };
     }
 
@@ -154,6 +242,7 @@ static class Program
         builder.Services.Configure<HostOptions>(o => o.ShutdownTimeout = TimeSpan.FromSeconds(3));
 
         var app = builder.Build();
+        var drsZonesPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "data", "drs-zones.json");
 
         app.Services.GetRequiredService<DebugPacketTracker>().PacketNameResolver = F125PacketNames.Get;
 
@@ -559,7 +648,11 @@ static class Program
                         // here (not persisted) from the lap's 20 Hz samples so old logs still
                         // light up after an app upgrade — and so we don't pay for it when the
                         // caller doesn't need it (samples themselves stay out of this payload).
-                        Perf = ComputeLapPerf(l.Samples),
+                        Perf = ComputeLapPerf(
+                            l.Samples,
+                            data.Meta?.TrackId ?? -1,
+                            data.Meta?.TrackLengthM ?? 0f,
+                            drsZonesPath),
                     }).ToArray(),
                     tyreByLap = kv.Value.TyreByLap,
                 });
