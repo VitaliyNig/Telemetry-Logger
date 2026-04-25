@@ -182,6 +182,8 @@ public sealed class SessionLogger
                 Ers = s == null ? (byte)0 : (byte)Math.Clamp((int)MathF.Round(s.ErsStoreEnergy / 4_000_000f * 100f), 0, 100),
                 ErsMd = s?.ErsDeployMode ?? (byte)0,
                 Drs = t.Drs,
+                DrsAllowed = s?.DrsAllowed ?? (byte)0,
+                ErsDepLapJ = s?.ErsDeployedThisLap ?? 0f,
             });
         }
     }

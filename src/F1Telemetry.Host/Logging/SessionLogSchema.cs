@@ -35,6 +35,10 @@ public sealed class LapSample
     public byte ErsMd { get; set; }
     /// <summary>DRS 0 off, 1 active.</summary>
     public byte Drs { get; set; }
+    /// <summary>DRS allowed at this sample (0 no, 1 yes).</summary>
+    public byte DrsAllowed { get; set; }
+    /// <summary>ERS deployed this lap (joules), cumulative value from game telemetry.</summary>
+    public float ErsDepLapJ { get; set; }
 }
 
 /// <summary>One 10 Hz world-position sample for track-map trajectories.</summary>

@@ -58,31 +58,47 @@ static class Program
     }
 
     /// <summary>
-    /// Aggregates a lap's 20 Hz sample stream into a compact "how hard was the car pushed?"
-    /// summary for the Race Lap Times view. Returns null when samples are unavailable so the
-    /// client can render an em-dash without guessing. ERS mode >= 2 = Hotlap/Overtake per the
-    /// UDP spec; DRS 1 = active. Fuel mix is left null — it isn't in LapSample yet.
+    /// Aggregates a lap's 20 Hz samples into a single normalized resource-usage percentage:
+    /// 100% means max allowed ERS deployment for the lap + DRS used on all available segments.
+    /// Returns null when samples are unavailable so the client can render an em-dash.
     /// </summary>
     private static object? ComputeLapPerf(List<LapSample>? samples)
     {
         if (samples == null || samples.Count == 0) return null;
-        var total = samples.Count;
-        double ersSum = 0;
-        int ersHot = 0;
-        int drsOn = 0;
-        for (int i = 0; i < total; i++)
+        const float ErsMaxLapJ = 4_000_000f; // 4 MJ capacity baseline for normalization.
+        const float Wers = 0.7f;
+        const float Wdrs = 0.3f;
+
+        int drsAllowed = 0;
+        int drsOnWhenAllowed = 0;
+        float minErsDepLapJ = float.MaxValue;
+        float maxErsDepLapJ = 0f;
+
+        for (int i = 0; i < samples.Count; i++)
         {
             var s = samples[i];
-            ersSum += s.Ers;
-            if (s.ErsMd >= 2) ersHot++;
-            if (s.Drs == 1) drsOn++;
+            if (s.DrsAllowed == 1)
+            {
+                drsAllowed++;
+                if (s.Drs == 1) drsOnWhenAllowed++;
+            }
+
+            var dep = s.ErsDepLapJ;
+            if (dep < minErsDepLapJ) minErsDepLapJ = dep;
+            if (dep > maxErsDepLapJ) maxErsDepLapJ = dep;
         }
+
+        var ersUsedLapJ = Math.Max(0f, maxErsDepLapJ - minErsDepLapJ);
+        var ersUsage = Math.Clamp(ersUsedLapJ / ErsMaxLapJ, 0f, 1f);
+        var drsUsage = drsAllowed > 0 ? (float)drsOnWhenAllowed / drsAllowed : 0f;
+        var perfPct = Math.Clamp((ersUsage * Wers + drsUsage * Wdrs) * 100f, 0f, 100f);
+
         return new
         {
-            ersAvg = (float)(ersSum / total),
-            ersHotFrac = (float)ersHot / total,
-            drsFrac = (float)drsOn / total,
-            fuelMixMode = (int?)null,
+            perfPct = (byte)MathF.Round(perfPct),
+            ersUsagePct = (byte)MathF.Round(ersUsage * 100f),
+            drsUsagePct = (byte)MathF.Round(drsUsage * 100f),
+            weights = new { ers = Wers, drs = Wdrs },
         };
     }
 
