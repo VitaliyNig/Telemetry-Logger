@@ -237,11 +237,6 @@
     // Delta classification (seconds) relative to REF lap within a stint.
     var DELTA_THRESHOLDS = { neutral: 0.8, warn: 1.5 };
 
-    // Performance blending — picked so a lap with ~50% Hotlap/Overtake + intermittent DRS
-    // lands in "PUSH" territory, while a quiet ERS-saving lap falls into "SAVE".
-    var PERF_WEIGHTS   = { ersHot: 0.6, drs: 0.4 };
-    var PERF_THRESHOLDS = { push: 0.55, cruise: 0.25 };
-
     function renderLapPivotTable(cat, sess, bests, pbByDriver, virtualMode, driverOrder, maxLap) {
         var drivers = sess.drivers || {};
         var cols = LAP_COLUMNS_BY_CAT[cat] || LAP_COLUMNS_BY_CAT.unknown;
@@ -494,30 +489,26 @@
         var p = l.perf;
         if (!p) return '<td class="lap-cell lap-sub--perf">—</td>';
 
-        var ersHot = typeof p.ersHotFrac === 'number' ? p.ersHotFrac : 0;
-        var drsFrac = typeof p.drsFrac === 'number' ? p.drsFrac : 0;
-        var score = ersHot * PERF_WEIGHTS.ersHot + drsFrac * PERF_WEIGHTS.drs;
+        var perfPct = typeof p.perfPct === 'number'
+            ? Math.max(0, Math.min(100, Math.round(p.perfPct)))
+            : null;
+        if (perfPct == null) return '<td class="lap-cell lap-sub--perf">—</td>';
+        var ersPct = typeof p.ersUsagePct === 'number'
+            ? Math.max(0, Math.min(100, Math.round(p.ersUsagePct)))
+            : 0;
+        var drsPct = typeof p.drsUsagePct === 'number'
+            ? Math.max(0, Math.min(100, Math.round(p.drsUsagePct)))
+            : 0;
 
-        var bucket = 'save';
-        if (score >= PERF_THRESHOLDS.push) bucket = 'push';
-        else if (score >= PERF_THRESHOLDS.cruise) bucket = 'cruise';
-        var label = bucket === 'push' ? 'PUSH' : bucket === 'cruise' ? 'CRUISE' : 'SAVE';
-
-        // ERS bar width follows ersHotFrac; DRS is binary past a small 5% dead-band.
-        var ersPct = Math.round(Math.max(0, Math.min(1, ersHot)) * 100);
-        var drsOn = drsFrac > 0.05;
-        var title = 'ERS avg ' + (typeof p.ersAvg === 'number' ? Math.round(p.ersAvg) + '%' : '—')
-            + ' · ERS hot ' + ersPct + '%'
-            + ' · DRS ' + Math.round(drsFrac * 100) + '%';
+        var title = 'Performance ' + perfPct + '%'
+            + ' · ERS usage ' + ersPct + '%'
+            + ' · DRS usage ' + drsPct + '%';
+        var tone = perfPct >= 75 ? 'push' : (perfPct >= 40 ? 'cruise' : 'save');
 
         var cellCls = 'lap-cell lap-sub--perf';
         if (l.pit || l.raceFlag === 2 || l.raceFlag === 3) cellCls += ' lap-cell--muted';
         return '<td class="' + cellCls + '" title="' + title + '">'
-            + '<span class="lap-perf-badge lap-perf--' + bucket + '">' + label + '</span>'
-            + '<span class="lap-perf-ers" title="ERS Hotlap/Overtake ' + ersPct + '%">'
-            +   '<span class="lap-perf-ers-fill" style="width:' + ersPct + '%"></span>'
-            + '</span>'
-            + '<span class="lap-perf-drs ' + (drsOn ? 'is-on' : 'is-off') + '" title="DRS"></span>'
+            + '<span class="lap-perf-badge lap-perf--' + tone + '">' + perfPct + '%</span>'
             + '</td>';
     }
 
