@@ -5,6 +5,7 @@ using F1Telemetry.Host.Logging;
 using F1Telemetry.State;
 using F1Telemetry.Telemetry;
 using Microsoft.Extensions.Logging.Abstractions;
+using Xunit;
 
 namespace F1Telemetry.Host.Tests;
 
