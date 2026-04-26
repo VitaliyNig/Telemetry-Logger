@@ -26,6 +26,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
     private readonly LapTyreStore _lapTyreStore;
     private readonly SessionLogger _sessionLogger;
     private readonly DebugPacketTracker _tracker;
+    private readonly DrsZoneCaptureService _drsZoneCapture;
     private readonly IHubContext<TelemetryHub, ITelemetryClient> _hubContext;
     private readonly IOptionsMonitor<AppSettings> _appSettings;
     private readonly ILogger<TelemetryPipelineIngress> _logger;
@@ -38,6 +39,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         LapTyreStore lapTyreStore,
         SessionLogger sessionLogger,
         DebugPacketTracker tracker,
+        DrsZoneCaptureService drsZoneCapture,
         IHubContext<TelemetryHub, ITelemetryClient> hubContext,
         IOptionsMonitor<AppSettings> appSettings,
         ILogger<TelemetryPipelineIngress> logger)
@@ -49,6 +51,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         _lapTyreStore = lapTyreStore;
         _sessionLogger = sessionLogger;
         _tracker = tracker;
+        _drsZoneCapture = drsZoneCapture;
         _hubContext = hubContext;
         _appSettings = appSettings;
         _logger = logger;
@@ -132,8 +135,25 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
             var carIdx = header.PlayerCarIndex;
             if (carIdx < lapDataPacket.LapDataItems.Length)
             {
-                var currentLapNum = lapDataPacket.LapDataItems[carIdx].CurrentLapNum;
-                var sessionType = _state.Get<SessionPacket>((byte)F125PacketId.Session)?.SessionType ?? 0;
+                var playerLap = lapDataPacket.LapDataItems[carIdx];
+                var currentLapNum = playerLap.CurrentLapNum;
+                var session = _state.Get<SessionPacket>((byte)F125PacketId.Session);
+                var sessionType = session?.SessionType ?? 0;
+
+                // Feed the DRS-zone capture state machine. No-op when capture is Idle, so the
+                // hot path cost outside Debug Mode is one method call + one volatile read.
+                var carStatus = _state.Get<CarStatusPacket>((byte)F125PacketId.CarStatus);
+                if (session != null && carStatus != null && carIdx < carStatus.CarStatusDataItems.Length)
+                {
+                    _drsZoneCapture.OnPlayerLapData(
+                        sessionType,
+                        session.TrackId,
+                        session.TrackLength,
+                        currentLapNum,
+                        playerLap.CurrentLapInvalid,
+                        playerLap.LapDistance,
+                        carStatus.CarStatusDataItems[carIdx].DrsAllowed);
+                }
 
                 if (IsSetupSnapshotSession(sessionType))
                 {

@@ -41,6 +41,17 @@
     var btnDownloadLog = document.getElementById('btnDownloadLog');
     var btnResetStats = document.getElementById('btnResetStats');
 
+    var drsCapState = document.getElementById('drsCapState');
+    var drsCapTrack = document.getElementById('drsCapTrack');
+    var drsCapError = document.getElementById('drsCapError');
+    var drsCapOverwrite = document.getElementById('drsCapOverwrite');
+    var drsCapOverwriteMsg = document.getElementById('drsCapOverwriteMsg');
+    var btnDrsCapStart = document.getElementById('btnDrsCapStart');
+    var btnDrsCapCancel = document.getElementById('btnDrsCapCancel');
+    var btnDrsCapSave = document.getElementById('btnDrsCapSave');
+    var btnDrsCapOverwriteConfirm = document.getElementById('btnDrsCapOverwriteConfirm');
+    var btnDrsCapOverwriteCancel = document.getElementById('btnDrsCapOverwriteCancel');
+
     function updateWebPortRestartBadge() {
         if (!webPortRestartBadge || !webPort) return;
         var current = parseInt(webPort.value, 10);
@@ -560,8 +571,10 @@
         if (enabled) {
             debugTabBtn.classList.remove('hidden');
             initSignalR();
+            drsCapFetchStatus();
         } else {
             debugTabBtn.classList.add('hidden');
+            drsCapStopPolling();
             var activeTab = tabNav.querySelector('.tab-btn.active');
             if (activeTab && activeTab.dataset.tab === 'debug') {
                 switchTab('live');
@@ -803,6 +816,166 @@
                 console.error('Failed to reset:', err);
             });
     });
+
+    // --- DRS-zone capture ---
+    var drsCapPollHandle = null;
+
+    function drsCapShowError(msg) {
+        if (!drsCapError) return;
+        if (msg) {
+            drsCapError.textContent = msg;
+            drsCapError.hidden = false;
+        } else {
+            drsCapError.textContent = '';
+            drsCapError.hidden = true;
+        }
+    }
+
+    function drsCapRender(snapshot) {
+        if (!snapshot) return;
+        var stateText;
+        switch (snapshot.state) {
+            case 'Armed':
+                stateText = 'Waiting for next lap to start…';
+                break;
+            case 'Recording':
+                stateText = 'Recording lap ' + (snapshot.currentLapNum || '?') +
+                    ' · ' + (snapshot.capturedZoneCount || 0) + ' zones';
+                break;
+            case 'Completed':
+                stateText = 'Captured ' + snapshot.capturedZoneCount + ' zones — review and save';
+                break;
+            default:
+                stateText = 'Ready';
+        }
+        drsCapState.textContent = stateText;
+        drsCapTrack.textContent = snapshot.trackId != null
+            ? 'Track id ' + snapshot.trackId
+            : '';
+
+        btnDrsCapStart.disabled = snapshot.state !== 'Idle';
+        btnDrsCapCancel.disabled = snapshot.state === 'Idle';
+        btnDrsCapSave.disabled = snapshot.state !== 'Completed';
+
+        if (snapshot.error) {
+            drsCapShowError(snapshot.error);
+        } else if (snapshot.state !== 'Idle') {
+            drsCapShowError(null);
+        }
+
+        if (snapshot.state === 'Idle') {
+            drsCapStopPolling();
+        } else {
+            drsCapStartPolling();
+        }
+    }
+
+    function drsCapStartPolling() {
+        if (drsCapPollHandle != null) return;
+        drsCapPollHandle = setInterval(drsCapFetchStatus, 1000);
+    }
+
+    function drsCapStopPolling() {
+        if (drsCapPollHandle == null) return;
+        clearInterval(drsCapPollHandle);
+        drsCapPollHandle = null;
+    }
+
+    function drsCapFetchStatus() {
+        fetch('/api/debug/drs-zones/capture/status')
+            .then(function (r) { return r.json(); })
+            .then(drsCapRender)
+            .catch(function (err) { console.error('DRS capture status failed:', err); });
+    }
+
+    function drsCapStart(overwriteExisting) {
+        drsCapShowError(null);
+        return fetch('/api/debug/drs-zones/capture/start', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ overwriteExisting: !!overwriteExisting })
+        }).then(function (r) {
+            if (r.status === 409) {
+                return r.json().then(function (data) {
+                    drsCapOverwriteMsg.textContent =
+                        'Track ' + data.trackId + ' already has ' +
+                        (data.existingZones ? data.existingZones.length : 0) +
+                        ' zones — overwrite?';
+                    drsCapOverwrite.hidden = false;
+                });
+            }
+            return r.json().then(function (data) {
+                if (!r.ok) {
+                    drsCapShowError(data.error || ('HTTP ' + r.status));
+                    return;
+                }
+                drsCapOverwrite.hidden = true;
+                drsCapRender(data);
+            });
+        }).catch(function (err) {
+            drsCapShowError('Network error: ' + err.message);
+        });
+    }
+
+    if (btnDrsCapStart) {
+        btnDrsCapStart.addEventListener('click', function () { drsCapStart(false); });
+    }
+
+    if (btnDrsCapCancel) {
+        btnDrsCapCancel.addEventListener('click', function () {
+            fetch('/api/debug/drs-zones/capture/cancel', { method: 'POST' })
+                .then(function (r) { return r.json(); })
+                .then(drsCapRender)
+                .catch(function (err) { console.error('DRS capture cancel failed:', err); });
+        });
+    }
+
+    if (btnDrsCapSave) {
+        btnDrsCapSave.addEventListener('click', function () {
+            btnDrsCapSave.disabled = true;
+            fetch('/api/debug/drs-zones/capture/save', { method: 'POST' })
+                .then(function (r) {
+                    return r.json().then(function (data) { return { ok: r.ok, data: data }; });
+                })
+                .then(function (res) {
+                    if (!res.ok) {
+                        drsCapShowError((res.data && (res.data.detail || res.data.error)) || 'Save failed');
+                        btnDrsCapSave.disabled = false;
+                        return;
+                    }
+                    drsCapShowError(null);
+                    drsCapFetchStatus();
+                    alert('Saved ' + (res.data.zones ? res.data.zones.length : 0) +
+                        ' zones for track ' + res.data.trackId + '.');
+                })
+                .catch(function (err) {
+                    drsCapShowError('Network error: ' + err.message);
+                    btnDrsCapSave.disabled = false;
+                });
+        });
+    }
+
+    if (btnDrsCapOverwriteConfirm) {
+        btnDrsCapOverwriteConfirm.addEventListener('click', function () {
+            drsCapOverwrite.hidden = true;
+            drsCapStart(true);
+        });
+    }
+
+    if (btnDrsCapOverwriteCancel) {
+        btnDrsCapOverwriteCancel.addEventListener('click', function () {
+            drsCapOverwrite.hidden = true;
+        });
+    }
+
+    // Refresh status whenever the user opens the Debug tab so stale UI from a previous
+    // session doesn't linger after navigation.
+    if (tabNav) {
+        tabNav.addEventListener('click', function (e) {
+            var btn = e.target.closest && e.target.closest('.tab-btn[data-tab="debug"]');
+            if (btn) drsCapFetchStatus();
+        });
+    }
 
     // --- Helpers ---
     function formatNumber(n) {
