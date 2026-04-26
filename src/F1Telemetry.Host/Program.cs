@@ -185,9 +185,10 @@ static class Program
         const float Wdrs = 0.3f;
 
         var drsZonesByTrack = LoadDrsZones(drsZonesPath);
+        (float Start, float End)[]? zones = null;
         var hasZones = trackLengthM > 0 &&
-            drsZonesByTrack.TryGetValue(trackId, out var zones) &&
-            zones != null && zones.Length > 0;
+            drsZonesByTrack.TryGetValue(trackId, out zones) &&
+            zones.Length > 0;
         int drsZoneSamples = 0;
         int drsOnInZone = 0;
         float minErsDepLapJ = float.MaxValue;
