@@ -452,6 +452,8 @@ public sealed class SessionLogger
             entry.LastTelemetryTickS[i] = rewindToTime;
             entry.LastMotionTickS[i] = rewindToTime;
             entry.CurrentLapStartSessionTimeS[i] = rewindToTime;
+            entry.CurrentLapNum[i] = 0;
+            entry.LapMaxFlag[i] = entry.CurrentRaceFlag;
         }
     }
 
