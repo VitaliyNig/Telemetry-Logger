@@ -1,0 +1,80 @@
+:root {
+    /* Colors */
+    --color-bg-base: #0d1117;
+    --color-bg-surface: #161b22;
+    --color-bg-elevated: #21262d;
+    --color-bg-card: #1c2128;
+    --color-bg-card-alt: #1a1d26;
+    --color-bg-card-hover: #22262f;
+
+    --color-border-default: #30363d;
+    --color-border-muted: #3d444d;
+    --color-text-primary: #e6edf3;
+    --color-text-secondary: #8b949e;
+    --color-text-muted: #6e7681;
+    --color-text-dim: #5f6368;
+
+    --color-accent-primary: #9b3ff5;
+    --color-accent-primary-hover: #b56fff;
+    --color-accent-glow: rgba(155, 63, 245, 0.35);
+    --color-accent-soft: rgba(155, 63, 245, 0.08);
+    --color-accent-muted: rgba(155, 63, 245, 0.12);
+    --color-accent-border: rgba(155, 63, 245, 0.3);
+
+    --color-semantic-success: #3fb950;
+    --color-semantic-warning: #ff8c00;
+    --color-semantic-info: #58a6ff;
+    --color-semantic-danger: #e10600;
+    --color-semantic-danger-alt: #f85149;
+
+    /* Spacing */
+    --space-1: 4px;
+    --space-2: 8px;
+    --space-3: 12px;
+    --space-4: 16px;
+    --space-5: 20px;
+    --space-6: 24px;
+
+    /* Radius */
+    --radius-sm: 4px;
+    --radius-md: 8px;
+    --radius-lg: 10px;
+
+    /* Typography */
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    --font-mono: 'Consolas', 'Monaco', 'Courier New', monospace;
+
+    /* Motion */
+    --motion-fast: 0.15s ease;
+    --motion-normal: 0.2s ease;
+    --motion-slow: 0.25s ease;
+
+    /* Legacy aliases (compat) */
+    --bg-primary: var(--color-bg-base);
+    --bg-secondary: var(--color-bg-surface);
+    --bg-tertiary: var(--color-bg-elevated);
+    --bg-card: var(--color-bg-card);
+    --bg-dark: var(--color-bg-base);
+    --bg-card-hover: var(--color-bg-card-hover);
+    --border: var(--color-border-default);
+    --border-light: var(--color-border-muted);
+    --text-primary: var(--color-text-primary);
+    --text-secondary: var(--color-text-secondary);
+    --text-muted: var(--color-text-muted);
+    --text-dim: var(--color-text-dim);
+    --accent: var(--color-accent-primary);
+    --accent-hover: var(--color-accent-primary-hover);
+    --accent-glow: var(--color-accent-glow);
+    --accent-brand: var(--color-accent-primary);
+    --accent-brand-hover: var(--color-accent-primary-hover);
+    --accent-brand-soft: var(--color-accent-soft);
+    --accent-brand-muted: var(--color-accent-muted);
+    --accent-brand-border: var(--color-accent-border);
+    --green: var(--color-semantic-success);
+    --blue: var(--color-semantic-info);
+    --red: var(--color-semantic-danger-alt);
+    --yellow: #ffd700;
+    --orange: var(--color-semantic-warning);
+    --radius: var(--radius-md);
+    --transition: var(--motion-normal);
+}
