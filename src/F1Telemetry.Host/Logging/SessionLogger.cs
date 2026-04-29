@@ -82,9 +82,20 @@ public sealed class SessionLogger
     /// Called from the UDP / ingress thread. Non-blocking: pushes the packet to an internal channel
     /// which <see cref="SessionLoggerWriter"/> drains on a dedicated task.
     /// </summary>
+    private int _droppedEnqueueCount;
+
     public void Enqueue(TelemetryPacketHeader header, byte packetId, object data)
     {
-        _queue.Writer.TryWrite(new LoggerEnvelope(header, packetId, data));
+        if (_queue.Writer.TryWrite(new LoggerEnvelope(header, packetId, data)))
+            return;
+
+        var dropped = Interlocked.Increment(ref _droppedEnqueueCount);
+        if (dropped == 1 || dropped % 1000 == 0)
+        {
+            _logger.LogWarning(
+                "Session logger queue is full; dropped {Dropped} packets so far.",
+                dropped);
+        }
     }
 
     public void ProcessPacket(TelemetryPacketHeader header, byte packetId, object data)
