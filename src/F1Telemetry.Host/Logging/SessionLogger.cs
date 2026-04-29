@@ -124,6 +124,10 @@ public sealed class SessionLogger
                     break;
                 case EventPacket evt:
                     HandleEvent(entry, header, evt);
+                    if (evt.EventCode == "FLBK")
+                    {
+                        HandleFlashback(entry, header, evt);
+                    }
                     if (evt.EventCode == "SEND")
                     {
                         FinalizePendingLaps(entry, header);
@@ -150,6 +154,9 @@ public sealed class SessionLogger
 
     private void SampleTelemetry(SessionEntry entry, TelemetryPacketHeader header, CarTelemetryPacket packet)
     {
+        if (!ShouldAcceptFrame(entry, header))
+            return;
+
         var lapPacket = entry.LatestPackets.GetValueOrDefault("LapData") as LapDataPacket;
         if (lapPacket == null) return;
         var statusPacket = entry.LatestPackets.GetValueOrDefault("CarStatus") as CarStatusPacket;
@@ -190,6 +197,9 @@ public sealed class SessionLogger
 
     private void SampleMotion(SessionEntry entry, TelemetryPacketHeader header, MotionPacket packet)
     {
+        if (!ShouldAcceptFrame(entry, header))
+            return;
+
         var lapPacket = entry.LatestPackets.GetValueOrDefault("LapData") as LapDataPacket;
         if (lapPacket == null) return;
 
@@ -298,7 +308,16 @@ public sealed class SessionLogger
             Samples = entry.CurrentLapSamples[idx],
             Motion = entry.CurrentLapMotion[idx],
         };
-        driver.Laps.Add(lap);
+        var existingIdx = driver.Laps.FindIndex(l => l.LapNum == completedLapNum);
+        if (existingIdx >= 0)
+        {
+            driver.Laps[existingIdx] = lap;
+            _logger.LogInformation("Replaced lap {LapNum} for car {CarIdx} after timeline rewind/flashback.", completedLapNum, idx);
+        }
+        else
+        {
+            driver.Laps.Add(lap);
+        }
 
         // Reset sampling buffers and per-car latches for the next lap.
         entry.CurrentLapSamples[idx] = null;
@@ -421,6 +440,29 @@ public sealed class SessionLogger
             Flag = flag,
             Details = evt.Details,
         });
+    }
+
+    private void HandleFlashback(SessionEntry entry, TelemetryPacketHeader header, EventPacket evt)
+    {
+        var rewindToTime = (evt.Details as FlashbackEvent)?.FlashbackSessionTime ?? header.SessionTime;
+        for (var i = 0; i < MaxCars; i++)
+        {
+            entry.CurrentLapSamples[i] = null;
+            entry.CurrentLapMotion[i] = null;
+            entry.LastTelemetryTickS[i] = rewindToTime;
+            entry.LastMotionTickS[i] = rewindToTime;
+            entry.CurrentLapStartSessionTimeS[i] = rewindToTime;
+        }
+    }
+
+    private static bool ShouldAcceptFrame(SessionEntry entry, TelemetryPacketHeader header)
+    {
+        // Protect against duplicated/out-of-order high-frequency packets around timeline rewinds.
+        if (header.OverallFrameIdentifier < entry.LastOverallFrameIdentifierProcessed)
+            return false;
+
+        entry.LastOverallFrameIdentifierProcessed = header.OverallFrameIdentifier;
+        return true;
     }
 
     /// <summary>Flush any remaining sessions to disk. Safety net for app shutdown.</summary>
@@ -637,6 +679,7 @@ public sealed class SessionLogger
         public readonly bool[] LapBlueFlag = new bool[MaxCars];
 
         public float LastKnownSessionTimeS { get; set; }
+        public uint LastOverallFrameIdentifierProcessed { get; set; }
     }
 
 }
