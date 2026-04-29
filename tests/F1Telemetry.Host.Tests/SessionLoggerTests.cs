@@ -99,6 +99,53 @@ public sealed class SessionLoggerTests
         }
     }
 
+
+    [Fact]
+    public void Flashback_DoesNotCompleteStaleLapOnRewind()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"sessionlogger-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+        HistoryRoot.PersistentDefault = tempRoot;
+        try
+        {
+            var logger = new SessionLogger(new LapSetupStore(), NullLogger<SessionLogger>.Instance);
+            const ulong sessionUid = 88ul;
+            const byte carIdx = 1;
+
+            logger.ProcessPacket(Header(sessionUid, 1f, (byte)F125PacketId.Session, carIdx, 1), (byte)F125PacketId.Session, new SessionPacket
+            {
+                TrackId = 0, SessionType = 10, WeekendLinkIdentifier = 42, SessionLinkIdentifier = 24, TrackLength = 5400, TotalLaps = 10,
+            });
+
+            LapDataPacket LapPacket(byte currentLap, uint currentLapMs, uint lastLapMs) => new()
+            {
+                LapDataItems = Enumerable.Range(0, 22).Select(i => i == carIdx
+                    ? new LapData { CurrentLapNum = currentLap, CurrentLapTimeInMs = currentLapMs, LastLapTimeInMs = lastLapMs, CarPosition = 2 }
+                    : new LapData()).ToArray()
+            };
+
+            logger.ProcessPacket(Header(sessionUid, 10f, (byte)F125PacketId.LapData, carIdx, 2), (byte)F125PacketId.LapData, LapPacket(3, 5_000, 92_000));
+            logger.ProcessPacket(Header(sessionUid, 11f, (byte)F125PacketId.Event, carIdx, 3), (byte)F125PacketId.Event, new EventPacket
+            {
+                EventCode = "FLBK",
+                Details = new FlashbackEvent { FlashbackFrameIdentifier = 1, FlashbackSessionTime = 6f }
+            });
+
+            // After rewind, receiving an earlier lap number must not complete stale lap 3.
+            logger.ProcessPacket(Header(sessionUid, 12f, (byte)F125PacketId.LapData, carIdx, 4), (byte)F125PacketId.LapData, LapPacket(2, 10_000, 0));
+            logger.ProcessPacket(Header(sessionUid, 13f, (byte)F125PacketId.Event, carIdx, 5), (byte)F125PacketId.Event, new EventPacket { EventCode = "SEND" });
+
+            var jsonPath = Directory.GetFiles(tempRoot, "*.json", SearchOption.AllDirectories).Single();
+            using var doc = JsonDocument.Parse(File.ReadAllText(jsonPath));
+            var laps = doc.RootElement.GetProperty("drivers").GetProperty(carIdx.ToString()).GetProperty("laps").EnumerateArray().ToList();
+            Assert.DoesNotContain(laps, l => l.GetProperty("lapNum").GetByte() == 3);
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
     [Fact]
     public void Flashback_ReplacesExistingLapInsteadOfDuplicating()
     {
