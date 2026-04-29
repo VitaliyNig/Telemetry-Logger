@@ -60,7 +60,7 @@ body.on-live-tab.hide-header .app-header { display: none; }
     height: 40px;
     border-radius: 10px;
     background: var(--accent);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    box-shadow: 0 2px 8px var(--color-black-alpha-18);
     flex-shrink: 0;
 }
 
@@ -78,7 +78,7 @@ body.on-live-tab.hide-header .app-header { display: none; }
     height: 40px;
     padding: 4px;
     border-radius: 10px;
-    background: rgba(255, 255, 255, 0.04);
+    background: var(--color-surface-overlay-3);
     flex-shrink: 0;
 }
 
@@ -99,12 +99,12 @@ body.on-live-tab.hide-header .app-header { display: none; }
 
 .tab-btn:hover {
     color: var(--text-secondary);
-    background: rgba(255, 255, 255, 0.06);
+    background: var(--color-surface-overlay-4);
 }
 
 .tab-btn.active {
     background: var(--accent);
-    color: #fff;
+    color: var(--color-text-on-accent);
 }
 
 .tab-btn.hidden {
@@ -153,10 +153,10 @@ body.on-live-tab.hide-header .app-header { display: none; }
     right: 0;
     z-index: 30;
     padding: 16px 24px;
-    background: rgba(13, 17, 23, 0.72);
+    background: color-mix(in srgb, var(--bg-primary) 72%, transparent);
     backdrop-filter: blur(12px);
     -webkit-backdrop-filter: blur(12px);
-    border-top: 1px solid rgba(48, 54, 61, 0.5);
+    border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
 }
 
 .settings-footer-inner {
@@ -441,7 +441,7 @@ body.on-live-tab.hide-header .app-header { display: none; }
 
 .btn-primary {
     background: var(--accent);
-    color: #fff;
+    color: var(--color-text-on-accent);
 }
 
 .btn-primary:hover {
@@ -468,7 +468,7 @@ body.on-live-tab.hide-header .app-header { display: none; }
 
 .btn-danger:hover {
     background: var(--red);
-    color: #fff;
+    color: var(--color-text-on-accent);
 }
 
 .btn-small {

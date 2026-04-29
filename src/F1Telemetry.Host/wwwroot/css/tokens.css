@@ -1,0 +1,20 @@
+:root {
+    --color-surface-overlay-1: rgba(255, 255, 255, 0.02);
+    --color-surface-overlay-2: rgba(255, 255, 255, 0.03);
+    --color-surface-overlay-3: rgba(255, 255, 255, 0.04);
+    --color-surface-overlay-4: rgba(255, 255, 255, 0.06);
+    --color-surface-overlay-5: rgba(255, 255, 255, 0.08);
+
+    --color-border-subtle: rgba(255, 255, 255, 0.08);
+
+    --color-white-alpha-10: rgba(255, 255, 255, 0.1);
+    --color-white-alpha-12: rgba(255, 255, 255, 0.12);
+    --color-black-alpha-18: rgba(0, 0, 0, 0.18);
+    --color-black-alpha-25: rgba(0, 0, 0, 0.25);
+    --color-black-alpha-40: rgba(0, 0, 0, 0.4);
+    --color-black-alpha-45: rgba(0, 0, 0, 0.45);
+    --color-black-alpha-55: rgba(0, 0, 0, 0.55);
+    --color-black-alpha-60: rgba(0, 0, 0, 0.6);
+
+    --color-text-on-accent: #fff;
+}
