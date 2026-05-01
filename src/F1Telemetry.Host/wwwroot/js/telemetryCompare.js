@@ -141,7 +141,8 @@
         var s2 = (meta && meta.sector2StartM) || 0;
         var s3 = (meta && meta.sector3StartM) || 0;
         var perSector = Number(miniPerSector);
-        var useMini = perSector > 1;
+        var validMiniCount = Number.isFinite(perSector) && Number.isInteger(perSector) && perSector > 1;
+        var useMini = validMiniCount;
 
         var baseSectors = [
             { sector: 1, start: 0, end: s2 },
