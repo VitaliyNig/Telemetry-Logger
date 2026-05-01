@@ -1395,90 +1395,121 @@
     }
 
     // ---------- DriverPicker component ----------
-    // opts: { drivers: {carIdx: {...}}, supportLapSelector: bool, allowGhosts: bool, onChange: fn }
+    // opts: { drivers: {carIdx: {...}}, supportLapSelector: bool, compareCardMode: bool, allowGhosts: bool, onChange: fn }
     // Returns a DOM node the caller appends somewhere. Re-renderable via .refresh() on the node.
     function DriverPicker(opts) {
         var container = document.createElement('div');
         container.className = 'history-driver-picker';
 
-        function render() {
-            var rows = Object.keys(opts.drivers || {}).sort(function (a, b) {
-                return Number(a) - Number(b);
-            });
-            var html = '<div class="driver-picker-header">Drivers</div>';
+        function rowsSorted() {
+            return Object.keys(opts.drivers || {}).sort(function (a, b) { return Number(a) - Number(b); });
+        }
+
+        function openCompareLapModal() {
+            var rows = rowsSorted();
+            if (!rows.length) return;
+            var modalBody = '<div class="tc-lap-modal">'
+                + '<div class="tc-lap-modal-title">Select driver and lap</div>'
+                + '<div class="tc-lap-driver-list">';
             rows.forEach(function (carIdx) {
                 var d = opts.drivers[carIdx];
-                var teamColor = (typeof teamAccentColor === 'function')
-                    ? teamAccentColor(d.teamId) : '#9aa0a6';
+                var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
+                var racePos = getDriverRacePosition(state.session, Number(carIdx));
+                modalBody += '<button type="button" class="tc-lap-driver-btn" data-car="' + carIdx + '">'
+                    + '<span class="driver-dot" style="background:' + teamColor + '"></span>'
+                    + '<span class="tc-lap-driver-name">' + (racePos ? '<span class="driver-race-pos">P' + racePos + '</span> ' : '') + escapeHtml(shortDriverName(d.name || ('Car ' + carIdx))) + '</span>'
+                    + '</button>';
+            });
+            modalBody += '</div><div class="tc-lap-list" id="tcLapList"></div></div>';
+
+            openModal('Add lap to compare', modalBody, null);
+            var overlay = document.querySelector('.history-modal-overlay:last-of-type');
+            if (!overlay) return;
+            overlay.querySelector('.history-modal-footer').style.display = 'none';
+            var list = overlay.querySelector('#tcLapList');
+
+            function renderLapList(carIdx) {
+                var d = opts.drivers[carIdx];
+                if (!d) return;
+                var laps = (d.laps || []).slice().sort(function (a, b) { return Number(a.lapNum) - Number(b.lapNum); });
+                if (!laps.length) {
+                    list.innerHTML = '<div class="tc-lap-empty">No laps available</div>';
+                    return;
+                }
+                var html = '<div class="tc-lap-list-head">' + escapeHtml(shortDriverName(d.name || ('Car ' + carIdx))) + '</div>';
+                laps.forEach(function (l) {
+                    var tyre = l.compound || l.tyreCompound || l.tyre || '—';
+                    html += '<button type="button" class="tc-lap-option" data-car="' + carIdx + '" data-lap="' + l.lapNum + '">'
+                        + '<span class="tc-lap-option-main">Lap ' + l.lapNum + '</span>'
+                        + '<span class="tc-lap-option-meta">' + escapeHtml(formatLapTime(l.lapTimeMs) + ' • ' + String(tyre)) + (l.valid ? '' : ' • invalid') + '</span>'
+                        + '</button>';
+                });
+                list.innerHTML = html;
+                list.querySelectorAll('.tc-lap-option').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var pickedCar = Number(btn.dataset.car);
+                        var pickedLap = Number(btn.dataset.lap);
+                        var existing = state.driverSelection.get(pickedCar);
+                        state.driverSelection.set(pickedCar, { lap: pickedLap, ghost: existing ? existing.ghost : false });
+                        if (opts.onChange) opts.onChange();
+                        overlay.remove();
+                    });
+                });
+            }
+            overlay.querySelectorAll('.tc-lap-driver-btn').forEach(function (btn, idx) {
+                btn.addEventListener('click', function () { renderLapList(Number(btn.dataset.car)); });
+                if (idx === 0) renderLapList(Number(btn.dataset.car));
+            });
+        }
+
+        function render() {
+            var rows = rowsSorted();
+            if (opts.compareCardMode) {
+                var selected = [];
+                state.driverSelection.forEach(function (sel, carIdx) {
+                    if (sel && sel.lap != null && opts.drivers[carIdx]) selected.push({ carIdx: Number(carIdx), sel: sel });
+                });
+                selected.sort(function (a, b) { return a.carIdx - b.carIdx; });
+                var cards = '<div class="driver-picker-header">Compare laps</div><div class="tc-lap-card-list">';
+                selected.forEach(function (item) {
+                    var d = opts.drivers[item.carIdx];
+                    var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
+                    var isRef = state.compareState && Number(state.compareState.referenceCarIdx) === item.carIdx && Number(state.compareState.referenceLap) === Number(item.sel.lap);
+                    cards += '<div class="tc-lap-card" data-car="' + item.carIdx + '"><div class="tc-lap-card-top">'
+                        + '<span class="driver-dot" style="background:' + teamColor + '"></span>'
+                        + '<span>' + escapeHtml(shortDriverName(d.name || ('Car ' + item.carIdx))) + '</span>'
+                        + (isRef ? '<span class="driver-ref-badge">REF</span>' : '')
+                        + '</div><div class="tc-lap-card-lap">Lap ' + item.sel.lap + '</div></div>';
+                });
+                cards += '<button type="button" class="tc-lap-card tc-lap-card-add" id="tcAddLapCard"><span>+</span></button></div>';
+                container.innerHTML = cards;
+                container.querySelector('#tcAddLapCard').addEventListener('click', openCompareLapModal);
+                return;
+            }
+            // default picker
+            var html = '<div class="driver-picker-header">Drivers</div>';
+            rows.forEach(function (carIdx) { /* unchanged */
+                var d = opts.drivers[carIdx];
+                var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
                 var racePos = getDriverRacePosition(state.session, Number(carIdx));
                 var sel = state.driverSelection.get(Number(carIdx));
                 var isSelected = !!sel && (!opts.supportLapSelector || sel.lap != null);
                 var checked = isSelected ? 'checked' : '';
                 var ghostBadge = (sel && sel.ghost) ? '<span class="driver-ghost-badge">G</span>' : '';
-                var isRef = !!sel && state.compareState
-                    && Number(state.compareState.referenceCarIdx) === Number(carIdx)
-                    && Number(state.compareState.referenceLap) === Number(sel.lap);
+                var isRef = !!sel && state.compareState && Number(state.compareState.referenceCarIdx) === Number(carIdx) && Number(state.compareState.referenceLap) === Number(sel.lap);
                 var refBadge = isRef ? '<span class="driver-ref-badge">REF</span>' : '';
-                html += '<label class="driver-row" data-car="' + carIdx + '">'
-                      + '<input type="checkbox" class="driver-check" ' + checked + ' />'
-                      + '<input type="radio" name="driver-reference" class="driver-ref" ' + (isRef ? 'checked' : '') + ' title="Set as Reference" />'
-                      + '<span class="driver-dot" style="background:' + teamColor + '"></span>'
-                      + '<span class="driver-name">' + (racePos ? '<span class="driver-race-pos">P' + racePos + '</span> ' : '') + escapeHtml(shortDriverName(d.name || ('Car ' + carIdx))) + '</span>'
-                      + ghostBadge + refBadge;
+                html += '<label class="driver-row" data-car="' + carIdx + '">' + '<input type="checkbox" class="driver-check" ' + checked + ' />' + '<input type="radio" name="driver-reference" class="driver-ref" ' + (isRef ? 'checked' : '') + ' title="Set as Reference" />' + '<span class="driver-dot" style="background:' + teamColor + '"></span>' + '<span class="driver-name">' + (racePos ? '<span class="driver-race-pos">P' + racePos + '</span> ' : '') + escapeHtml(shortDriverName(d.name || ('Car ' + carIdx))) + '</span>' + ghostBadge + refBadge;
                 if (opts.supportLapSelector) {
                     html += '<select class="driver-lap-select">';
-                    (d.laps || []).forEach(function (l) {
-                        var selAttr = (sel && sel.lap === l.lapNum) ? ' selected' : '';
-                        var lapLabel = 'L' + l.lapNum + ' — ' + formatLapTime(l.lapTimeMs)
-                                     + (l.valid ? '' : ' ✗');
-                        html += '<option value="' + l.lapNum + '"' + selAttr + '>'
-                              + escapeHtml(lapLabel) + '</option>';
-                    });
+                    (d.laps || []).forEach(function (l) { var selAttr = (sel && sel.lap === l.lapNum) ? ' selected' : ''; var lapLabel = 'L' + l.lapNum + ' — ' + formatLapTime(l.lapTimeMs) + (l.valid ? '' : ' ✗'); html += '<option value="' + l.lapNum + '"' + selAttr + '>' + escapeHtml(lapLabel) + '</option>'; });
                     html += '</select>';
                 }
                 html += '</label>';
             });
             container.innerHTML = html;
-
-            container.querySelectorAll('.driver-check').forEach(function (cb) {
-                cb.addEventListener('change', function () {
-                    var row = cb.closest('.driver-row');
-                    var carIdx = Number(row.dataset.car);
-                    if (cb.checked) {
-                        var d = opts.drivers[carIdx];
-                        var existing = state.driverSelection.get(carIdx);
-                        state.driverSelection.set(carIdx, {
-                            lap: existing ? existing.lap : fastestValidLap(d.laps),
-                            ghost: existing ? existing.ghost : false,
-                        });
-                    } else {
-                        state.driverSelection.delete(carIdx);
-                    }
-                    if (opts.onChange) opts.onChange();
-                });
-            });
-            container.querySelectorAll('.driver-lap-select').forEach(function (sel) {
-                sel.addEventListener('change', function () {
-                    var row = sel.closest('.driver-row');
-                    var carIdx = Number(row.dataset.car);
-                    var existing = state.driverSelection.get(carIdx) || { ghost: false };
-                    existing.lap = Number(sel.value);
-                    state.driverSelection.set(carIdx, existing);
-                    if (opts.onChange) opts.onChange();
-                });
-            });
-            container.querySelectorAll('.driver-ref').forEach(function (rb) {
-                rb.addEventListener('change', function () {
-                    if (!rb.checked) return;
-                    var row = rb.closest('.driver-row');
-                    var carIdx = Number(row.dataset.car);
-                    var existing = state.driverSelection.get(carIdx);
-                    if (!existing || existing.lap == null) return;
-                    state.compareState.referenceCarIdx = carIdx;
-                    state.compareState.referenceLap = existing.lap;
-                    if (opts.onChange) opts.onChange();
-                });
-            });
+            container.querySelectorAll('.driver-check').forEach(function (cb) { cb.addEventListener('change', function () { var row = cb.closest('.driver-row'); var carIdx = Number(row.dataset.car); if (cb.checked) { var d = opts.drivers[carIdx]; var existing = state.driverSelection.get(carIdx); state.driverSelection.set(carIdx, { lap: existing ? existing.lap : fastestValidLap(d.laps), ghost: existing ? existing.ghost : false }); } else { state.driverSelection.delete(carIdx); } if (opts.onChange) opts.onChange(); }); });
+            container.querySelectorAll('.driver-lap-select').forEach(function (sel) { sel.addEventListener('change', function () { var row = sel.closest('.driver-row'); var carIdx = Number(row.dataset.car); var existing = state.driverSelection.get(carIdx) || { ghost: false }; existing.lap = Number(sel.value); state.driverSelection.set(carIdx, existing); if (opts.onChange) opts.onChange(); }); });
+            container.querySelectorAll('.driver-ref').forEach(function (rb) { rb.addEventListener('change', function () { if (!rb.checked) return; var row = rb.closest('.driver-row'); var carIdx = Number(row.dataset.car); var existing = state.driverSelection.get(carIdx); if (!existing || existing.lap == null) return; state.compareState.referenceCarIdx = carIdx; state.compareState.referenceLap = existing.lap; if (opts.onChange) opts.onChange(); }); });
         }
 
         render();
