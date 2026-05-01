@@ -4728,7 +4728,11 @@ td.lap-cell__tyre { cursor: default; }
 }
 
 /* Per-metric accent color. Drives label color and the tinted row background. */
-.tc-chart-row { --tc-metric-color: #9aa0a6; }
+.tc-chart-row {
+    --tc-metric-color: #9aa0a6;
+    --tc-line-ref: rgba(255, 255, 255, 0.95);
+    --tc-line-compare: rgba(255, 255, 255, 0.85);
+}
 .tc-chart-row[data-metric="delta"] { --tc-metric-color: #a855f7; }
 .tc-chart-row[data-metric="spd"]   { --tc-metric-color: #60a5fa; }
 .tc-chart-row[data-metric="thr"]   { --tc-metric-color: #22c55e; }
@@ -4858,6 +4862,12 @@ td.lap-cell__tyre { cursor: default; }
 .tc-resize-handle:active { background: var(--accent-brand); opacity: 0.85; }
 
 .tc-line { fill: none; stroke-width: 1.2; stroke-linejoin: round; stroke-linecap: round; }
+.tc-line-ref { stroke-width: 1.25; stroke-dasharray: none; opacity: 0.95; }
+.tc-line-current { stroke-width: 1.8; stroke-dasharray: none; opacity: 1; filter: drop-shadow(0 0 1px var(--tc-line-compare)); }
+.tc-line-extra { stroke-width: 1.35; stroke-dasharray: 5 3; opacity: 0.95; }
+.tc-line-pattern-ref, .tc-line-marker-ref { stroke: var(--tc-line-ref); fill: var(--tc-line-ref); stroke-width: 0.8; }
+.tc-line-pattern-current, .tc-line-marker-current { stroke: var(--tc-line-compare); fill: var(--tc-line-compare); stroke-width: 0.8; }
+.tc-line-pattern-extra, .tc-line-marker-extra { stroke: var(--tc-line-compare); fill: none; stroke-width: 0.8; }
 .tc-baseline { stroke: rgba(255, 255, 255, 0.08); stroke-width: 0.5; }
 .tc-sector-line { stroke: var(--accent-brand); stroke-dasharray: 3 3; stroke-width: 0.5; opacity: 0.6; }
 

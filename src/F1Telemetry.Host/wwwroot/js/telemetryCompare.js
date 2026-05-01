@@ -628,6 +628,7 @@
         }
 
         var lines = '';
+        var compareSeriesCount = 0;
         selections.forEach(function (kv) {
             var carIdx = kv[0];
             var d = lapData && lapData.get(carIdx);
@@ -654,7 +655,13 @@
                 var yv = PAD_T + plotH - (pt.v - vMin) / Math.max(0.0001, vMax - vMin) * plotH;
                 return x(pt.d) + ',' + yv;
             });
-            lines += '<polyline class="tc-line" stroke="' + color + '" points="' + pts.join(' ') + '"/>';
+            var roleClass = 'tc-line tc-line-extra';
+            if (carIdx === refCarIdx) roleClass = 'tc-line tc-line-ref';
+            else if (compareSeriesCount === 0) roleClass = 'tc-line tc-line-current';
+            var markerAttr = roleClass.indexOf('tc-line-ref') >= 0 ? ' marker-mid="url(#tcMarkerRef)"' :
+                (roleClass.indexOf('tc-line-current') >= 0 ? ' marker-mid="url(#tcMarkerCurrent)"' : ' marker-mid="url(#tcMarkerExtra)"');
+            lines += '<polyline class="' + roleClass + '" stroke="' + color + '" points="' + pts.join(' ') + '"' + markerAttr + '/>';
+            if (carIdx !== refCarIdx) compareSeriesCount++;
         });
 
         // Axis baseline.
@@ -681,8 +688,16 @@
             axis += '<text class="tc-axis-label" x="4" y="' + (PAD_T + plotH - 2) + '">' + ax.min + '</text>';
         }
 
+        var defs = '<defs>'
+            + '<marker id="tcMarkerRef" markerWidth="4" markerHeight="4" refX="2" refY="2"><circle cx="2" cy="2" r="1" class="tc-line-marker-ref"/></marker>'
+            + '<marker id="tcMarkerCurrent" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5"><rect x="1" y="1" width="3" height="3" class="tc-line-marker-current"/></marker>'
+            + '<marker id="tcMarkerExtra" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5"><path d="M1 2.5 L4 2.5 M2.5 1 L2.5 4" class="tc-line-marker-extra"/></marker>'
+            + '<pattern id="tcPatternRef" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 6 L6 0" class="tc-line-pattern-ref"/></pattern>'
+            + '<pattern id="tcPatternCurrent" width="4" height="4" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="0.7" class="tc-line-pattern-current"/></pattern>'
+            + '<pattern id="tcPatternExtra" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 0 L6 6" class="tc-line-pattern-extra"/></pattern>'
+            + '</defs>';
         return '<svg class="tc-chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
-            + ersBg + speedDrsOverlay + sectorMarkers + lines + axis + '</svg>';
+            + defs + ersBg + speedDrsOverlay + sectorMarkers + lines + axis + '</svg>';
     }
 
     // Resamples driverSamples onto reference sample distances and returns per-distance Δtime (seconds).
@@ -810,6 +825,7 @@
 
         // Pre-compute per-driver interp sample + color + delta series at hover time.
         function resolvePerDriver(d) {
+            var compareOrdinal = 0;
             return selections.map(function (kv) {
                 var carIdx = kv[0];
                 var data = lapData && lapData.get(carIdx);
@@ -824,7 +840,20 @@
                 } else if (carIdx === refCarIdx) {
                     deltaVal = 0;
                 }
-                return { carIdx: carIdx, color: color, sample: sample, delta: deltaVal, isReference: carIdx === refCarIdx };
+                var sel = window.HistoryDetail && window.HistoryDetail.state && window.HistoryDetail.state.driverSelection
+                    ? window.HistoryDetail.state.driverSelection.get(carIdx)
+                    : null;
+                var lapNo = sel && sel.lap != null ? Number(sel.lap) : null;
+                var roleLabel = 'REF';
+                if (carIdx !== refCarIdx) {
+                    roleLabel = 'LAP ' + String.fromCharCode(65 + Math.min(25, compareOrdinal));
+                    compareOrdinal++;
+                }
+                var nameLabel = (driver && (driver.shortName || driver.name || driver.code)) || roleLabel;
+                var chipLabel = (driver && (driver.shortName || driver.name || driver.code))
+                    ? (nameLabel + (lapNo != null ? (' · L' + lapNo) : ''))
+                    : roleLabel;
+                return { carIdx: carIdx, color: color, sample: sample, delta: deltaVal, isReference: carIdx === refCarIdx, chipLabel: chipLabel };
             }).filter(Boolean).sort(function (a, b) {
                 return (b.isReference === true) - (a.isReference === true);
             });
@@ -845,7 +874,7 @@
                 var rows = perDriver.map(function (pd) {
                     var text = formatChipValue(metricKey, pd.sample, metricKey === 'delta' ? pd.delta : null);
                     return '<span class="tc-chip-dot" style="background:' + pd.color + '"></span>'
-                        + (pd.isReference ? '<span class="tc-chip-ref">REF</span>' : '')
+                        + '<span class="tc-chip-ref">' + escapeHtml(pd.chipLabel || (pd.isReference ? 'REF' : 'LAP')) + '</span>'
                         + '<span class="tc-chip-val">' + escapeHtml(text) + '</span>';
                 }).join('<span class="tc-chip-sep"></span>');
                 chip.innerHTML = rows;
