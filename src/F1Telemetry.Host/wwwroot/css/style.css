@@ -5331,3 +5331,55 @@ td.lap-cell__tyre { cursor: default; }
     cursor: pointer;
 }
 .export-row:hover { background: rgba(255, 255, 255, 0.03); }
+
+/* Telemetry Compare lap picker cards */
+.tc-lap-card-list { display: flex; flex-direction: column; gap: 8px; }
+.tc-lap-card {
+    width: 100%;
+    border: 1px solid var(--color-border-default);
+    border-radius: 10px;
+    background: color-mix(in srgb, var(--color-bg-card) 92%, #fff 8%);
+    padding: 14px;
+    color: var(--text-primary);
+}
+.tc-lap-card-top { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+.tc-lap-card-lap { font-size: 28px; font-weight: 700; letter-spacing: 0.2px; }
+.tc-lap-card-add { min-height: 130px; display: grid; place-items: center; cursor: pointer; background: transparent; }
+.tc-lap-card-add span { font-size: 64px; line-height: 1; color: var(--text-dim); font-weight: 300; }
+.tc-lap-modal { display: grid; gap: 10px; min-width: min(760px, 85vw); }
+.tc-lap-modal-title { font-size: 12px; color: var(--text-dim); }
+.tc-lap-driver-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
+.tc-lap-driver-btn, .tc-lap-option {
+    border: 1px solid var(--color-border-default);
+    border-radius: 8px;
+    background: var(--bg-dark);
+    color: var(--text-primary);
+    text-align: left;
+    padding: 8px;
+    cursor: pointer;
+}
+.tc-lap-driver-btn { display: flex; align-items: center; gap: 8px; }
+.tc-lap-option { display: grid; gap: 4px; width: 100%; }
+.tc-lap-driver-btn:hover, .tc-lap-option:hover { border-color: var(--accent-brand); }
+.tc-lap-list { border-top: 1px solid var(--border); padding-top: 8px; }
+.tc-lap-list-head { margin-bottom: 6px; font-size: 12px; color: var(--text-dim); }
+.tc-lap-option-main { font-weight: 700; }
+.tc-lap-option-meta { font-size: 11px; color: var(--text-dim); }
+.tc-lap-empty { font-size: 12px; color: var(--text-dim); padding: 8px 0; }
+
+.tc-lap-card { position: relative; }
+.tc-lap-card.is-disabled { opacity: 0.45; }
+.tc-lap-card-remove {
+    position: absolute;
+    top: 8px;
+    right: 8px;
+    width: 22px;
+    height: 22px;
+    border-radius: 50%;
+    border: 1px solid var(--color-border-default);
+    background: var(--bg-dark);
+    color: var(--text-dim);
+    cursor: pointer;
+    line-height: 1;
+}
+.tc-lap-card-remove:hover { border-color: #ef4444; color: #ef4444; }

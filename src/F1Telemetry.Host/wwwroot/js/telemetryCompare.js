@@ -152,6 +152,7 @@
         var picker = window.HistoryDetail.DriverPicker({
             drivers: sess.drivers,
             supportLapSelector: true,
+            compareCardMode: true,
             onChange: function () { reloadLapSamples().then(redraw); },
         });
         side.appendChild(picker);
@@ -163,7 +164,7 @@
     function reloadLapSamples() {
         var hd = window.HistoryDetail;
         var selections = Array.from(hd.state.driverSelection.entries()).filter(function (kv) {
-            return kv[1] && kv[1].lap != null;
+            return kv[1] && kv[1].lap != null && kv[1].enabled !== false;
         });
         var promises = selections.map(function (kv) {
             var carIdx = kv[0], lap = kv[1].lap;
@@ -202,12 +203,13 @@
         var refLap = st.compareState ? st.compareState.referenceLap : null;
         var stillValid = refIdx != null && refLap != null && st.driverSelection.has(refIdx)
             && (st.driverSelection.get(refIdx) || {}).lap === refLap
+            && (st.driverSelection.get(refIdx) || {}).enabled !== false
             && lapData && lapData.has(refIdx);
         if (stillValid) return { carIdx: refIdx, lap: refLap };
 
         var first = null;
         st.driverSelection.forEach(function (sel, carIdx) {
-            if (first || !sel || sel.lap == null) return;
+            if (first || !sel || sel.lap == null || sel.enabled === false) return;
             if (lapData && !lapData.has(carIdx)) return;
             first = { carIdx: Number(carIdx), lap: Number(sel.lap) };
         });
@@ -435,7 +437,9 @@
     function detectTopLossZones(lapData, sess, topN) {
         var refSel = ensureReferenceSelection(lapData);
         if (!refSel) return [];
-        var entries = Array.from(window.HistoryDetail.state.driverSelection.entries());
+        var entries = Array.from(window.HistoryDetail.state.driverSelection.entries()).filter(function (kv) {
+            return kv[1] && kv[1].lap != null && kv[1].enabled !== false;
+        });
         var cmpEntry = entries.find(function (kv) { return Number(kv[0]) !== refSel.carIdx; });
         if (!cmpEntry) return [];
         var cmpData = lapData.get(cmpEntry[0]);
@@ -568,7 +572,7 @@
         html += '<div class="tc-overview" id="tcOverview"><div class="tc-overview-window" id="tcOverviewWin"></div></div>';
         host.innerHTML = html;
 
-        var selections = Array.from(window.HistoryDetail.state.driverSelection.entries());
+        var selections = Array.from(window.HistoryDetail.state.driverSelection.entries()).filter(function (kv) { return kv[1] && kv[1].lap != null && kv[1].enabled !== false; });
 
         visibleMetrics.forEach(function (m) {
             var row = host.querySelector('[data-metric="' + m.key + '"] .tc-chart-svg-host');
@@ -879,7 +883,7 @@
         var markers = '';
         window.HistoryDetail.state.driverSelection.forEach(function (sel, carIdx) {
             var d = lapData && lapData.get(carIdx);
-            if (!d || !d.motion || d.motion.length === 0) return;
+            if (!sel || sel.enabled === false || !d || !d.motion || d.motion.length === 0) return;
             var driver = sess.drivers[carIdx];
             var color = (typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
             var pts = d.motion.map(function (m) {
