@@ -141,15 +141,19 @@
         var sess = window.HistoryDetail.state.session;
         body.innerHTML = ''
             + '<div class="tc-layout">'
-            +   '<div class="tc-side" id="tcSide"></div>'
+            +   '<div class="tc-side" id="tcSide" data-priority="secondary"></div>'
             +   '<div class="tc-main">'
-            +     '<div class="tc-sector-badges" id="tcBadges"></div>'
-            +     '<div class="tc-compare-content">'
+            +     '<div class="tc-layer tc-layer-a tc-kpi-sticky" data-priority="primary">'
+            +       '<div class="tc-sector-badges" id="tcBadges"></div>'
+            +     '</div>'
+            +     '<div class="tc-layer tc-layer-b" data-priority="primary">'
             +       '<div class="tc-charts" id="tcCharts"></div>'
-            +       '<aside class="tc-focus" id="tcFocusPanel"></aside>'
+            +     '</div>'
+            +     '<div class="tc-layer tc-layer-c tc-compare-content" data-priority="secondary">'
+            +       '<aside class="tc-focus" id="tcFocusPanel" data-priority="secondary"></aside>'
             +     '</div>'
             +   '</div>'
-            +   '<div class="tc-map" id="tcMap"></div>'
+            +   '<div class="tc-map tc-layer tc-layer-c" id="tcMap" data-priority="secondary"></div>'
             + '</div>';
 
         var side = body.querySelector('#tcSide');
@@ -542,13 +546,20 @@
         }
     }
 
+
+    function getMetricPriority(metricKey) {
+        return (metricKey === 'spd' || metricKey === 'thr' || metricKey === 'brk' || metricKey === 'str')
+            ? 'primary'
+            : 'secondary';
+    }
     // ---------- chart stack ----------
 
     function effectiveHeight(m) {
         var base = compareState.heightOverride[m.key] != null
             ? compareState.heightOverride[m.key]
             : m.height;
-        return Math.max(18, Math.round(base * compareState.heightScale));
+        var scaled = Math.max(18, Math.round(base * compareState.heightScale));
+        return getMetricPriority(m.key) === 'secondary' ? Math.max(18, Math.round(scaled * 0.75)) : scaled;
     }
 
     function drawChartStack(lapData) {
@@ -571,7 +582,8 @@
         var html = '';
         visibleMetrics.forEach(function (m) {
             var h = effectiveHeight(m);
-            html += '<div class="tc-chart-row" data-metric="' + m.key + '" style="--tc-row-h:' + h + 'px">'
+            var priority = getMetricPriority(m.key);
+            html += '<div class="tc-chart-row" data-priority="' + priority + '" data-metric="' + m.key + '" style="--tc-row-h:' + h + 'px">'
                 + '<div class="tc-chart-label">' + m.label + '</div>'
                 + '<div class="tc-chart-svg-host"></div>'
                 + '<div class="tc-resize-handle" data-metric="' + m.key + '" title="Drag to resize"></div>'
