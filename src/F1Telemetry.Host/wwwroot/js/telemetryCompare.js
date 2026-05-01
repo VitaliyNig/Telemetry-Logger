@@ -152,6 +152,7 @@
         var picker = window.HistoryDetail.DriverPicker({
             drivers: sess.drivers,
             supportLapSelector: true,
+            compareCardMode: true,
             onChange: function () { reloadLapSamples().then(redraw); },
         });
         side.appendChild(picker);
