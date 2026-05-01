@@ -19,7 +19,9 @@
         focusPinMode: false,
         focusPinned: null,
         insightsEnabled: true,
+        brush: null,
     };
+    var shortcutsBound = false;
 
     var PERSIST_KEY = 'tcCompareUi';
 
@@ -273,6 +275,8 @@
         });
         if (currentSector !== null) html += '</div>';
         html += '<button class="tc-badge tc-badge-reset" data-start="0" data-end="' + trackLen + '">Full Lap</button>';
+        html += '<button class="tc-badge" data-action="reset-zoom">Reset Zoom</button>';
+        html += '<button class="tc-badge" data-action="zoom-out-2x">Zoom Out 2x</button>';
         html += '</div>';
 
         // --- Second row: metric visibility chips + height presets + reset-heights. ---
@@ -300,6 +304,18 @@
 
         host.querySelectorAll('.tc-badge').forEach(function (b) {
             b.addEventListener('click', function () {
+                var action = b.dataset.action;
+                if (action === 'reset-zoom') {
+                    compareState.zoomStart = null;
+                    compareState.zoomEnd = null;
+                    redraw(lapData);
+                    return;
+                }
+                if (action === 'zoom-out-2x') {
+                    zoomOut2x();
+                    redraw(lapData);
+                    return;
+                }
                 var start = Number(b.dataset.start), end = Number(b.dataset.end);
                 if (compareState.zoomStart === start && compareState.zoomEnd === end) {
                     compareState.zoomStart = null;
@@ -503,7 +519,9 @@
         // Hover overlay spans the entire stack.
         html += '<div class="tc-hover-layer" id="tcHoverLayer">'
              + '<div class="tc-crosshair" id="tcCrosshair"></div>'
+             + '<div class="tc-brush" id="tcBrush"></div>'
              + '</div>';
+        html += '<div class="tc-overview" id="tcOverview"><div class="tc-overview-window" id="tcOverviewWin"></div></div>';
         host.innerHTML = html;
 
         var selections = Array.from(window.HistoryDetail.state.driverSelection.entries());
@@ -518,6 +536,35 @@
 
         wireResizeHandles(host, lapData);
         wireHover(host, lapData, selections, refSamples, refIdx, xMin, xMax, sess);
+        bindCompareShortcuts(lapData);
+    }
+
+    function bindCompareShortcuts(lapData) {
+        if (shortcutsBound) return;
+        shortcutsBound = true;
+        document.addEventListener('keydown', function (e) {
+            if ((e.key || '').toLowerCase() !== 'r') return;
+            if (e.target && (/input|textarea|select/i).test(e.target.tagName || '')) return;
+            compareState.zoomStart = null;
+            compareState.zoomEnd = null;
+            redraw(lapData);
+        });
+    }
+
+    function zoomOut2x() {
+        var sess = window.HistoryDetail.state.session;
+        var trackLen = sess.meta.trackLengthM || 5000;
+        var min = compareState.zoomStart != null ? compareState.zoomStart : 0;
+        var max = compareState.zoomEnd != null ? compareState.zoomEnd : trackLen;
+        var span = Math.max(1, max - min);
+        var center = min + span / 2;
+        var nextSpan = Math.min(trackLen, span * 2);
+        compareState.zoomStart = Math.max(0, center - nextSpan / 2);
+        compareState.zoomEnd = Math.min(trackLen, center + nextSpan / 2);
+        if (compareState.zoomStart <= 0 && compareState.zoomEnd >= trackLen) {
+            compareState.zoomStart = null;
+            compareState.zoomEnd = null;
+        }
     }
 
     // Mouse-drag on the bottom edge of a row changes compareState.heightOverride[key].
@@ -822,6 +869,10 @@
 
         var chips = Array.prototype.slice.call(host.querySelectorAll('.tc-row-chip'));
         var scheduled = false, lastX = 0;
+        var brushStartPx = null;
+        var brushEl = overlay.querySelector('.tc-brush');
+        var overviewWin = host.querySelector('#tcOverviewWin');
+        var overview = host.querySelector('#tcOverview');
 
         // Pre-compute per-driver interp sample + color + delta series at hover time.
         function resolvePerDriver(d) {
@@ -913,6 +964,78 @@
             else compareState.focusPinned = { base: compareState.focusPinned.base, baseDistance: compareState.focusPinned.baseDistance, compare: perDriver, compareDistance: d };
             renderFocusPanel(perDriver, d);
         });
+        overlay.addEventListener('mousedown', function (e) {
+            if (e.button !== 0) return;
+            var rect = overlay.getBoundingClientRect();
+            brushStartPx = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+            compareState.brush = { start: brushStartPx, end: brushStartPx };
+            updateBrushVisual();
+            document.addEventListener('mousemove', onBrushMove);
+            document.addEventListener('mouseup', onBrushUp);
+        });
+        function onBrushMove(e) {
+            if (brushStartPx == null) return;
+            var rect = overlay.getBoundingClientRect();
+            var px = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+            compareState.brush.end = px;
+            updateBrushVisual();
+        }
+        function onBrushUp() {
+            document.removeEventListener('mousemove', onBrushMove);
+            document.removeEventListener('mouseup', onBrushUp);
+            if (!compareState.brush) return;
+            var rect = overlay.getBoundingClientRect();
+            var x0 = Math.min(compareState.brush.start, compareState.brush.end);
+            var x1 = Math.max(compareState.brush.start, compareState.brush.end);
+            var minPx = 5;
+            if (x1 - x0 >= minPx && rect.width > 1) {
+                var n0 = x0 / rect.width, n1 = x1 / rect.width;
+                compareState.zoomStart = xMin + n0 * (xMax - xMin);
+                compareState.zoomEnd = xMin + n1 * (xMax - xMin);
+                compareState.brush = null;
+                redraw(lapData);
+                return;
+            }
+            compareState.brush = null;
+            updateBrushVisual();
+        }
+        function updateBrushVisual() {
+            if (!brushEl) return;
+            if (!compareState.brush) {
+                brushEl.style.display = 'none';
+                return;
+            }
+            var left = Math.min(compareState.brush.start, compareState.brush.end);
+            var width = Math.abs(compareState.brush.end - compareState.brush.start);
+            brushEl.style.display = 'block';
+            brushEl.style.left = left + 'px';
+            brushEl.style.width = width + 'px';
+        }
+        function updateOverviewWindow() {
+            if (!overviewWin) return;
+            var trackLen = (sess && sess.meta && sess.meta.trackLengthM) || 1;
+            var z0 = compareState.zoomStart != null ? compareState.zoomStart : 0;
+            var z1 = compareState.zoomEnd != null ? compareState.zoomEnd : trackLen;
+            var l = Math.max(0, Math.min(100, (z0 / trackLen) * 100));
+            var w = Math.max(2, Math.min(100, ((z1 - z0) / trackLen) * 100));
+            overviewWin.style.left = l + '%';
+            overviewWin.style.width = w + '%';
+        }
+        if (overview) {
+            overview.addEventListener('mousedown', function (e) {
+                var rect = overview.getBoundingClientRect();
+                var pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                var trackLen = (sess && sess.meta && sess.meta.trackLengthM) || 1;
+                var z0 = compareState.zoomStart != null ? compareState.zoomStart : 0;
+                var z1 = compareState.zoomEnd != null ? compareState.zoomEnd : trackLen;
+                var span = Math.max(1, z1 - z0);
+                var center = pct * trackLen;
+                compareState.zoomStart = Math.max(0, center - span / 2);
+                compareState.zoomEnd = Math.min(trackLen, center + span / 2);
+                redraw(lapData);
+            });
+        }
+        updateOverviewWindow();
         renderFocusPanel([], null);
     }
 
