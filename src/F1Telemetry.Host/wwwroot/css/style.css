@@ -4890,6 +4890,36 @@ td.lap-cell__tyre { cursor: default; }
     left: -9999px;
     pointer-events: none;
 }
+.tc-brush {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    display: none;
+    background: color-mix(in srgb, var(--accent-brand) 25%, transparent);
+    border-left: 1px solid color-mix(in srgb, var(--accent-brand) 60%, transparent);
+    border-right: 1px solid color-mix(in srgb, var(--accent-brand) 60%, transparent);
+    pointer-events: none;
+}
+.tc-overview {
+    position: relative;
+    height: 12px;
+    margin: 6px 0 0 calc(var(--tc-label-w, 90px) + 6px);
+    border: 1px solid var(--color-border-default);
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    cursor: pointer;
+    overflow: hidden;
+}
+.tc-overview-window {
+    position: absolute;
+    top: 1px;
+    bottom: 1px;
+    left: 0;
+    width: 100%;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--accent-brand) 42%, transparent);
+    border: 1px solid color-mix(in srgb, var(--accent-brand) 72%, transparent);
+}
 
 .tc-map-stage { position: relative; width: 100%; aspect-ratio: 1; }
 .tc-map-outline {
