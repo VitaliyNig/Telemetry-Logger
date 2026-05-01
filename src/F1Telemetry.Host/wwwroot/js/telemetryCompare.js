@@ -201,16 +201,32 @@
             refLap = (refDriverLap.laps || []).find(function (l) { return l.lapNum === sel.lap; });
         }
 
-        segments.forEach(function (seg) {
+        html += '<div class="tc-sector-groups">';
+        var miniCount = Math.max(1, Number(compareState.miniPerSector) || 1);
+        var currentSector = null;
+        segments.forEach(function (seg, idx) {
+            if (currentSector !== seg.sector) {
+                if (currentSector !== null) html += '</div>';
+                html += '<div class="tc-sector-group" data-sector="S' + seg.sector + '">';
+                currentSector = seg.sector;
+            }
             var sectorKey = 's' + seg.sector + 'Ms';
             var refMs = refLap ? refLap[sectorKey] : 0;
             var segmentMs = seg.parts > 1 ? (refMs / seg.parts) : refMs;
-            html += '<button class="tc-badge" data-start="' + seg.start + '" data-end="' + seg.end + '">'
-                + '<strong>' + seg.label + '</strong> '
+            var fullLabel = 'S' + seg.sector + (seg.parts > 1 ? ('.' + seg.part) : '');
+            var shortLabel = seg.sector + (seg.parts > 1 ? ('.' + seg.part) : '');
+            html += '<button class="tc-badge" data-start="' + seg.start + '" data-end="' + seg.end + '" title="' + fullLabel + '">'
+                + '<strong><span class="tc-badge-label-full">' + fullLabel + '</span><span class="tc-badge-label-short">' + shortLabel + '</span></strong> '
                 + window.HistoryDetail.formatSectorTime(segmentMs)
                 + '</button>';
+
+            if (miniCount > 1 && (idx + 1) % miniCount === 0 && (idx + 1) < segments.length) {
+                html += '<span class="tc-sector-divider" aria-hidden="true"></span>';
+            }
         });
+        if (currentSector !== null) html += '</div>';
         html += '<button class="tc-badge tc-badge-reset" data-start="0" data-end="' + trackLen + '">Full Lap</button>';
+        html += '</div>';
 
         // --- Second row: metric visibility chips + height presets + reset-heights. ---
         html += '<div class="tc-metrics-toolbar">';
