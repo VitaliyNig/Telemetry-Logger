@@ -961,6 +961,37 @@
         'OVTK': '#fb923c', 'RTMT': '#fb923c', 'TMPT': '#fb923c',
         'BUTN': '#6b7280',
     };
+    var PENALTY_TYPES = {
+        0: 'Drive through', 1: 'Stop Go', 2: 'Grid penalty', 3: 'Penalty reminder',
+        4: 'Time penalty', 5: 'Warning', 6: 'Disqualified', 7: 'Removed from formation lap',
+        8: 'Parked too long timer', 9: 'Tyre regulations', 10: 'This lap invalidated',
+        11: 'This and next lap invalidated', 12: 'This lap invalidated without reason',
+        13: 'This and next lap invalidated without reason', 14: 'This and previous lap invalidated',
+        15: 'This and previous lap invalidated without reason', 16: 'Retired', 17: 'Black flag timer',
+    };
+    var INFRINGEMENT_TYPES = {
+        0: 'Blocking by slow driving', 1: 'Blocking by wrong way driving', 2: 'Reversing off the start line',
+        3: 'Big collision', 4: 'Small collision', 5: 'Collision: failed to hand back position (single)',
+        6: 'Collision: failed to hand back position (multiple)', 7: 'Corner cutting gained time',
+        8: 'Corner cutting overtake (single)', 9: 'Corner cutting overtake (multiple)', 10: 'Crossed pit exit lane',
+        11: 'Ignoring blue flags', 12: 'Ignoring yellow flags', 13: 'Ignoring drive through',
+        14: 'Too many drive throughs', 15: 'Drive through reminder: serve within N laps',
+        16: 'Drive through reminder: serve this lap', 17: 'Pit lane speeding', 18: 'Parked for too long',
+        19: 'Ignoring tyre regulations', 20: 'Too many penalties', 21: 'Multiple warnings',
+        22: 'Approaching disqualification', 23: 'Tyre regulations select (single)',
+        24: 'Tyre regulations select (multiple)', 25: 'Lap invalidated: corner cutting',
+        26: 'Lap invalidated: running wide', 27: 'Running wide: gained time (minor)',
+        28: 'Running wide: gained time (significant)', 29: 'Running wide: gained time (extreme)',
+        30: 'Lap invalidated: wall riding', 31: 'Lap invalidated: flashback used',
+        32: 'Lap invalidated: reset to track', 33: 'Blocking the pitlane', 34: 'Jump start',
+        35: 'Safety car: collision', 36: 'Safety car: illegal overtake', 37: 'Safety car: exceeding allowed pace',
+        38: 'Virtual safety car: exceeding allowed pace', 39: 'Formation lap: below allowed speed',
+        40: 'Formation lap: parking', 41: 'Retired: mechanical failure', 42: 'Retired: terminally damaged',
+        43: 'Safety car: falling too far back', 44: 'Black flag timer', 45: 'Unserved stop go penalty',
+        46: 'Unserved drive through penalty', 47: 'Engine component change', 48: 'Gearbox change',
+        49: 'Parc Fermé change', 50: 'League grid penalty', 51: 'Retry penalty',
+        52: 'Illegal time gain', 53: 'Mandatory pitstop', 54: 'Attribute assigned',
+    };
 
     function loadEventFilter() {
         try {
@@ -1172,8 +1203,33 @@
         if (!d) return '';
         switch (e.code) {
             case 'FTLP': return formatLapTime((d.lapTime || 0) * 1000);
+            case 'TMPT':
+            case 'RTMT':
+            case 'RCWN':
+            case 'DTSV':
+            case 'SGSV':
+                var driver = sess.drivers && d.vehicleIdx != null ? sess.drivers[d.vehicleIdx] : null;
+                return driver ? driver.name : '';
             case 'SPTP': return (d.speed || 0).toFixed(1) + ' km/h';
-            case 'PENA': return 'Type ' + d.penaltyType + (d.time ? ' — ' + d.time + 's' : '');
+            case 'STLG': return 'Lights: ' + (d.numLights || 0);
+            case 'FLBK': return 'Frame ' + (d.flashbackFrameIdentifier || 0)
+                + (d.flashbackSessionTime != null ? ' — ' + d.flashbackSessionTime.toFixed(1) + 's' : '');
+            case 'BUTN': return 'Status: 0x' + Number(d.buttonStatus || 0).toString(16).toUpperCase();
+            case 'COLL':
+                var carA = sess.drivers && d.vehicle1Idx != null ? sess.drivers[d.vehicle1Idx] : null;
+                var carB = sess.drivers && d.vehicle2Idx != null ? sess.drivers[d.vehicle2Idx] : null;
+                return (carA ? carA.name : ('Car #' + d.vehicle1Idx)) + ' × ' + (carB ? carB.name : ('Car #' + d.vehicle2Idx));
+            case 'PENA':
+                var penTypeName = PENALTY_TYPES[d.penaltyType] || ('Penalty #' + d.penaltyType);
+                var infTypeName = INFRINGEMENT_TYPES[d.infringementType] || ('Infr. #' + d.infringementType);
+                var offender = sess.drivers && d.vehicleIdx != null ? sess.drivers[d.vehicleIdx] : null;
+                var other = sess.drivers && d.otherVehicleIdx != null ? sess.drivers[d.otherVehicleIdx] : null;
+                var penParts = [penTypeName, infTypeName];
+                if (d.time) penParts.push(d.time + 's');
+                if (d.lapNum) penParts.push('Lap ' + d.lapNum);
+                if (offender) penParts.push('Driver: ' + offender.name);
+                if (other && d.otherVehicleIdx !== d.vehicleIdx) penParts.push('Other: ' + other.name);
+                return penParts.join(' — ');
             case 'OVTK':
                 var a = sess.drivers[d.overtakingVehicleIdx];
                 var b = sess.drivers[d.beingOvertakenVehicleIdx];
