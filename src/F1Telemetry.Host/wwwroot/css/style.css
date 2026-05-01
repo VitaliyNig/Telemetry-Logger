@@ -3847,6 +3847,11 @@
     white-space: nowrap;
 }
 
+.driver-race-pos {
+    color: var(--text-dim);
+    font-weight: 600;
+}
+
 .driver-ghost-badge {
     font-size: 9px;
     font-weight: 700;

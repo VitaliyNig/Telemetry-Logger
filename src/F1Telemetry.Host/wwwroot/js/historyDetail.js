@@ -882,6 +882,7 @@
             var d = sess.drivers[k];
             var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
             var code = driverCode(d.name);
+            var racePos = getDriverRacePosition(sess, Number(k));
             var validLaps = (d.laps || []).filter(function (l) { return l.position > 0; });
             if (validLaps.length === 0) return;
 
@@ -903,7 +904,7 @@
             labels += '<text class="pos-driver-label" x="' + (PAD_L - 10) + '" y="' + (y(first.position) + 4)
                 + '" text-anchor="end" fill="' + color + '">' + escapeHtml(code) + '</text>';
             labels += '<text class="pos-driver-label" x="' + (W - PAD_R + 10) + '" y="' + (y(last.position) + 4)
-                + '" text-anchor="start" fill="' + color + '">' + escapeHtml(code) + '</text>';
+                + '" text-anchor="start" fill="' + color + '">' + escapeHtml(code) + (racePos ? ' P' + racePos : '') + '</text>';
         });
 
         host.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="pos-svg" preserveAspectRatio="xMidYMid meet">'
@@ -912,9 +913,35 @@
 
     function driverCode(name) {
         if (!name) return '?';
-        var parts = String(name).trim().split(/\s+/);
-        var base = parts.length > 1 ? parts[parts.length - 1] : parts[0];
-        return base.substring(0, 3).toUpperCase();
+        var short = shortDriverName(name);
+        var normalized = String(short).replace(/[^A-Za-z0-9]/g, '');
+        if (normalized.length >= 3) return normalized.substring(0, 3).toUpperCase();
+        var words = String(name).trim().split(/\s+/).filter(Boolean);
+        var initials = words.map(function (w) { return w.charAt(0); }).join('');
+        if (initials.length >= 3) return initials.substring(0, 3).toUpperCase();
+        return (normalized || initials || '?').toUpperCase();
+    }
+
+    function shortDriverName(name) {
+        var raw = String(name || '').trim();
+        if (!raw) return 'Unknown';
+        var bracketMatch = raw.match(/\[([A-Za-z0-9]{3,})\]/);
+        if (bracketMatch) return bracketMatch[1].toUpperCase();
+        if (/^[A-Za-z0-9_]{2,16}$/.test(raw) && raw.indexOf(' ') < 0) return raw;
+        var parts = raw.split(/\s+/).filter(Boolean);
+        if (parts.length >= 2) {
+            var first = parts[0].charAt(0).toUpperCase();
+            var last = parts[parts.length - 1];
+            if (last.length <= 3) return (first + '. ' + last).trim();
+            return (first + '. ' + last.substring(0, 12)).trim();
+        }
+        return raw.length > 12 ? raw.substring(0, 12) : raw;
+    }
+
+    function getDriverRacePosition(sess, carIdx) {
+        var cd = sess && sess.finalClassification && sess.finalClassification.classificationData;
+        if (cd && cd[carIdx] && cd[carIdx].position > 0) return Number(cd[carIdx].position);
+        return null;
     }
 
     function isPitLap(lap) {
@@ -1381,6 +1408,7 @@
                 var d = opts.drivers[carIdx];
                 var teamColor = (typeof teamAccentColor === 'function')
                     ? teamAccentColor(d.teamId) : '#9aa0a6';
+                var racePos = getDriverRacePosition(state.session, Number(carIdx));
                 var sel = state.driverSelection.get(Number(carIdx));
                 var isSelected = !!sel && (!opts.supportLapSelector || sel.lap != null);
                 var checked = isSelected ? 'checked' : '';
@@ -1388,7 +1416,7 @@
                 html += '<label class="driver-row" data-car="' + carIdx + '">'
                       + '<input type="checkbox" class="driver-check" ' + checked + ' />'
                       + '<span class="driver-dot" style="background:' + teamColor + '"></span>'
-                      + '<span class="driver-name">' + escapeHtml(d.name || ('Car ' + carIdx)) + '</span>'
+                      + '<span class="driver-name">' + (racePos ? '<span class="driver-race-pos">P' + racePos + '</span> ' : '') + escapeHtml(shortDriverName(d.name || ('Car ' + carIdx))) + '</span>'
                       + ghostBadge;
                 if (opts.supportLapSelector) {
                     html += '<select class="driver-lap-select">';
