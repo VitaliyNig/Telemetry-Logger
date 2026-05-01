@@ -23,6 +23,7 @@
         deltaSeriesCache: new Map(),
         hoverPerf: { enabled: false, lastLogTs: 0, samples: 0, hoverMs: 0, interpCount: 0 },
         chipMode: 'pair', // 'pair' | 'diff'
+        mapLayers: { line: true, deltaHeat: true, events: true },
 
     };
     var shortcutsBound = false;
@@ -41,6 +42,13 @@
             compareState.focusPinMode = !!p.focusPinMode;
             compareState.insightsEnabled = p.insightsEnabled !== false;
             if (p.chipMode === 'diff' || p.chipMode === 'pair') compareState.chipMode = p.chipMode;
+            if (p.mapLayers && typeof p.mapLayers === 'object') {
+                compareState.mapLayers = {
+                    line: p.mapLayers.line !== false,
+                    deltaHeat: p.mapLayers.deltaHeat !== false,
+                    events: p.mapLayers.events !== false,
+                };
+            }
         } catch (e) { /* ignore corrupt storage */ }
     }
 
@@ -54,6 +62,7 @@
                 focusPinMode: compareState.focusPinMode,
                 insightsEnabled: compareState.insightsEnabled,
                 chipMode: compareState.chipMode,
+                mapLayers: compareState.mapLayers,
             }));
         } catch (e) { /* storage may be disabled */ }
     }
@@ -907,11 +916,17 @@
         function project(x, z) { return [x * scale + offsetX, z * scale + offsetY]; }
 
         var lines = '';
+        var heatSegments = '';
         var markers = '';
+        var eventMarkers = '';
+        var resolvedRef = ensureReferenceSelection(lapData);
+        var refData = resolvedRef ? lapData.get(resolvedRef.carIdx) : null;
+        var firstCmp = null;
         window.HistoryDetail.state.driverSelection.forEach(function (sel, carIdx) {
             if (!sel || sel.hidden) return;
             var d = lapData && lapData.get(carIdx);
             if (!d || !d.motion || d.motion.length === 0) return;
+            if (!firstCmp && resolvedRef && Number(carIdx) !== resolvedRef.carIdx) firstCmp = d;
             var sourceCarIdx = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : carIdx);
             var driver = sess.drivers[sourceCarIdx];
             var color = (typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
@@ -924,6 +939,40 @@
             markers += '<circle class="tc-map-marker" data-car="' + carIdx + '" cx="' + first[0]
                 + '" cy="' + first[1] + '" r="5" fill="' + color + '"/>';
         });
+        if (compareState.mapLayers.deltaHeat && refData && firstCmp && refData.motion && firstCmp.motion) {
+            for (var i = 1; i < firstCmp.motion.length; i++) {
+                var a = firstCmp.motion[i - 1], b = firstCmp.motion[i];
+                var refA = interpAtDistance(refData.samples || [], a.d);
+                var cmpA = interpAtDistance(firstCmp.samples || [], a.d);
+                if (!refA || !cmpA) continue;
+                var delta = cmpA.t - refA.t;
+                var t = Math.min(1, Math.abs(delta) / 1.5);
+                var colorHeat = delta >= 0
+                    ? ('rgb(255,' + Math.round(170 * (1 - t)) + ',' + Math.round(40 * (1 - t)) + ')')
+                    : ('rgb(' + Math.round(30 * (1 - t)) + ',' + Math.round(180 + 70 * t) + ',255)');
+                var p1 = project(a.x, a.z), p2 = project(b.x, b.z);
+                heatSegments += '<line class="tc-map-heat" x1="' + p1[0] + '" y1="' + p1[1]
+                    + '" x2="' + p2[0] + '" y2="' + p2[1] + '" stroke="' + colorHeat + '"/>';
+            }
+        }
+
+        if (compareState.mapLayers.events && firstCmp && firstCmp.samples && firstCmp.motion) {
+            [
+                { key: 'Braking start', idx: findEventIndex(firstCmp.samples, function (p, c) { return (p.brk || 0) < 5 && (c.brk || 0) >= 20; }), cls: 'brk' },
+                { key: 'Throttle pickup', idx: findEventIndex(firstCmp.samples, function (p, c) { return (p.thr || 0) < 20 && (c.thr || 0) >= 40; }), cls: 'thr' },
+                { key: 'Min speed', idx: findMinIndex(firstCmp.samples, 'spd'), cls: 'min' },
+                { key: 'Apex', idx: findMinIndex(firstCmp.samples, 'str', true), cls: 'apx' },
+            ].forEach(function (ev) {
+                if (ev.idx < 0) return;
+                var sample = firstCmp.samples[ev.idx];
+                var m = findClosestMotion(firstCmp.motion, sample.d);
+                if (!m) return;
+                var p = project(m.x, m.z);
+                eventMarkers += '<g class="tc-map-event tc-map-event-' + ev.cls + '" data-start="' + Math.max(0, sample.d - 35)
+                    + '" data-end="' + (sample.d + 35) + '"><circle cx="' + p[0] + '" cy="' + p[1] + '" r="4"/>'
+                    + '<title>' + ev.key + ' · ' + Math.round(sample.d) + 'm</title></g>';
+            });
+        }
 
         var folder = window.HistoryDetail.state.folder;
         var slug = window.HistoryDetail.state.slug;
@@ -933,10 +982,73 @@
             + '<div class="tc-map-stage">'
             +   '<object class="tc-map-outline" type="image/svg+xml" data="' + svgUrl + '"></object>'
             +   '<svg viewBox="0 0 ' + W + ' ' + H + '" class="tc-map-svg" preserveAspectRatio="xMidYMid meet">'
-            +     lines + markers
+            +     heatSegments + (compareState.mapLayers.line ? lines : '') + markers + eventMarkers
             +   '</svg>'
             + '</div>'
-            + '<div class="tc-map-caption">Track map</div>';
+            + '<div class="tc-map-caption">Track map'
+            +   '<span class="tc-map-filters">'
+            +     '<button class="tc-map-filter ' + (compareState.mapLayers.line ? 'active' : '') + '" data-layer="line">Line</button>'
+            +     '<button class="tc-map-filter ' + (compareState.mapLayers.deltaHeat ? 'active' : '') + '" data-layer="deltaHeat">Delta Heat</button>'
+            +     '<button class="tc-map-filter ' + (compareState.mapLayers.events ? 'active' : '') + '" data-layer="events">Events</button>'
+            +   '</span></div>';
+        host.querySelectorAll('.tc-map-filter').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                var layer = btn.dataset.layer;
+                compareState.mapLayers[layer] = !compareState.mapLayers[layer];
+                persistState();
+                drawTrackMap(lapData);
+            });
+        });
+        host.querySelectorAll('.tc-map-event').forEach(function (ev) {
+            ev.addEventListener('click', function () {
+                compareState.zoomStart = Number(ev.dataset.start);
+                compareState.zoomEnd = Number(ev.dataset.end);
+                redraw(lapData);
+            });
+        });
+        host.querySelector('.tc-map-svg').addEventListener('click', function (e) {
+            var seg = resolveMapSegmentClick(e, sess.meta);
+            if (!seg) return;
+            compareState.zoomStart = seg.start;
+            compareState.zoomEnd = seg.end;
+            redraw(lapData);
+        });
+    }
+
+    function findClosestMotion(motion, d) {
+        if (!motion || !motion.length) return null;
+        var best = motion[0], bestDiff = Math.abs(motion[0].d - d);
+        for (var i = 1; i < motion.length; i++) {
+            var diff = Math.abs(motion[i].d - d);
+            if (diff < bestDiff) { best = motion[i]; bestDiff = diff; }
+        }
+        return best;
+    }
+    function findEventIndex(samples, predicate) {
+        for (var i = 1; i < samples.length; i++) if (predicate(samples[i - 1], samples[i])) return i;
+        return -1;
+    }
+    function findMinIndex(samples, key, absMode) {
+        if (!samples || !samples.length) return -1;
+        var best = 0, bestVal = absMode ? Math.abs(samples[0][key] || 0) : (samples[0][key] || 0);
+        for (var i = 1; i < samples.length; i++) {
+            var v = absMode ? Math.abs(samples[i][key] || 0) : (samples[i][key] || 0);
+            if (v < bestVal) { best = i; bestVal = v; }
+        }
+        return best;
+    }
+    function resolveMapSegmentClick(evt, meta) {
+        var node = evt.target;
+        if (node && node.closest('.tc-map-event')) return null;
+        var svg = evt.currentTarget;
+        var pt = svg.createSVGPoint();
+        pt.x = evt.clientX; pt.y = evt.clientY;
+        var local = pt.matrixTransform(svg.getScreenCTM().inverse());
+        var ratio = Math.min(1, Math.max(0, local.x / 360));
+        var trackLen = (meta && meta.trackLengthM) || 0;
+        var d = ratio * trackLen;
+        var segments = buildSegmentBoundaries(meta, compareState.miniPerSector);
+        return segments.find(function (s) { return d >= s.start && d <= s.end; }) || null;
     }
 
     // ---------- hover sync ----------

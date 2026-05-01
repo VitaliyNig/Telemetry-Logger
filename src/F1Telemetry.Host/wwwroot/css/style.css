@@ -4954,14 +4954,34 @@ td.lap-cell__tyre { cursor: default; }
 .tc-map-svg { position: absolute; inset: 0; width: 100%; height: 100%; }
 .tc-map-line { fill: none; stroke-width: 1.5; stroke-opacity: 0.8; }
 .tc-map-marker { stroke: #fff; stroke-width: 1; }
+.tc-map-heat { stroke-width: 3; stroke-linecap: round; opacity: 0.8; }
+.tc-map-event circle { fill: #fff; stroke: #111; stroke-width: 1; cursor: pointer; }
+.tc-map-event-brk circle { fill: #ef4444; }
+.tc-map-event-thr circle { fill: #22c55e; }
+.tc-map-event-min circle { fill: #f59e0b; }
+.tc-map-event-apx circle { fill: #60a5fa; }
 
 .tc-map-caption {
-    text-align: center;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
     font-size: 10px;
     color: var(--text-dim);
     text-transform: uppercase;
     letter-spacing: 0.5px;
 }
+.tc-map-filters { display: inline-flex; gap: 6px; }
+.tc-map-filter {
+    border: 1px solid var(--border-color);
+    border-radius: 999px;
+    background: var(--panel-bg);
+    color: var(--text-dim);
+    font-size: 10px;
+    text-transform: none;
+    padding: 2px 8px;
+}
+.tc-map-filter.active { color: var(--text-main); border-color: var(--accent-brand); }
 
 .tc-map-empty {
     text-align: center;
