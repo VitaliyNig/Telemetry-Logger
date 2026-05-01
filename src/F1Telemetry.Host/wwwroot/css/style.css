@@ -4448,7 +4448,7 @@ td.lap-cell__tyre { cursor: default; }
     font-family: var(--font-mono, 'Courier New', monospace);
 }
 
-.pos-pit-badge circle {
+.pos-pit-badge rect {
     paint-order: stroke fill;
 }
 .pos-pit-letter {
