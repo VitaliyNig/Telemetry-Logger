@@ -4576,8 +4576,27 @@ td.lap-cell__tyre { cursor: default; }
 }
 
 .tc-main { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
-.tc-compare-content { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 8px; align-items: start; }
-.tc-focus { position: sticky; top: 8px; border: 1px solid var(--color-border-default); background: var(--color-bg-card); border-radius: 8px; padding: 8px; }
+
+.tc-layout {
+    --tc-primary-gap: 10px;
+    --tc-secondary-gap: 6px;
+    --tc-primary-border: 1px;
+    --tc-secondary-border: 1px;
+}
+
+.tc-layer { min-width: 0; }
+.tc-layer[data-priority="primary"] { gap: var(--tc-primary-gap); }
+.tc-layer[data-priority="secondary"] { gap: var(--tc-secondary-gap); opacity: 0.86; }
+.tc-kpi-sticky {
+    position: sticky;
+    top: 0;
+    z-index: 8;
+    background: color-mix(in srgb, var(--color-bg-base) 88%, transparent);
+    backdrop-filter: blur(6px);
+}
+
+.tc-compare-content { display: grid; grid-template-columns: minmax(0, 1fr); gap: 8px; align-items: start; }
+.tc-focus { position: sticky; top: 8px; border: var(--tc-secondary-border) solid color-mix(in srgb, var(--color-border-default) 75%, transparent); background: color-mix(in srgb, var(--color-bg-card) 82%, transparent); border-radius: 8px; padding: 6px; max-height: 78vh; overflow: auto; }
 .tc-focus-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .tc-focus-head h4 { margin: 0; font-size: 12px; text-transform: uppercase; color: var(--text-dim); }
 .tc-pin-btn { border: 1px solid var(--color-border-default); background: transparent; color: var(--text-primary); border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
@@ -4590,8 +4609,8 @@ td.lap-cell__tyre { cursor: default; }
 .tc-focus-row.neutral strong { color: var(--text-dim); }
 
 .tc-map {
-    background: var(--color-bg-card);
-    border: 1px solid var(--color-border-default);
+    background: color-mix(in srgb, var(--color-bg-card) 80%, transparent);
+    border: var(--tc-secondary-border) solid color-mix(in srgb, var(--color-border-default) 72%, transparent);
     border-radius: 6px;
     padding: 8px;
     display: flex;
@@ -4742,6 +4761,8 @@ td.lap-cell__tyre { cursor: default; }
 .tc-chart-row[data-metric="rpm"]   { --tc-metric-color: #f97316; }
 .tc-chart-row[data-metric="ers"]   { --tc-metric-color: #38bdf8; }
 .tc-chart-row[data-metric="drs"]   { --tc-metric-color: var(--drs, #00d4ff); }
+.tc-chart-row[data-priority="secondary"] { opacity: 0.84; }
+.tc-chart-row[data-priority="secondary"] .tc-chart-label { border-left-width: 1px; }
 
 .tc-chart-row {
     display: grid;

@@ -746,3 +746,16 @@ body.on-live-tab.hide-header .app-header { display: none; }
 ::-webkit-scrollbar-thumb:hover {
     background: var(--border-light);
 }
+
+/* Telemetry compare priority tuning */
+.tc-layout [data-priority="secondary"] {
+  --tc-panel-contrast: 0.82;
+}
+.tc-layout .tc-focus[data-priority="secondary"],
+.tc-layout .tc-map[data-priority="secondary"],
+.tc-layout .tc-side[data-priority="secondary"] {
+  opacity: var(--tc-panel-contrast);
+}
+.tc-layout .tc-chart-row[data-priority="secondary"] {
+  min-height: 72%;
+}
