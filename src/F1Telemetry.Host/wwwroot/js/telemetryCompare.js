@@ -15,6 +15,7 @@
         hiddenMetrics: new Set(),
         heightScale: 1.0,           // 0.75 | 1.0 | 1.4
         heightOverride: {},         // { metricKey: pixelsAtScale1 } from drag
+        miniPerSector: 3,
     };
 
     var PERSIST_KEY = 'tcCompareUi';
@@ -27,6 +28,7 @@
             if (Array.isArray(p.hiddenMetrics)) compareState.hiddenMetrics = new Set(p.hiddenMetrics);
             if (typeof p.heightScale === 'number') compareState.heightScale = p.heightScale;
             if (p.heightOverride && typeof p.heightOverride === 'object') compareState.heightOverride = p.heightOverride;
+            if ([1, 3, 4].indexOf(Number(p.miniPerSector)) >= 0) compareState.miniPerSector = Number(p.miniPerSector);
         } catch (e) { /* ignore corrupt storage */ }
     }
 
@@ -36,6 +38,7 @@
                 hiddenMetrics: Array.from(compareState.hiddenMetrics),
                 heightScale: compareState.heightScale,
                 heightOverride: compareState.heightOverride,
+                miniPerSector: compareState.miniPerSector,
             }));
         } catch (e) { /* storage may be disabled */ }
     }
@@ -176,13 +179,19 @@
         if (!host) return;
         var sess = window.HistoryDetail.state.session;
         var trackLen = sess.meta.trackLengthM || 0;
-        var segments = buildSegmentBoundaries(sess.meta, sess.meta.miniPerSector);
+        var segments = buildSegmentBoundaries(sess.meta, compareState.miniPerSector);
 
-        var html = '<div class="tc-delta-toggle">'
+        var html = '<div class="tc-controls-row">'
+            + '<div class="tc-delta-toggle">'
             + '<button class="tc-mode ' + (compareState.deltaMode === 'cumulative' ? 'active' : '') + '" data-mode="cumulative">Δ cumulative</button>'
             + '<button class="tc-mode ' + (compareState.deltaMode === 'sector' ? 'active' : '') + '" data-mode="sector">Δ per-sector</button>'
+            + '</div>'
+            + '<div class="tc-segment-toggle">'
+            + '<button class="tc-segment-mode ' + (compareState.miniPerSector === 1 ? 'active' : '') + '" data-mini="1">3</button>'
+            + '<button class="tc-segment-mode ' + (compareState.miniPerSector === 3 ? 'active' : '') + '" data-mini="3">9</button>'
+            + '<button class="tc-segment-mode ' + (compareState.miniPerSector === 4 ? 'active' : '') + '" data-mini="4">12</button>'
+            + '</div>'
             + '</div>';
-
         // One badge per sector with inter-driver deltas.
         var refIdx = lapData && lapData.size > 0 ? lapData.keys().next().value : null;
         var refDriverLap = refIdx != null ? sess.drivers[refIdx] : null;
@@ -234,6 +243,18 @@
                 redraw(lapData);
             });
         });
+        host.querySelectorAll('.tc-segment-mode').forEach(function (m) {
+            m.addEventListener('click', function () {
+                var next = Number(m.dataset.mini);
+                if (next === compareState.miniPerSector) return;
+                compareState.miniPerSector = next;
+                compareState.zoomStart = null;
+                compareState.zoomEnd = null;
+                enforceMetricLimit();
+                persistState();
+                redraw(lapData);
+            });
+        });
         host.querySelectorAll('.tc-mode').forEach(function (m) {
             m.addEventListener('click', function () {
                 compareState.deltaMode = m.dataset.mode;
@@ -245,6 +266,7 @@
                 var key = chip.dataset.key;
                 if (compareState.hiddenMetrics.has(key)) compareState.hiddenMetrics.delete(key);
                 else compareState.hiddenMetrics.add(key);
+                enforceMetricLimit();
                 persistState();
                 drawBadges(lapData);
                 drawChartStack(lapData);
@@ -265,6 +287,16 @@
                 persistState();
                 drawChartStack(lapData);
             });
+        }
+    }
+
+
+    function enforceMetricLimit() {
+        var maxVisible = (compareState.miniPerSector >= 4 && window.innerWidth <= 720) ? 6 : METRICS.length;
+        var visible = METRICS.filter(function (m) { return !compareState.hiddenMetrics.has(m.key); });
+        while (visible.length > maxVisible) {
+            var victim = visible.pop();
+            compareState.hiddenMetrics.add(victim.key);
         }
     }
 
@@ -290,6 +322,7 @@
         var refIdx = lapData && lapData.size > 0 ? lapData.keys().next().value : null;
         var refSamples = refIdx != null ? lapData.get(refIdx).samples : null;
 
+        enforceMetricLimit();
         var visibleMetrics = METRICS.filter(function (m) { return !compareState.hiddenMetrics.has(m.key); });
 
         var html = '';
@@ -467,7 +500,7 @@
 
         // Sector markers.
         var sectorMarkers = '';
-        buildSegmentBoundaries(sess.meta, sess.meta.miniPerSector).forEach(function (seg, i) {
+        buildSegmentBoundaries(sess.meta, compareState.miniPerSector).forEach(function (seg, i) {
             if (i === 0) return;
             if (seg.start >= xMin && seg.start <= xMax) {
                 sectorMarkers += '<line class="tc-sector-line" x1="' + x(seg.start) + '" x2="' + x(seg.start)
@@ -490,7 +523,7 @@
     // Resamples driverSamples onto reference sample distances and returns per-distance Δtime (seconds).
     function computeDeltaSeries(driverSamples, refSamples, sess) {
         var out = [];
-        var segmentBoundaries = buildSegmentBoundaries(sess.meta, sess.meta.miniPerSector)
+        var segmentBoundaries = buildSegmentBoundaries(sess.meta, compareState.miniPerSector)
             .map(function (seg) { return seg.end; });
 
         for (var i = 0; i < refSamples.length; i++) {

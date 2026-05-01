@@ -4591,6 +4591,30 @@ td.lap-cell__tyre { cursor: default; }
 }
 
 .tc-delta-toggle { display: flex; border: 1px solid var(--color-border-default); border-radius: 4px; overflow: hidden; margin-right: 8px; }
+.tc-controls-row {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+    flex-wrap: wrap;
+    flex-basis: 100%;
+}
+.tc-segment-toggle {
+    display: inline-flex;
+    border: 1px solid var(--color-border-default);
+    border-radius: 999px;
+    overflow: hidden;
+}
+.tc-segment-mode {
+    background: transparent;
+    color: var(--color-text-secondary);
+    border: none;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+    min-width: 34px;
+}
+.tc-segment-mode.active { background: var(--accent-brand); color: #fff; }
 .tc-mode {
     background: transparent;
     color: var(--color-text-secondary);
@@ -4876,10 +4900,16 @@ td.lap-cell__tyre { cursor: default; }
 @media (max-width: 600px) {
     .tc-layout { padding: 0; }
     .tc-sector-badges { gap: 6px; padding: 4px 0; }
+    .tc-controls-row { width: 100%; justify-content: space-between; gap: 6px; }
+    .tc-delta-toggle { margin-right: 0; max-width: calc(100% - 120px); }
+    .tc-mode, .tc-segment-mode { padding: 3px 6px; font-size: 10px; }
+    .tc-segment-mode { min-width: 28px; }
     .tc-badge, .tc-mode, .tc-metric-chip, .tc-size-chip {
         padding: 3px 8px;
         font-size: 10px;
     }
+    .tc-metrics-toolbar { gap: 3px; }
+    .tc-metric-chip { padding: 3px 6px; }
     .tc-charts { padding: 6px; --tc-label-w: 52px; }
     .tc-chart-row { gap: 4px; }
     .tc-row-chip { font-size: 9px; padding: 1px 4px; }
