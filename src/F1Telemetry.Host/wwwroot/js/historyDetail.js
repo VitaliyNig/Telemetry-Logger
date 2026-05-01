@@ -1325,7 +1325,8 @@
                 var teamColor = (typeof teamAccentColor === 'function')
                     ? teamAccentColor(d.teamId) : '#9aa0a6';
                 var sel = state.driverSelection.get(Number(carIdx));
-                var checked = sel ? 'checked' : '';
+                var isSelected = !!sel && (!opts.supportLapSelector || sel.lap != null);
+                var checked = isSelected ? 'checked' : '';
                 var ghostBadge = (sel && sel.ghost) ? '<span class="driver-ghost-badge">G</span>' : '';
                 html += '<label class="driver-row" data-car="' + carIdx + '">'
                       + '<input type="checkbox" class="driver-check" ' + checked + ' />'
