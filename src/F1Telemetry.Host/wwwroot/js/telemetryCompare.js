@@ -22,6 +22,8 @@
         brush: null,
         deltaSeriesCache: new Map(),
         hoverPerf: { enabled: false, lastLogTs: 0, samples: 0, hoverMs: 0, interpCount: 0 },
+        chipMode: 'pair', // 'pair' | 'diff'
+
     };
     var shortcutsBound = false;
 
@@ -38,6 +40,7 @@
             if ([1, 3, 4].indexOf(Number(p.miniPerSector)) >= 0) compareState.miniPerSector = Number(p.miniPerSector);
             compareState.focusPinMode = !!p.focusPinMode;
             compareState.insightsEnabled = p.insightsEnabled !== false;
+            if (p.chipMode === 'diff' || p.chipMode === 'pair') compareState.chipMode = p.chipMode;
         } catch (e) { /* ignore corrupt storage */ }
     }
 
@@ -50,6 +53,7 @@
                 miniPerSector: compareState.miniPerSector,
                 focusPinMode: compareState.focusPinMode,
                 insightsEnabled: compareState.insightsEnabled,
+                chipMode: compareState.chipMode,
             }));
         } catch (e) { /* storage may be disabled */ }
     }
@@ -326,6 +330,8 @@
                 + escapeHtml(m.label) + '</button>';
         });
         html += '<span class="tc-toolbar-sep"></span>';
+        html += '<button class="tc-size-chip tc-chip-mode ' + (compareState.chipMode === 'pair' ? 'active' : '') + '" data-chip-mode="pair">Chip: C/Ref</button>';
+        html += '<button class="tc-size-chip tc-chip-mode ' + (compareState.chipMode === 'diff' ? 'active' : '') + '" data-chip-mode="diff">Chip: Δ</button>'; 
         [[0.75, 'Compact'], [1.0, 'Normal'], [1.4, 'Tall']].forEach(function (pair) {
             var active = Math.abs(compareState.heightScale - pair[0]) < 0.01;
             html += '<button class="tc-size-chip ' + (active ? 'active' : '') + '"'
@@ -390,6 +396,13 @@
                 persistState();
                 drawBadges(lapData);
                 drawChartStack(lapData);
+            });
+        });
+        host.querySelectorAll('.tc-chip-mode').forEach(function (btn) {
+            btn.addEventListener('click', function () {
+                compareState.chipMode = btn.dataset.chipMode === 'diff' ? 'diff' : 'pair';
+                persistState();
+                drawBadges(lapData);
             });
         });
         host.querySelectorAll('.tc-size-chip[data-scale]').forEach(function (btn) {
@@ -922,10 +935,12 @@
         if (!overlay) return;
 
         var chips = Array.prototype.slice.call(host.querySelectorAll('.tc-row-chip'));
+        var metricByKey = new Map(METRICS.map(function (m) { return [m.key, m]; }));
         var scheduled = false, lastX = 0;
         var rafToken = 0;
         var hoverCacheByDriver = new Map();
         var lastHoverDistance = null;
+        var lastHoverSignature = null;
         var brushStartPx = null;
         var brushEl = overlay.querySelector('.tc-brush');
         var overviewWin = host.querySelector('#tcOverviewWin');
@@ -975,6 +990,27 @@
             });
         }
 
+        function resolveHoverPair(perDriver) {
+            if (!perDriver || perDriver.length === 0) return { ref: null, current: null };
+            var ref = perDriver.find(function (x) { return x.isReference; }) || perDriver[0];
+            var current = perDriver.find(function (x) { return !x.isReference; }) || ref;
+            return { ref: ref, current: current };
+        }
+
+        function formatMetricDiff(metricKey, currentSample, refSample) {
+            if (!currentSample || !refSample) return '—';
+            var dv = (currentSample[metricKey] || 0) - (refSample[metricKey] || 0);
+            if (metricKey === 'spd') return (dv >= 0 ? '+' : '') + Math.round(dv) + ' km/h';
+            if (metricKey === 'thr' || metricKey === 'brk') return (dv >= 0 ? '+' : '') + Math.round(dv) + '%';
+            if (metricKey === 'str') return (dv >= 0 ? '+' : '') + Math.round(dv) + '°';
+            if (metricKey === 'rpm') return (dv >= 0 ? '+' : '') + Math.round(dv);
+            if (metricKey === 'gr') return (dv >= 0 ? '+' : '') + Math.round(dv);
+            if (metricKey === 'ers') return (dv >= 0 ? '+' : '') + Math.round(dv) + '%';
+            if (metricKey === 'drs') return dv === 0 ? '0' : (dv > 0 ? '+ON' : '-ON');
+            if (metricKey === 'delta') return (dv >= 0 ? '+' : '') + dv.toFixed(3) + ' s';
+            return (dv >= 0 ? '+' : '') + dv.toFixed(2);
+        }
+
         function update() {
             scheduled = false;
             rafToken = 0;
@@ -988,16 +1024,37 @@
             crosshair.style.left = (pct * 100) + '%';
 
             var perDriver = resolvePerDriver(d, interpCtx);
+            var pair = resolveHoverPair(perDriver);
+            var signature = perDriver.map(function (pd) {
+                return pd.carIdx + ':' + findNearestSampleIndex((lapData.get(pd.carIdx) || {}).samples, d);
+            }).join('|');
+            if (signature === lastHoverSignature) return;
+            lastHoverSignature = signature;
 
             chips.forEach(function (chip) {
                 var metricKey = chip.dataset.metric;
                 if (perDriver.length === 0) { chip.hidden = true; return; }
-                var rows = perDriver.map(function (pd) {
-                    var text = formatChipValue(metricKey, pd.sample, metricKey === 'delta' ? pd.delta : null);
-                    return '<span class="tc-chip-dot" style="background:' + pd.color + '"></span>'
-                        + '<span class="tc-chip-ref">' + escapeHtml(pd.chipLabel || (pd.isReference ? 'REF' : 'LAP')) + '</span>'
-                        + '<span class="tc-chip-val">' + escapeHtml(text) + '</span>';
-                }).join('<span class="tc-chip-sep"></span>');
+                var metricDef = metricByKey.get(metricKey);
+                var y = 8;
+                if (metricDef && metricDef.min != null && metricDef.max != null && pair.current && pair.current.sample) {
+                    var yNorm = (pair.current.sample[metricKey] - metricDef.min) / Math.max(0.0001, metricDef.max - metricDef.min);
+                    y = Math.max(2, Math.min((chip.parentElement.clientHeight || 40) - 20, (1 - yNorm) * (chip.parentElement.clientHeight || 40)));
+                }
+                var rows = '';
+                if (compareState.chipMode === 'diff') {
+                    var diff = metricKey === 'delta'
+                        ? ((pair.current && pair.current.delta) || 0) - ((pair.ref && pair.ref.delta) || 0)
+                        : formatMetricDiff(metricKey, pair.current && pair.current.sample, pair.ref && pair.ref.sample);
+                    rows = '<span class="tc-chip-ref">Δ</span><span class="tc-chip-val">' + escapeHtml(String(diff)) + '</span>';
+                } else {
+                    var cText = formatChipValue(metricKey, pair.current && pair.current.sample, metricKey === 'delta' ? (pair.current && pair.current.delta) : null);
+                    var rText = formatChipValue(metricKey, pair.ref && pair.ref.sample, metricKey === 'delta' ? (pair.ref && pair.ref.delta) : null);
+                    rows = '<span class="tc-chip-dot" style="background:' + (pair.current ? pair.current.color : '#bbb') + '"></span>'
+                        + '<span class="tc-chip-ref">C</span><span class="tc-chip-val">' + escapeHtml(cText) + '</span>'
+                        + '<span class="tc-chip-sep"></span>'
+                        + '<span class="tc-chip-dot" style="background:' + (pair.ref ? pair.ref.color : '#bbb') + '"></span>'
+                        + '<span class="tc-chip-ref">R</span><span class="tc-chip-val">' + escapeHtml(rText) + '</span>';
+                }
                 chip.innerHTML = rows;
                 chip.hidden = false;
                 // Chip is absolute-positioned inside the row's SVG host; track the crosshair x.
@@ -1005,6 +1062,7 @@
                 var hostW = chipHost.clientWidth;
                 var chipW = chip.offsetWidth || 80;
                 chip.style.left = Math.max(2, Math.min(hostW - chipW - 2, pct * hostW + 6)) + 'px';
+                chip.style.top = y + 'px';
             });
 
             updateMapMarkers(d, lapData, sess);
