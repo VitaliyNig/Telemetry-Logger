@@ -136,13 +136,47 @@
         drawTrackMap(lapData);
     }
 
+    function buildSegmentBoundaries(meta, miniPerSector) {
+        var trackLen = (meta && meta.trackLengthM) || 0;
+        var s2 = (meta && meta.sector2StartM) || 0;
+        var s3 = (meta && meta.sector3StartM) || 0;
+        var perSector = Number(miniPerSector);
+        var useMini = perSector > 1;
+
+        var baseSectors = [
+            { sector: 1, start: 0, end: s2 },
+            { sector: 2, start: s2, end: s3 },
+            { sector: 3, start: s3, end: trackLen },
+        ];
+        var segments = [];
+        baseSectors.forEach(function (base) {
+            if (base.end <= base.start) return;
+            var count = useMini ? perSector : 1;
+            var size = (base.end - base.start) / count;
+            for (var i = 0; i < count; i++) {
+                var segStart = base.start + size * i;
+                var segEnd = (i === count - 1) ? base.end : (base.start + size * (i + 1));
+                segments.push({
+                    sector: base.sector,
+                    part: i + 1,
+                    parts: count,
+                    start: segStart,
+                    end: segEnd,
+                    label: useMini ? ('S' + base.sector + '.' + (i + 1)) : ('S' + base.sector),
+                });
+            }
+        });
+        return segments;
+    }
+
     // ---------- sector badges ----------
 
     function drawBadges(lapData) {
         var host = document.getElementById('tcBadges');
         if (!host) return;
         var sess = window.HistoryDetail.state.session;
-        var s2 = sess.meta.sector2StartM, s3 = sess.meta.sector3StartM;
+        var trackLen = sess.meta.trackLengthM || 0;
+        var segments = buildSegmentBoundaries(sess.meta, sess.meta.miniPerSector);
 
         var html = '<div class="tc-delta-toggle">'
             + '<button class="tc-mode ' + (compareState.deltaMode === 'cumulative' ? 'active' : '') + '" data-mode="cumulative">Δ cumulative</button>'
@@ -158,17 +192,16 @@
             refLap = (refDriverLap.laps || []).find(function (l) { return l.lapNum === sel.lap; });
         }
 
-        ['s1', 's2', 's3'].forEach(function (key, i) {
-            var label = 'S' + (i + 1);
-            var refMs = refLap ? refLap[key + 'Ms'] : 0;
-            var startM = i === 0 ? 0 : (i === 1 ? s2 : s3);
-            var endM = i === 0 ? s2 : (i === 1 ? s3 : sess.meta.trackLengthM);
-            html += '<button class="tc-badge" data-start="' + startM + '" data-end="' + endM + '">'
-                + '<strong>' + label + '</strong> '
-                + window.HistoryDetail.formatSectorTime(refMs)
+        segments.forEach(function (seg) {
+            var sectorKey = 's' + seg.sector + 'Ms';
+            var refMs = refLap ? refLap[sectorKey] : 0;
+            var segmentMs = seg.parts > 1 ? (refMs / seg.parts) : refMs;
+            html += '<button class="tc-badge" data-start="' + seg.start + '" data-end="' + seg.end + '">'
+                + '<strong>' + seg.label + '</strong> '
+                + window.HistoryDetail.formatSectorTime(segmentMs)
                 + '</button>';
         });
-        html += '<button class="tc-badge tc-badge-reset" data-start="0" data-end="' + sess.meta.trackLengthM + '">Full Lap</button>';
+        html += '<button class="tc-badge tc-badge-reset" data-start="0" data-end="' + trackLen + '">Full Lap</button>';
 
         // --- Second row: metric visibility chips + height presets + reset-heights. ---
         html += '<div class="tc-metrics-toolbar">';
@@ -434,9 +467,10 @@
 
         // Sector markers.
         var sectorMarkers = '';
-        [sess.meta.sector2StartM, sess.meta.sector3StartM].forEach(function (s) {
-            if (s >= xMin && s <= xMax) {
-                sectorMarkers += '<line class="tc-sector-line" x1="' + x(s) + '" x2="' + x(s)
+        buildSegmentBoundaries(sess.meta, sess.meta.miniPerSector).forEach(function (seg, i) {
+            if (i === 0) return;
+            if (seg.start >= xMin && seg.start <= xMax) {
+                sectorMarkers += '<line class="tc-sector-line" x1="' + x(seg.start) + '" x2="' + x(seg.start)
                     + '" y1="' + PAD_T + '" y2="' + (PAD_T + plotH) + '"/>';
             }
         });
@@ -456,7 +490,8 @@
     // Resamples driverSamples onto reference sample distances and returns per-distance Δtime (seconds).
     function computeDeltaSeries(driverSamples, refSamples, sess) {
         var out = [];
-        var sectorBoundaries = [sess.meta.sector2StartM || 0, sess.meta.sector3StartM || 0];
+        var segmentBoundaries = buildSegmentBoundaries(sess.meta, sess.meta.miniPerSector)
+            .map(function (seg) { return seg.end; });
 
         for (var i = 0; i < refSamples.length; i++) {
             var ref = refSamples[i];
@@ -467,8 +502,8 @@
             if (compareState.deltaMode === 'sector') {
                 // Subtract the delta at the most recent sector boundary the ref has passed.
                 var boundary = 0;
-                for (var j = 0; j < sectorBoundaries.length; j++) {
-                    if (ref.d >= sectorBoundaries[j]) boundary = sectorBoundaries[j];
+                for (var j = 0; j < segmentBoundaries.length; j++) {
+                    if (ref.d >= segmentBoundaries[j]) boundary = segmentBoundaries[j];
                 }
                 if (boundary > 0) {
                     var interpAtBoundary = interpAtDistance(driverSamples, boundary);
