@@ -141,9 +141,45 @@
     }
 
     function redraw(lapData) {
+        ensureReferenceSelection(lapData);
         drawBadges(lapData);
         drawChartStack(lapData);
         drawTrackMap(lapData);
+    }
+
+    function notifyCompare(msg) {
+        if (window.HistoryDetail && typeof window.HistoryDetail.showToast === 'function') {
+            window.HistoryDetail.showToast(msg);
+            return;
+        }
+        window.setTimeout(function () { window.alert(msg); }, 0);
+    }
+
+    function ensureReferenceSelection(lapData) {
+        var hd = window.HistoryDetail;
+        var st = hd && hd.state ? hd.state : null;
+        if (!st || !st.driverSelection) return null;
+        var refIdx = st.compareState ? st.compareState.referenceCarIdx : null;
+        var refLap = st.compareState ? st.compareState.referenceLap : null;
+        var stillValid = refIdx != null && refLap != null && st.driverSelection.has(refIdx)
+            && (st.driverSelection.get(refIdx) || {}).lap === refLap
+            && lapData && lapData.has(refIdx);
+        if (stillValid) return { carIdx: refIdx, lap: refLap };
+
+        var first = null;
+        st.driverSelection.forEach(function (sel, carIdx) {
+            if (first || !sel || sel.lap == null) return;
+            if (lapData && !lapData.has(carIdx)) return;
+            first = { carIdx: Number(carIdx), lap: Number(sel.lap) };
+        });
+        if (st.compareState) {
+            st.compareState.referenceCarIdx = first ? first.carIdx : null;
+            st.compareState.referenceLap = first ? first.lap : null;
+        }
+        if (first && (refIdx != null || refLap != null)) {
+            notifyCompare('Reference was cleared. Assigned the first available driver/lap as REF.');
+        }
+        return first;
     }
 
     function buildSegmentBoundaries(meta, miniPerSector) {
@@ -200,7 +236,8 @@
             + '</div>'
             + '</div>';
         // One badge per sector with inter-driver deltas.
-        var refIdx = lapData && lapData.size > 0 ? lapData.keys().next().value : null;
+        var resolvedRef = ensureReferenceSelection(lapData);
+        var refIdx = resolvedRef ? resolvedRef.carIdx : null;
         var refDriverLap = refIdx != null ? sess.drivers[refIdx] : null;
         var refLap = null;
         if (refDriverLap) {
@@ -342,7 +379,8 @@
         var xMax = compareState.zoomEnd != null ? compareState.zoomEnd : trackLen;
 
         // Reference = first selected driver's samples — used for Delta.
-        var refIdx = lapData && lapData.size > 0 ? lapData.keys().next().value : null;
+        var resolvedRef = ensureReferenceSelection(lapData);
+        var refIdx = resolvedRef ? resolvedRef.carIdx : null;
         var refSamples = refIdx != null ? lapData.get(refIdx).samples : null;
 
         enforceMetricLimit();
@@ -367,14 +405,14 @@
 
         visibleMetrics.forEach(function (m) {
             var row = host.querySelector('[data-metric="' + m.key + '"] .tc-chart-svg-host');
-            row.innerHTML = renderChartSvg(m, lapData, selections, refSamples, xMin, xMax, sess, effectiveHeight(m));
+            row.innerHTML = renderChartSvg(m, lapData, selections, refSamples, refIdx, xMin, xMax, sess, effectiveHeight(m));
             // Per-row value chip that follows the crosshair. Hidden until the user hovers.
             row.insertAdjacentHTML('beforeend',
                 '<div class="tc-row-chip" data-metric="' + m.key + '" hidden></div>');
         });
 
         wireResizeHandles(host, lapData);
-        wireHover(host, lapData, selections, refSamples, xMin, xMax, sess);
+        wireHover(host, lapData, selections, refSamples, refIdx, xMin, xMax, sess);
     }
 
     // Mouse-drag on the bottom edge of a row changes compareState.heightOverride[key].
@@ -427,14 +465,13 @@
         return runs.filter(function (r) { return r.to >= xMin && r.from <= xMax; });
     }
 
-    function renderChartSvg(metric, lapData, selections, refSamples, xMin, xMax, sess, H) {
+    function renderChartSvg(metric, lapData, selections, refSamples, refCarIdx, xMin, xMax, sess, H) {
         var W = 900;
         var PAD_T = 4, PAD_B = 16;
         var plotH = H - PAD_T - PAD_B;
         function x(d) { return (d - xMin) / Math.max(1, xMax - xMin) * W; }
 
         // Reference driver samples for overlays (DRS overlay on Speed; ERS bg band).
-        var refCarIdx = selections.length > 0 ? selections[0][0] : null;
         var refDriverData = (refCarIdx != null && lapData) ? lapData.get(refCarIdx) : null;
         var refDriverSamples = refDriverData ? refDriverData.samples : null;
 
@@ -658,7 +695,7 @@
 
     // ---------- hover sync ----------
 
-    function wireHover(host, lapData, selections, refSamples, xMin, xMax, sess) {
+    function wireHover(host, lapData, selections, refSamples, refCarIdx, xMin, xMax, sess) {
         var overlay = host.querySelector('#tcHoverLayer');
         var crosshair = host.querySelector('#tcCrosshair');
         if (!overlay) return;
@@ -676,14 +713,16 @@
                 var color = (typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
                 var sample = interpAtDistance(data.samples, d);
                 var deltaVal = null;
-                if (carIdx !== selections[0][0] && refSamples && data.samples) {
+                if (carIdx !== refCarIdx && refSamples && data.samples) {
                     var refInterp = interpAtDistance(refSamples, d);
                     if (refInterp && sample) deltaVal = sample.t - refInterp.t;
-                } else if (carIdx === selections[0][0]) {
+                } else if (carIdx === refCarIdx) {
                     deltaVal = 0;
                 }
-                return { carIdx: carIdx, color: color, sample: sample, delta: deltaVal };
-            }).filter(Boolean);
+                return { carIdx: carIdx, color: color, sample: sample, delta: deltaVal, isReference: carIdx === refCarIdx };
+            }).filter(Boolean).sort(function (a, b) {
+                return (b.isReference === true) - (a.isReference === true);
+            });
         }
 
         function update() {
@@ -701,6 +740,7 @@
                 var rows = perDriver.map(function (pd) {
                     var text = formatChipValue(metricKey, pd.sample, metricKey === 'delta' ? pd.delta : null);
                     return '<span class="tc-chip-dot" style="background:' + pd.color + '"></span>'
+                        + (pd.isReference ? '<span class="tc-chip-ref">REF</span>' : '')
                         + '<span class="tc-chip-val">' + escapeHtml(text) + '</span>';
                 }).join('<span class="tc-chip-sep"></span>');
                 chip.innerHTML = rows;

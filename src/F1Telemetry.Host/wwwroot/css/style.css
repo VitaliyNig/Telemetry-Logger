@@ -3831,6 +3831,7 @@
 .driver-row:hover { background: rgba(255, 255, 255, 0.04); }
 
 .driver-check { cursor: pointer; accent-color: var(--accent-brand); }
+.driver-ref { cursor: pointer; accent-color: #22c55e; }
 
 .driver-dot {
     width: 10px;
@@ -3859,6 +3860,14 @@
     border-radius: 3px;
     background: var(--accent-brand);
     color: #fff;
+}
+.driver-ref-badge {
+    font-size: 9px;
+    font-weight: 700;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: #22c55e;
+    color: #06210f;
 }
 
 .driver-lap-select {
@@ -4789,6 +4798,17 @@ td.lap-cell__tyre { cursor: default; }
     flex-shrink: 0;
 }
 .tc-chip-val { color: var(--text-primary); }
+.tc-chip-ref {
+    display: inline-flex;
+    align-items: center;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.2px;
+    padding: 1px 4px;
+    border-radius: 3px;
+    background: #22c55e;
+    color: #06210f;
+}
 .tc-chip-sep {
     display: inline-block;
     width: 1px;

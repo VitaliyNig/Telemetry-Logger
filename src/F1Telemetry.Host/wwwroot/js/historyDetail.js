@@ -14,6 +14,7 @@
         subTab: 'laptimes',
         // Map<carIdx, { lap: number, ghost: bool }>. `lap` = selected lap for Compare.
         driverSelection: new Map(),
+        compareState: { referenceCarIdx: null, referenceLap: null },
         lapSamplesCache: new Map(),  // key: carIdx + ':' + lap
     };
 
@@ -24,6 +25,7 @@
         state.slug = slug;
         state.session = null;
         state.driverSelection = new Map();
+        state.compareState = { referenceCarIdx: null, referenceLap: null };
         state.lapSamplesCache = new Map();
 
         var list = document.getElementById('historyListView') || document.getElementById('historySessionList');
@@ -1413,11 +1415,16 @@
                 var isSelected = !!sel && (!opts.supportLapSelector || sel.lap != null);
                 var checked = isSelected ? 'checked' : '';
                 var ghostBadge = (sel && sel.ghost) ? '<span class="driver-ghost-badge">G</span>' : '';
+                var isRef = !!sel && state.compareState
+                    && Number(state.compareState.referenceCarIdx) === Number(carIdx)
+                    && Number(state.compareState.referenceLap) === Number(sel.lap);
+                var refBadge = isRef ? '<span class="driver-ref-badge">REF</span>' : '';
                 html += '<label class="driver-row" data-car="' + carIdx + '">'
                       + '<input type="checkbox" class="driver-check" ' + checked + ' />'
+                      + '<input type="radio" name="driver-reference" class="driver-ref" ' + (isRef ? 'checked' : '') + ' title="Set as Reference" />'
                       + '<span class="driver-dot" style="background:' + teamColor + '"></span>'
                       + '<span class="driver-name">' + (racePos ? '<span class="driver-race-pos">P' + racePos + '</span> ' : '') + escapeHtml(shortDriverName(d.name || ('Car ' + carIdx))) + '</span>'
-                      + ghostBadge;
+                      + ghostBadge + refBadge;
                 if (opts.supportLapSelector) {
                     html += '<select class="driver-lap-select">';
                     (d.laps || []).forEach(function (l) {
@@ -1457,6 +1464,18 @@
                     var existing = state.driverSelection.get(carIdx) || { ghost: false };
                     existing.lap = Number(sel.value);
                     state.driverSelection.set(carIdx, existing);
+                    if (opts.onChange) opts.onChange();
+                });
+            });
+            container.querySelectorAll('.driver-ref').forEach(function (rb) {
+                rb.addEventListener('change', function () {
+                    if (!rb.checked) return;
+                    var row = rb.closest('.driver-row');
+                    var carIdx = Number(row.dataset.car);
+                    var existing = state.driverSelection.get(carIdx);
+                    if (!existing || existing.lap == null) return;
+                    state.compareState.referenceCarIdx = carIdx;
+                    state.compareState.referenceLap = existing.lap;
                     if (opts.onChange) opts.onChange();
                 });
             });
