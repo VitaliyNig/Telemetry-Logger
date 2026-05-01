@@ -770,11 +770,10 @@
             + '<div class="pos-main">'
             +   '<div class="pos-chart">'
             +     '<div class="pos-legend">'
-            +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--yellow"></span>Yellow flag</span>'
-            +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--sc"></span>Safety car</span>'
+            +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--sc"></span>SC</span>'
             +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--vsc"></span>VSC</span>'
-            +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--red"></span>Red flag</span>'
-            +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--pit"></span>Pit stop</span>'
+            +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--red"></span>Red Flag</span>'
+            +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--pit"></span>Pitstop</span>'
             +     '</div>'
             +     '<div class="pos-chart-wrap" id="posChart"></div>'
             +   '</div>'
@@ -828,16 +827,18 @@
         function x(lap) { return PAD_L + (lap - 1) * lapStep; }
         function y(pos) { return PAD_T + (pos - 1) / Math.max(1, totalDrivers - 1) * plotH; }
 
-        // Race-flag bands: max flag per lap, collapsed into consecutive same-flag ranges.
+        // Race-flag bands (SC/VSC/Red only): max flag per lap, collapsed into consecutive same-flag ranges.
         var flagByLap = {};
         (sess.events || []).forEach(function (e) {
-            if (e.flag != null && e.lap != null) flagByLap[e.lap] = Math.max(flagByLap[e.lap] || 0, e.flag);
+            if (e.flag != null && e.lap != null && (e.flag === 2 || e.flag === 3 || e.flag === 4)) {
+                flagByLap[e.lap] = Math.max(flagByLap[e.lap] || 0, e.flag);
+            }
         });
         var bands = '';
         var bandClass = function (f) {
             return f === 2 ? 'pos-band-sc'
                 : f === 3 ? 'pos-band-vsc'
-                : f === 4 ? 'pos-band-red' : 'pos-band-yellow';
+                : 'pos-band-red';
         };
         var groupStart = null, groupFlag = 0;
         for (var lap = 1; lap <= totalLaps + 1; lap++) {
@@ -891,8 +892,8 @@
                 if (isPitLap(l) && l.position > 0) {
                     var cx = x(l.lapNum), cy = y(l.position);
                     markers += '<g class="pos-pit-badge">'
-                        + '<circle cx="' + cx + '" cy="' + cy + '" r="5" fill="' + color + '" stroke="#fff" stroke-width="1"/>'
-                        + '<text class="pos-pit-letter" x="' + cx + '" y="' + (cy + 2.5) + '" text-anchor="middle">P</text>'
+                        + '<rect x="' + (cx - 5.5) + '" y="' + (cy - 5.5) + '" width="11" height="11" rx="2.5" ry="2.5" fill="' + color + '" stroke="#fff" stroke-width="1"/>'
+                        + '<text class="pos-pit-letter" x="' + cx + '" y="' + (cy + 2.4) + '" text-anchor="middle">P</text>'
                         + '</g>';
                 }
             });
