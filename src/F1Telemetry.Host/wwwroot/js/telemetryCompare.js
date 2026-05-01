@@ -20,6 +20,8 @@
         focusPinned: null,
         insightsEnabled: true,
         brush: null,
+        deltaSeriesCache: new Map(),
+        hoverPerf: { enabled: false, lastLogTs: 0, samples: 0, hoverMs: 0, interpCount: 0 },
     };
     var shortcutsBound = false;
 
@@ -53,6 +55,37 @@
     }
 
     loadPersistedState();
+    compareState.hoverPerf.enabled = !!(window && window.location && /(?:\?|&)tcPerf=1(?:&|$)/.test(window.location.search || ''));
+
+    function deltaCacheKey(carIdx, refCarIdx, xMin, xMax, mode, miniPerSector) {
+        return [carIdx, refCarIdx, xMin.toFixed(3), xMax.toFixed(3), mode, miniPerSector].join('|');
+    }
+
+    function clearDeltaSeriesCache() {
+        compareState.deltaSeriesCache.clear();
+    }
+
+    function createInterpContext() {
+        return { interpCount: 0 };
+    }
+
+    function recordHoverPerf(durationMs, interpCount) {
+        var perf = compareState.hoverPerf;
+        if (!perf.enabled) return;
+        perf.samples++;
+        perf.hoverMs += durationMs;
+        perf.interpCount += interpCount;
+        var now = (window.performance && performance.now) ? performance.now() : Date.now();
+        if (now - perf.lastLogTs >= 1000) {
+            var avgMs = perf.samples ? (perf.hoverMs / perf.samples) : 0;
+            var avgInterp = perf.samples ? (perf.interpCount / perf.samples) : 0;
+            console.debug('[tcPerf] hover avg=', avgMs.toFixed(2) + 'ms', 'interp/frame=', avgInterp.toFixed(1), 'frames=', perf.samples);
+            perf.lastLogTs = now;
+            perf.samples = 0;
+            perf.hoverMs = 0;
+            perf.interpCount = 0;
+        }
+    }
 
     var METRICS = [
         { key: 'delta', label: 'Δ (s)', height: 70, getValue: null /* computed */, min: -1, max: 1 },
@@ -146,6 +179,7 @@
     }
 
     function redraw(lapData) {
+        clearDeltaSeriesCache();
         ensureReferenceSelection(lapData);
         drawBadges(lapData);
         drawChartStack(lapData);
@@ -407,7 +441,7 @@
         var cmpData = lapData.get(cmpEntry[0]);
         var refData = lapData.get(refSel.carIdx);
         if (!cmpData || !refData) return [];
-        var deltaSeries = computeDeltaSeries(cmpData.samples, refData.samples, sess);
+        var deltaSeries = getDeltaSeriesForRange(cmpEntry[0], refSel.carIdx, cmpData.samples, refData.samples, 0, Number.MAX_SAFE_INTEGER, sess);
         if (deltaSeries.length < 4) return [];
         var zones = [];
         var start = null;
@@ -422,6 +456,16 @@
         }
         zones.sort(function (a, b) { return b.loss - a.loss; });
         return zones.slice(0, topN);
+    }
+
+    function getDeltaSeriesForRange(carIdx, refCarIdx, driverSamples, refSamples, xMin, xMax, sess) {
+        var key = deltaCacheKey(carIdx, refCarIdx, xMin, xMax, compareState.deltaMode, compareState.miniPerSector);
+        if (compareState.deltaSeriesCache.has(key)) return compareState.deltaSeriesCache.get(key);
+        var interpCtx = createInterpContext();
+        var computed = computeDeltaSeries(driverSamples, refSamples, sess, interpCtx)
+            .filter(function (pt) { return pt.d >= xMin && pt.d <= xMax; });
+        compareState.deltaSeriesCache.set(key, computed);
+        return computed;
     }
 
     function buildZoneInsight(i0, i1, deltaSeries, cmpSamples, refSamples) {
@@ -686,11 +730,11 @@
             var values;
             if (metric.key === 'delta') {
                 if (!refSamples) return;
-                values = computeDeltaSeries(d.samples, refSamples, sess);
+                values = getDeltaSeriesForRange(carIdx, refCarIdx, d.samples, refSamples, xMin, xMax, sess);
             } else {
                 values = d.samples.map(function (s) { return { d: s.d, v: s[metric.key] || 0 }; });
             }
-            values = values.filter(function (pt) { return pt.d >= xMin && pt.d <= xMax; });
+            if (metric.key !== 'delta') values = values.filter(function (pt) { return pt.d >= xMin && pt.d <= xMax; });
             if (values.length === 0) return;
 
             var pts = values.map(function (pt) {
@@ -748,14 +792,14 @@
     }
 
     // Resamples driverSamples onto reference sample distances and returns per-distance Δtime (seconds).
-    function computeDeltaSeries(driverSamples, refSamples, sess) {
+    function computeDeltaSeries(driverSamples, refSamples, sess, interpCtx) {
         var out = [];
         var segmentBoundaries = buildSegmentBoundaries(sess.meta, compareState.miniPerSector)
             .map(function (seg) { return seg.end; });
 
         for (var i = 0; i < refSamples.length; i++) {
             var ref = refSamples[i];
-            var interp = interpAtDistance(driverSamples, ref.d);
+            var interp = interpAtDistance(driverSamples, ref.d, interpCtx);
             if (interp == null) continue;
             var delta = interp.t - ref.t;
 
@@ -766,8 +810,8 @@
                     if (ref.d >= segmentBoundaries[j]) boundary = segmentBoundaries[j];
                 }
                 if (boundary > 0) {
-                    var interpAtBoundary = interpAtDistance(driverSamples, boundary);
-                    var refAtBoundary = interpAtDistance(refSamples, boundary);
+                    var interpAtBoundary = interpAtDistance(driverSamples, boundary, interpCtx);
+                    var refAtBoundary = interpAtDistance(refSamples, boundary, interpCtx);
                     if (interpAtBoundary && refAtBoundary) {
                         delta -= (interpAtBoundary.t - refAtBoundary.t);
                     }
@@ -778,34 +822,36 @@
         return out;
     }
 
-    // Linear interp of sample values at the given lapDistance. O(log n) would be nicer; linear
-    // scan is fine for ~1000 samples/lap × a handful of drivers.
-    function interpAtDistance(samples, targetD) {
+    // Interp of sample values at the given lapDistance via binary search over sorted samples[i].d.
+    function interpAtDistance(samples, targetD, interpCtx) {
+        if (interpCtx) interpCtx.interpCount = (interpCtx.interpCount || 0) + 1;
         if (!samples || samples.length === 0) return null;
         if (targetD <= samples[0].d) return samples[0];
         if (targetD >= samples[samples.length - 1].d) return samples[samples.length - 1];
-        for (var i = 1; i < samples.length; i++) {
-            if (samples[i].d >= targetD) {
-                var a = samples[i - 1], b = samples[i];
-                var span = b.d - a.d;
-                if (span <= 0) return a;
-                var f = (targetD - a.d) / span;
-                return {
-                    t: a.t + (b.t - a.t) * f,
-                    d: targetD,
-                    spd: a.spd + (b.spd - a.spd) * f,
-                    thr: a.thr + (b.thr - a.thr) * f,
-                    brk: a.brk + (b.brk - a.brk) * f,
-                    str: a.str + (b.str - a.str) * f,
-                    gr:  a.gr,
-                    rpm: a.rpm + (b.rpm - a.rpm) * f,
-                    ers: (a.ers || 0) + ((b.ers || 0) - (a.ers || 0)) * f,
-                    ersMd: a.ersMd || 0,
-                    drs: a.drs || 0,
-                };
-            }
+        var lo = 1, hi = samples.length - 1;
+        while (lo < hi) {
+            var mid = (lo + hi) >> 1;
+            if (samples[mid].d < targetD) lo = mid + 1;
+            else hi = mid;
         }
-        return samples[samples.length - 1];
+        var b = samples[lo];
+        var a = samples[lo - 1];
+        var span = b.d - a.d;
+        if (span <= 0) return a;
+        var f = (targetD - a.d) / span;
+        return {
+            t: a.t + (b.t - a.t) * f,
+            d: targetD,
+            spd: a.spd + (b.spd - a.spd) * f,
+            thr: a.thr + (b.thr - a.thr) * f,
+            brk: a.brk + (b.brk - a.brk) * f,
+            str: a.str + (b.str - a.str) * f,
+            gr:  a.gr,
+            rpm: a.rpm + (b.rpm - a.rpm) * f,
+            ers: (a.ers || 0) + ((b.ers || 0) - (a.ers || 0)) * f,
+            ersMd: a.ersMd || 0,
+            drs: a.drs || 0,
+        };
     }
 
     // ---------- track map ----------
@@ -869,13 +915,16 @@
 
         var chips = Array.prototype.slice.call(host.querySelectorAll('.tc-row-chip'));
         var scheduled = false, lastX = 0;
+        var rafToken = 0;
+        var hoverCacheByDriver = new Map();
+        var lastHoverDistance = null;
         var brushStartPx = null;
         var brushEl = overlay.querySelector('.tc-brush');
         var overviewWin = host.querySelector('#tcOverviewWin');
         var overview = host.querySelector('#tcOverview');
 
         // Pre-compute per-driver interp sample + color + delta series at hover time.
-        function resolvePerDriver(d) {
+        function resolvePerDriver(d, interpCtx) {
             var compareOrdinal = 0;
             return selections.map(function (kv) {
                 var carIdx = kv[0];
@@ -883,10 +932,18 @@
                 if (!data || !data.samples) return null;
                 var driver = sess.drivers[carIdx];
                 var color = (typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
-                var sample = interpAtDistance(data.samples, d);
+                var sample = null;
+                var idxKey = String(carIdx);
+                var nearestIdx = findNearestSampleIndex(data.samples, d);
+                var cached = hoverCacheByDriver.get(idxKey);
+                if (cached && cached.idx === nearestIdx) sample = cached.sample;
+                else {
+                    sample = interpAtDistance(data.samples, d, interpCtx);
+                    hoverCacheByDriver.set(idxKey, { idx: nearestIdx, sample: sample });
+                }
                 var deltaVal = null;
                 if (carIdx !== refCarIdx && refSamples && data.samples) {
-                    var refInterp = interpAtDistance(refSamples, d);
+                    var refInterp = interpAtDistance(refSamples, d, interpCtx);
                     if (refInterp && sample) deltaVal = sample.t - refInterp.t;
                 } else if (carIdx === refCarIdx) {
                     deltaVal = 0;
@@ -912,12 +969,17 @@
 
         function update() {
             scheduled = false;
+            rafToken = 0;
+            var perfStart = (window.performance && performance.now) ? performance.now() : Date.now();
+            var interpCtx = createInterpContext();
             var rect = overlay.getBoundingClientRect();
             var pct = Math.max(0, Math.min(1, lastX / rect.width));
             var d = xMin + pct * (xMax - xMin);
+            if (lastHoverDistance != null && Math.abs(lastHoverDistance - d) < 0.0001) return;
+            lastHoverDistance = d;
             crosshair.style.left = (pct * 100) + '%';
 
-            var perDriver = resolvePerDriver(d);
+            var perDriver = resolvePerDriver(d, interpCtx);
 
             chips.forEach(function (chip) {
                 var metricKey = chip.dataset.metric;
@@ -939,6 +1001,8 @@
 
             updateMapMarkers(d, lapData, sess);
             renderFocusPanel(perDriver, d);
+            var elapsed = ((window.performance && performance.now) ? performance.now() : Date.now()) - perfStart;
+            recordHoverPerf(elapsed, interpCtx.interpCount || 0);
         }
 
         overlay.addEventListener('mousemove', function (e) {
@@ -946,10 +1010,13 @@
             lastX = e.clientX - rect.left;
             if (!scheduled) {
                 scheduled = true;
-                requestAnimationFrame(update);
+                rafToken = requestAnimationFrame(update);
             }
         });
         overlay.addEventListener('mouseleave', function () {
+            if (rafToken) cancelAnimationFrame(rafToken);
+            rafToken = 0;
+            scheduled = false;
             crosshair.style.left = '-9999px';
             chips.forEach(function (chip) { chip.hidden = true; });
             if (!compareState.focusPinned) renderFocusPanel([], null);
@@ -1037,6 +1104,20 @@
         }
         updateOverviewWindow();
         renderFocusPanel([], null);
+    }
+
+    function findNearestSampleIndex(samples, targetD) {
+        if (!samples || samples.length === 0) return -1;
+        if (targetD <= samples[0].d) return 0;
+        if (targetD >= samples[samples.length - 1].d) return samples.length - 1;
+        var lo = 1, hi = samples.length - 1;
+        while (lo < hi) {
+            var mid = (lo + hi) >> 1;
+            if (samples[mid].d < targetD) lo = mid + 1;
+            else hi = mid;
+        }
+        var prev = lo - 1;
+        return Math.abs(samples[lo].d - targetD) < Math.abs(samples[prev].d - targetD) ? lo : prev;
     }
 
     function renderFocusPanel(perDriver, distance) {
