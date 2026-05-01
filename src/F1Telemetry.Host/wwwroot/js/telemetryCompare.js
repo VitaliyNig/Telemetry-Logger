@@ -730,7 +730,11 @@
             var carIdx = kv[0];
             var d = lapData && lapData.get(carIdx);
             if (!d || !d.samples) return;
-            var driver = sess.drivers[carIdx];
+            var sel = window.HistoryDetail && window.HistoryDetail.state && window.HistoryDetail.state.driverSelection
+                ? window.HistoryDetail.state.driverSelection.get(carIdx)
+                : null;
+            var sourceCarIdx = Number(sel && sel.sourceCarIdx != null ? sel.sourceCarIdx : carIdx);
+            var driver = sess.drivers[sourceCarIdx];
             var color = (typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
 
             var values;
@@ -938,7 +942,11 @@
                 var carIdx = kv[0];
                 var data = lapData && lapData.get(carIdx);
                 if (!data || !data.samples) return null;
-                var driver = sess.drivers[carIdx];
+                var sel = window.HistoryDetail && window.HistoryDetail.state && window.HistoryDetail.state.driverSelection
+                    ? window.HistoryDetail.state.driverSelection.get(carIdx)
+                    : null;
+                var sourceCarIdx = Number(sel && sel.sourceCarIdx != null ? sel.sourceCarIdx : carIdx);
+                var driver = sess.drivers[sourceCarIdx];
                 var color = (typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
                 var sample = null;
                 var idxKey = String(carIdx);
@@ -956,9 +964,6 @@
                 } else if (carIdx === refCarIdx) {
                     deltaVal = 0;
                 }
-                var sel = window.HistoryDetail && window.HistoryDetail.state && window.HistoryDetail.state.driverSelection
-                    ? window.HistoryDetail.state.driverSelection.get(carIdx)
-                    : null;
                 var lapNo = sel && sel.lap != null ? Number(sel.lap) : null;
                 var roleLabel = 'REF';
                 if (carIdx !== refCarIdx) {
