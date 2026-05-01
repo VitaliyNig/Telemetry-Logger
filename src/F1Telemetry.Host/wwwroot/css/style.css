@@ -5341,8 +5341,21 @@ td.lap-cell__tyre { cursor: default; }
     background: color-mix(in srgb, var(--color-bg-card) 92%, #fff 8%);
     padding: 14px;
     color: var(--text-primary);
+    cursor: pointer;
 }
 .tc-lap-card-top { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+.tc-lap-card.is-muted { opacity: 0.45; }
+.tc-lap-card-vis, .tc-lap-card-remove {
+    margin-left: auto;
+    border: 0;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 14px;
+    line-height: 1;
+}
+.tc-lap-card-remove { margin-left: 6px; font-size: 18px; }
+.tc-lap-card-vis:hover, .tc-lap-card-remove:hover { color: var(--text-primary); }
 .tc-lap-card-lap { font-size: 28px; font-weight: 700; letter-spacing: 0.2px; }
 .tc-lap-card-add { min-height: 130px; display: grid; place-items: center; cursor: pointer; background: transparent; }
 .tc-lap-card-add span { font-size: 64px; line-height: 1; color: var(--text-dim); font-weight: 300; }
