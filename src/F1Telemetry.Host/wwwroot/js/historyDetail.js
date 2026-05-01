@@ -42,6 +42,7 @@
             })
             .then(function (data) {
                 state.session = data;
+                updateHistorySubTabsVisibility();
                 // Default driver selection: player car only, best valid lap.
                 var playerIdx = data.meta ? data.meta.playerCarIndex : null;
                 if (playerIdx != null && data.drivers && data.drivers[playerIdx]) {
@@ -106,6 +107,21 @@
         if (type >= 15 && type <= 17) return 'race';
         if (type === 18) return 'time_trial';
         return 'unknown';
+    }
+
+
+    function isRaceSession() {
+        return state.session && sessionCategory((state.session.meta || {}).sessionType) === 'race';
+    }
+
+    function updateHistorySubTabsVisibility() {
+        var posTab = document.querySelector('.history-sidenav-item[data-sub="positions"]');
+        if (!posTab) return;
+        var show = isRaceSession();
+        posTab.hidden = !show;
+        if (!show && state.subTab === 'positions') {
+            switchSubTab('laptimes');
+        }
     }
 
     // Lap Times local state (toggles for quali). Re-created on each open.
@@ -762,10 +778,6 @@
             +     '</div>'
             +     '<div class="pos-chart-wrap" id="posChart"></div>'
             +   '</div>'
-            +   '<div class="pos-stints">'
-            +     '<div class="pos-stints-title">Tyre stints</div>'
-            +     '<div id="posStints"></div>'
-            +   '</div>'
             + '</div>'
             + '</div>';
 
@@ -773,12 +785,11 @@
         var picker = DriverPicker({
             drivers: sess.drivers,
             supportLapSelector: false,
-            onChange: function () { drawPositionChart(); drawStintStrips(); },
+            onChange: function () { drawPositionChart(); },
         });
         side.appendChild(picker);
 
         drawPositionChart();
-        drawStintStrips();
     }
 
     function computeMaxLap(drivers) {
@@ -853,12 +864,13 @@
                 ticks += '<text class="pos-ytick" x="' + (W - PAD_R + 8) + '" y="' + (yp + 4) + '" text-anchor="start">' + p + '</text>';
             }
         }
-        for (var lx = 1; lx <= totalLaps; lx += 5) {
-            ticks += '<line class="pos-grid pos-grid--v" x1="' + x(lx) + '" x2="' + x(lx) + '" y1="' + PAD_T + '" y2="' + (H - PAD_B) + '"/>';
-            ticks += '<text class="pos-xtick" x="' + x(lx) + '" y="' + (PAD_T - 10) + '" text-anchor="middle">' + lx + '</text>';
-        }
-        if ((totalLaps - 1) % 5 !== 0) {
-            ticks += '<text class="pos-xtick" x="' + x(totalLaps) + '" y="' + (PAD_T - 10) + '" text-anchor="middle">' + totalLaps + '</text>';
+        for (var lx = 1; lx <= totalLaps; lx++) {
+            var majorLap = (lx === 1 || lx % 5 === 0 || lx === totalLaps);
+            ticks += '<line class="pos-grid pos-grid--v' + (majorLap ? ' pos-grid--v-major' : '')
+                + '" x1="' + x(lx) + '" x2="' + x(lx) + '" y1="' + PAD_T + '" y2="' + (H - PAD_B) + '"/>';
+            if (majorLap) {
+                ticks += '<text class="pos-xtick" x="' + x(lx) + '" y="' + (PAD_T - 10) + '" text-anchor="middle">' + lx + '</text>';
+            }
         }
 
         // Driver polylines + pit badges + end/start code labels.
@@ -876,7 +888,7 @@
             lines += '<polyline class="pos-line" stroke="' + color + '" points="' + pts.join(' ') + '"/>';
 
             (d.laps || []).forEach(function (l) {
-                if (l.pit && l.position > 0) {
+                if (isPitLap(l) && l.position > 0) {
                     var cx = x(l.lapNum), cy = y(l.position);
                     markers += '<g class="pos-pit-badge">'
                         + '<circle cx="' + cx + '" cy="' + cy + '" r="5" fill="' + color + '" stroke="#fff" stroke-width="1"/>'
@@ -904,71 +916,13 @@
         return base.substring(0, 3).toUpperCase();
     }
 
-    function drawStintStrips() {
-        var host = document.getElementById('posStints');
-        if (!host) return;
-        var sess = state.session;
-        var selected = Array.from(state.driverSelection.keys()).filter(function (k) {
-            return sess.drivers && sess.drivers[k];
-        });
-        if (selected.length === 0) {
-            host.innerHTML = '<div class="history-placeholder">Select drivers to view stints.</div>';
-            return;
-        }
-
-        var totalLaps = (sess.meta && sess.meta.totalLaps) || computeMaxLap(sess.drivers);
-        if (!totalLaps) totalLaps = 1;
-
-        var html = '<div class="stint-grid">';
-        selected.forEach(function (k) {
-            var d = sess.drivers[k];
-            var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
-            var stints = stintsForDriver(sess, k);
-            var bars = '';
-            var lastEnd = 0;
-            stints.forEach(function (st) {
-                var startLap = lastEnd + 1;
-                var endLap = st.endLap;
-                var widthPct = (endLap - startLap + 1) / totalLaps * 100;
-                var leftPct = (startLap - 1) / totalLaps * 100;
-                var color = (typeof COMPOUND_DOT_COLORS !== 'undefined' && COMPOUND_DOT_COLORS[st.visual])
-                    ? COMPOUND_DOT_COLORS[st.visual] : '#666';
-                bars += '<span class="stint-bar" style="left:' + leftPct + '%;width:' + widthPct
-                    + '%;background:linear-gradient(90deg,' + color + ' 0%,rgba(0,0,0,0.5) 100%)"'
-                    + ' title="L' + startLap + '-L' + endLap + '"></span>';
-                lastEnd = endLap;
-            });
-            html += '<div class="stint-row-label"><span class="driver-dot" style="background:' + teamColor + '"></span>'
-                + escapeHtml(d.name) + '</div>'
-                + '<div class="stint-row-bars">' + bars + '</div>';
-        });
-        html += '</div>';
-        host.innerHTML = html;
+    function isPitLap(lap) {
+        if (!lap) return false;
+        if (lap.pit === true || lap.inPit === true || lap.pitInLap === true || lap.pitStop === true) return true;
+        var pitStatus = Number(lap.pitStatus);
+        return pitStatus === 1 || pitStatus === 2;
     }
 
-    function stintsForDriver(sess, carIdx) {
-        // Prefer the authoritative SessionHistoryPacket, fall back to per-lap compound changes.
-        var hist = sess.lapHistories && sess.lapHistories[carIdx];
-        if (hist && hist.tyreStintsHistoryData && hist.tyreStintsHistoryData.length > 0) {
-            return hist.tyreStintsHistoryData.map(function (s) {
-                return { endLap: s.endLap, actual: s.tyreActualCompound, visual: s.tyreVisualCompound };
-            });
-        }
-        var driver = sess.drivers && sess.drivers[carIdx];
-        if (!driver || !driver.laps) return [];
-        var stints = [];
-        var cur = null;
-        driver.laps.forEach(function (l) {
-            if (!cur || cur.visual !== l.compoundVisual) {
-                if (cur) stints.push(cur);
-                cur = { endLap: l.lapNum, actual: l.compoundActual, visual: l.compoundVisual };
-            } else {
-                cur.endLap = l.lapNum;
-            }
-        });
-        if (cur) stints.push(cur);
-        return stints;
-    }
     function renderTelemetryCompare(body) {
         if (window.TelemetryCompare && window.TelemetryCompare.render) {
             window.TelemetryCompare.render(body);
