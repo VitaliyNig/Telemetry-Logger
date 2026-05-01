@@ -16,6 +16,8 @@
         heightScale: 1.0,           // 0.75 | 1.0 | 1.4
         heightOverride: {},         // { metricKey: pixelsAtScale1 } from drag
         miniPerSector: 3,
+        focusPinMode: false,
+        focusPinned: null,
     };
 
     var PERSIST_KEY = 'tcCompareUi';
@@ -29,6 +31,7 @@
             if (typeof p.heightScale === 'number') compareState.heightScale = p.heightScale;
             if (p.heightOverride && typeof p.heightOverride === 'object') compareState.heightOverride = p.heightOverride;
             if ([1, 3, 4].indexOf(Number(p.miniPerSector)) >= 0) compareState.miniPerSector = Number(p.miniPerSector);
+            compareState.focusPinMode = !!p.focusPinMode;
         } catch (e) { /* ignore corrupt storage */ }
     }
 
@@ -39,6 +42,7 @@
                 heightScale: compareState.heightScale,
                 heightOverride: compareState.heightOverride,
                 miniPerSector: compareState.miniPerSector,
+                focusPinMode: compareState.focusPinMode,
             }));
         } catch (e) { /* storage may be disabled */ }
     }
@@ -98,7 +102,10 @@
             +   '<div class="tc-side" id="tcSide"></div>'
             +   '<div class="tc-main">'
             +     '<div class="tc-sector-badges" id="tcBadges"></div>'
-            +     '<div class="tc-charts" id="tcCharts"></div>'
+            +     '<div class="tc-compare-content">'
+            +       '<div class="tc-charts" id="tcCharts"></div>'
+            +       '<aside class="tc-focus" id="tcFocusPanel"></aside>'
+            +     '</div>'
             +   '</div>'
             +   '<div class="tc-map" id="tcMap"></div>'
             + '</div>';
@@ -706,6 +713,7 @@
             });
 
             updateMapMarkers(d, lapData, sess);
+            renderFocusPanel(perDriver, d);
         }
 
         overlay.addEventListener('mousemove', function (e) {
@@ -719,7 +727,61 @@
         overlay.addEventListener('mouseleave', function () {
             crosshair.style.left = '-9999px';
             chips.forEach(function (chip) { chip.hidden = true; });
+            if (!compareState.focusPinned) renderFocusPanel([], null);
         });
+        overlay.addEventListener('click', function (e) {
+            if (!compareState.focusPinMode) return;
+            var rect = overlay.getBoundingClientRect();
+            var pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            var d = xMin + pct * (xMax - xMin);
+            var perDriver = resolvePerDriver(d);
+            if (!compareState.focusPinned) compareState.focusPinned = { base: perDriver, baseDistance: d };
+            else compareState.focusPinned = { base: compareState.focusPinned.base, baseDistance: compareState.focusPinned.baseDistance, compare: perDriver, compareDistance: d };
+            renderFocusPanel(perDriver, d);
+        });
+        renderFocusPanel([], null);
+    }
+
+    function renderFocusPanel(perDriver, distance) {
+        var host = document.getElementById('tcFocusPanel');
+        if (!host) return;
+        var hasLive = perDriver && perDriver.length > 1;
+        var ref = hasLive ? perDriver[0] : null;
+        var cmp = hasLive ? perDriver[1] : null;
+        var diffs = ref && cmp ? {
+            delta: (cmp.delta || 0),
+            spd: (cmp.sample.spd || 0) - (ref.sample.spd || 0),
+            thr: (cmp.sample.thr || 0) - (ref.sample.thr || 0),
+            brk: (cmp.sample.brk || 0) - (ref.sample.brk || 0),
+            gr: (cmp.sample.gr || 0) - (ref.sample.gr || 0),
+            rpm: (cmp.sample.rpm || 0) - (ref.sample.rpm || 0),
+        } : null;
+        function row(label, val, inverse) {
+            if (val == null) return '<div class="tc-focus-row"><span>' + label + '</span><strong>—</strong></div>';
+            var trend = val === 0 ? '→' : ((inverse ? -val : val) < 0 ? '▲' : '▼');
+            var cls = val === 0 ? 'neutral' : ((inverse ? -val : val) < 0 ? 'gain' : 'loss');
+            return '<div class="tc-focus-row ' + cls + '"><span>' + label + '</span><strong>' + trend + ' ' + (val >= 0 ? '+' : '') + val.toFixed(2) + '</strong></div>';
+        }
+        var pin = compareState.focusPinned;
+        host.innerHTML = ''
+            + '<div class="tc-focus-head"><h4>Compare Focus</h4><button class="tc-pin-btn ' + (compareState.focusPinMode ? 'active' : '') + '" data-act="pin">Pin</button></div>'
+            + '<div class="tc-focus-sub">' + (distance == null ? 'Hover chart to inspect' : ('d=' + Math.round(distance) + 'm')) + '</div>'
+            + row('Delta', diffs ? diffs.delta : null, true)
+            + row('Speed diff', diffs ? diffs.spd : null, true)
+            + row('Throttle diff', diffs ? diffs.thr : null, true)
+            + row('Brake diff', diffs ? diffs.brk : null, false)
+            + row('Gear diff', diffs ? diffs.gr : null, true)
+            + row('RPM diff', diffs ? diffs.rpm : null, true)
+            + '<div class="tc-focus-pin-state">' + (pin ? 'Pinned: ' + Math.round(pin.baseDistance) + 'm' + (pin.compareDistance != null ? (' vs ' + Math.round(pin.compareDistance) + 'm') : '') : 'Pin mode: click chart to lock up to two points') + '</div>';
+        var pinBtn = host.querySelector('.tc-pin-btn');
+        if (pinBtn) {
+            pinBtn.addEventListener('click', function () {
+                compareState.focusPinMode = !compareState.focusPinMode;
+                if (!compareState.focusPinMode) compareState.focusPinned = null;
+                persistState();
+                renderFocusPanel(perDriver, distance);
+            });
+        }
     }
 
     function updateMapMarkers(targetD, lapData, sess) {

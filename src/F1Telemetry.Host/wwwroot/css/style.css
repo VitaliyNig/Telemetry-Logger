@@ -4567,6 +4567,18 @@ td.lap-cell__tyre { cursor: default; }
 }
 
 .tc-main { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.tc-compare-content { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: 8px; align-items: start; }
+.tc-focus { position: sticky; top: 8px; border: 1px solid var(--color-border-default); background: var(--color-bg-card); border-radius: 8px; padding: 8px; }
+.tc-focus-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.tc-focus-head h4 { margin: 0; font-size: 12px; text-transform: uppercase; color: var(--text-dim); }
+.tc-pin-btn { border: 1px solid var(--color-border-default); background: transparent; color: var(--text-primary); border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
+.tc-pin-btn.active { background: var(--accent-brand); color: #fff; border-color: var(--accent-brand); }
+.tc-focus-sub, .tc-focus-pin-state { color: var(--text-dim); font-size: 11px; margin-bottom: 6px; }
+.tc-focus-row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 12px; border-bottom: 1px dashed rgba(255,255,255,0.06); }
+.tc-focus-row strong { font-variant-numeric: tabular-nums; }
+.tc-focus-row.gain strong { color: #22c55e; }
+.tc-focus-row.loss strong { color: #ef4444; }
+.tc-focus-row.neutral strong { color: var(--text-dim); }
 
 .tc-map {
     background: var(--color-bg-card);
@@ -4937,6 +4949,8 @@ td.lap-cell__tyre { cursor: default; }
     .tc-side .history-driver-picker { max-height: 260px; }
     .tc-charts { --tc-label-w: 64px; }
     .tc-chart-label { font-size: 9px; letter-spacing: 0.3px; }
+    .tc-compare-content { grid-template-columns: 1fr; }
+    .tc-focus { position: static; }
 }
 
 @media (max-width: 600px) {
@@ -4961,6 +4975,8 @@ td.lap-cell__tyre { cursor: default; }
     .tc-chart-row { gap: 4px; }
     .tc-row-chip { font-size: 9px; padding: 1px 4px; }
     .tc-map { padding: 6px; max-width: 100%; }
+    .tc-focus { padding: 6px; border-radius: 6px; }
+    .tc-focus-row { font-size: 11px; padding: 2px 0; }
 }
 
 /* ---------- Events page ---------- */
