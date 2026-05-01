@@ -745,9 +745,16 @@
     function renderFocusPanel(perDriver, distance) {
         var host = document.getElementById('tcFocusPanel');
         if (!host) return;
-        var hasLive = perDriver && perDriver.length > 1;
-        var ref = hasLive ? perDriver[0] : null;
-        var cmp = hasLive ? perDriver[1] : null;
+        var pin = compareState.focusPinned;
+        var effectivePerDriver = perDriver;
+        var subtitle = distance == null ? 'Hover chart to inspect' : ('d=' + Math.round(distance) + 'm');
+        if (pin && pin.base && pin.compare) {
+            effectivePerDriver = [pin.base[0], pin.compare[1]];
+            subtitle = Math.round(pin.baseDistance) + 'm vs ' + Math.round(pin.compareDistance) + 'm';
+        }
+        var hasCompare = effectivePerDriver && effectivePerDriver.length > 1;
+        var ref = hasCompare ? effectivePerDriver[0] : null;
+        var cmp = hasCompare ? effectivePerDriver[1] : null;
         var diffs = ref && cmp ? {
             delta: (cmp.delta || 0),
             spd: (cmp.sample.spd || 0) - (ref.sample.spd || 0),
@@ -762,10 +769,9 @@
             var cls = val === 0 ? 'neutral' : ((inverse ? -val : val) < 0 ? 'gain' : 'loss');
             return '<div class="tc-focus-row ' + cls + '"><span>' + label + '</span><strong>' + trend + ' ' + (val >= 0 ? '+' : '') + val.toFixed(2) + '</strong></div>';
         }
-        var pin = compareState.focusPinned;
         host.innerHTML = ''
             + '<div class="tc-focus-head"><h4>Compare Focus</h4><button class="tc-pin-btn ' + (compareState.focusPinMode ? 'active' : '') + '" data-act="pin">Pin</button></div>'
-            + '<div class="tc-focus-sub">' + (distance == null ? 'Hover chart to inspect' : ('d=' + Math.round(distance) + 'm')) + '</div>'
+            + '<div class="tc-focus-sub">' + subtitle + '</div>'
             + row('Delta', diffs ? diffs.delta : null, true)
             + row('Speed diff', diffs ? diffs.spd : null, true)
             + row('Throttle diff', diffs ? diffs.thr : null, true)
