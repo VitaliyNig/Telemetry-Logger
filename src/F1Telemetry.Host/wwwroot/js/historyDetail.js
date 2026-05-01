@@ -1405,6 +1405,12 @@
             return Object.keys(opts.drivers || {}).sort(function (a, b) { return Number(a) - Number(b); });
         }
 
+        function nextCompareSelectionKey() {
+            var key = 1000;
+            while (state.driverSelection.has(key)) key++;
+            return key;
+        }
+
         function openCompareLapModal() {
             var rows = rowsSorted();
             if (!rows.length) return;
@@ -1438,6 +1444,13 @@
                 }
                 var html = '<div class="tc-lap-list-head">' + escapeHtml(shortDriverName(d.name || ('Car ' + carIdx))) + '</div>';
                 laps.forEach(function (l) {
+                    var duplicate = false;
+                    state.driverSelection.forEach(function (sel) {
+                        if (duplicate || !sel || sel.lap == null) return;
+                        var src = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : carIdx);
+                        if (src === Number(carIdx) && Number(sel.lap) === Number(l.lapNum)) duplicate = true;
+                    });
+                    if (duplicate) return;
                     var tyre = l.compound || l.tyreCompound || l.tyre || '—';
                     html += '<button type="button" class="tc-lap-option" data-car="' + carIdx + '" data-lap="' + l.lapNum + '">'
                         + '<span class="tc-lap-option-main">Lap ' + l.lapNum + '</span>'
@@ -1449,8 +1462,15 @@
                     btn.addEventListener('click', function () {
                         var pickedCar = Number(btn.dataset.car);
                         var pickedLap = Number(btn.dataset.lap);
-                        var existing = state.driverSelection.get(pickedCar);
-                        state.driverSelection.set(pickedCar, { lap: pickedLap, ghost: existing ? existing.ghost : false });
+                        var duplicate = false;
+                        state.driverSelection.forEach(function (sel) {
+                            if (duplicate || !sel || sel.lap == null) return;
+                            var src = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : pickedCar);
+                            if (src === pickedCar && Number(sel.lap) === pickedLap) duplicate = true;
+                        });
+                        if (duplicate) return;
+                        var key = nextCompareSelectionKey();
+                        state.driverSelection.set(key, { lap: pickedLap, ghost: false, sourceCarIdx: pickedCar, hidden: false });
                         if (opts.onChange) opts.onChange();
                         overlay.remove();
                     });
@@ -1467,23 +1487,63 @@
             if (opts.compareCardMode) {
                 var selected = [];
                 state.driverSelection.forEach(function (sel, carIdx) {
-                    if (sel && sel.lap != null && opts.drivers[carIdx]) selected.push({ carIdx: Number(carIdx), sel: sel });
+                    if (!sel || sel.lap == null) return;
+                    var sourceCarIdx = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : carIdx);
+                    if (opts.drivers[sourceCarIdx]) selected.push({ key: Number(carIdx), sourceCarIdx: sourceCarIdx, sel: sel });
                 });
-                selected.sort(function (a, b) { return a.carIdx - b.carIdx; });
+                selected.sort(function (a, b) { return a.sourceCarIdx - b.sourceCarIdx || a.sel.lap - b.sel.lap; });
                 var cards = '<div class="driver-picker-header">Compare laps</div><div class="tc-lap-card-list">';
                 selected.forEach(function (item) {
-                    var d = opts.drivers[item.carIdx];
+                    var d = opts.drivers[item.sourceCarIdx];
                     var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
-                    var isRef = state.compareState && Number(state.compareState.referenceCarIdx) === item.carIdx && Number(state.compareState.referenceLap) === Number(item.sel.lap);
-                    cards += '<div class="tc-lap-card" data-car="' + item.carIdx + '"><div class="tc-lap-card-top">'
+                    var isRef = state.compareState && Number(state.compareState.referenceCarIdx) === item.key && Number(state.compareState.referenceLap) === Number(item.sel.lap);
+                    var isHidden = !!item.sel.hidden;
+                    cards += '<div class="tc-lap-card ' + (isHidden ? 'is-muted' : '') + '" data-car="' + item.key + '"><div class="tc-lap-card-top">'
                         + '<span class="driver-dot" style="background:' + teamColor + '"></span>'
-                        + '<span>' + escapeHtml(shortDriverName(d.name || ('Car ' + item.carIdx))) + '</span>'
+                        + '<span>' + escapeHtml(shortDriverName(d.name || ('Car ' + item.sourceCarIdx))) + '</span>'
                         + (isRef ? '<span class="driver-ref-badge">REF</span>' : '')
+                        + '<button type="button" class="tc-lap-card-vis" data-act="vis" data-car="' + item.key + '" title="Show/hide lap">👁</button>'
+                        + '<button type="button" class="tc-lap-card-remove" data-act="remove" data-car="' + item.key + '" title="Remove lap">×</button>'
                         + '</div><div class="tc-lap-card-lap">Lap ' + item.sel.lap + '</div></div>';
                 });
                 cards += '<button type="button" class="tc-lap-card tc-lap-card-add" id="tcAddLapCard"><span>+</span></button></div>';
                 container.innerHTML = cards;
                 container.querySelector('#tcAddLapCard').addEventListener('click', openCompareLapModal);
+                container.querySelectorAll('.tc-lap-card[data-car]').forEach(function (card) {
+                    card.addEventListener('click', function (ev) {
+                        if (ev.target && ev.target.closest('[data-act]')) return;
+                        var key = Number(card.dataset.car);
+                        var sel = state.driverSelection.get(key);
+                        if (!sel) return;
+                        sel.hidden = !sel.hidden;
+                        state.driverSelection.set(key, sel);
+                        render();
+                        if (opts.onChange) opts.onChange();
+                    });
+                });
+                container.querySelectorAll('[data-act="remove"]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var key = Number(btn.dataset.car);
+                        state.driverSelection.delete(key);
+                        if (state.compareState && Number(state.compareState.referenceCarIdx) === key) {
+                            state.compareState.referenceCarIdx = null;
+                            state.compareState.referenceLap = null;
+                        }
+                        render();
+                        if (opts.onChange) opts.onChange();
+                    });
+                });
+                container.querySelectorAll('[data-act="vis"]').forEach(function (btn) {
+                    btn.addEventListener('click', function () {
+                        var key = Number(btn.dataset.car);
+                        var sel = state.driverSelection.get(key);
+                        if (!sel) return;
+                        sel.hidden = !sel.hidden;
+                        state.driverSelection.set(key, sel);
+                        render();
+                        if (opts.onChange) opts.onChange();
+                    });
+                });
                 return;
             }
             // default picker

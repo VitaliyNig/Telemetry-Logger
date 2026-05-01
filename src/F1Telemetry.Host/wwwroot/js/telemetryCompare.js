@@ -164,12 +164,13 @@
     function reloadLapSamples() {
         var hd = window.HistoryDetail;
         var selections = Array.from(hd.state.driverSelection.entries()).filter(function (kv) {
-            return kv[1] && kv[1].lap != null;
+            return kv[1] && kv[1].lap != null && !kv[1].hidden;
         });
         var promises = selections.map(function (kv) {
-            var carIdx = kv[0], lap = kv[1].lap;
-            return hd.fetchLapSamples(carIdx, lap).then(function (data) {
-                return [carIdx, data];
+            var selectionKey = kv[0], sel = kv[1], lap = sel.lap;
+            var sourceCarIdx = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : selectionKey);
+            return hd.fetchLapSamples(sourceCarIdx, lap).then(function (data) {
+                return [selectionKey, data];
             });
         });
         return Promise.all(promises).then(function (entries) {
@@ -436,7 +437,9 @@
     function detectTopLossZones(lapData, sess, topN) {
         var refSel = ensureReferenceSelection(lapData);
         if (!refSel) return [];
-        var entries = Array.from(window.HistoryDetail.state.driverSelection.entries());
+        var entries = Array.from(window.HistoryDetail.state.driverSelection.entries()).filter(function (kv) {
+            return kv[1] && !kv[1].hidden;
+        });
         var cmpEntry = entries.find(function (kv) { return Number(kv[0]) !== refSel.carIdx; });
         if (!cmpEntry) return [];
         var cmpData = lapData.get(cmpEntry[0]);
@@ -569,7 +572,9 @@
         html += '<div class="tc-overview" id="tcOverview"><div class="tc-overview-window" id="tcOverviewWin"></div></div>';
         host.innerHTML = html;
 
-        var selections = Array.from(window.HistoryDetail.state.driverSelection.entries());
+        var selections = Array.from(window.HistoryDetail.state.driverSelection.entries()).filter(function (kv) {
+            return kv[1] && !kv[1].hidden;
+        });
 
         visibleMetrics.forEach(function (m) {
             var row = host.querySelector('[data-metric="' + m.key + '"] .tc-chart-svg-host');
@@ -879,9 +884,11 @@
         var lines = '';
         var markers = '';
         window.HistoryDetail.state.driverSelection.forEach(function (sel, carIdx) {
+            if (!sel || sel.hidden) return;
             var d = lapData && lapData.get(carIdx);
             if (!d || !d.motion || d.motion.length === 0) return;
-            var driver = sess.drivers[carIdx];
+            var sourceCarIdx = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : carIdx);
+            var driver = sess.drivers[sourceCarIdx];
             var color = (typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
             var pts = d.motion.map(function (m) {
                 var p = project(m.x, m.z);
