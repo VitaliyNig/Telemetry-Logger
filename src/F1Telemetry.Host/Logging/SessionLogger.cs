@@ -415,6 +415,9 @@ public sealed class SessionLogger
 
     private void HandleEvent(SessionEntry entry, TelemetryPacketHeader header, EventPacket evt)
     {
+        if (evt.EventCode == "BUTN")
+            return;
+
         byte? carIdx = evt.Details switch
         {
             FastestLapEvent e => e.VehicleIdx,
