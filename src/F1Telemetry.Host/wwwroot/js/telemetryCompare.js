@@ -936,10 +936,10 @@
                 var idxKey = String(carIdx);
                 var nearestIdx = findNearestSampleIndex(data.samples, d);
                 var cached = hoverCacheByDriver.get(idxKey);
-                if (cached && cached.idx === nearestIdx) sample = cached.sample;
+                if (cached && cached.idx === nearestIdx && cached.d === d) sample = cached.sample;
                 else {
                     sample = interpAtDistance(data.samples, d, interpCtx);
-                    hoverCacheByDriver.set(idxKey, { idx: nearestIdx, sample: sample });
+                    hoverCacheByDriver.set(idxKey, { idx: nearestIdx, d: d, sample: sample });
                 }
                 var deltaVal = null;
                 if (carIdx !== refCarIdx && refSamples && data.samples) {
