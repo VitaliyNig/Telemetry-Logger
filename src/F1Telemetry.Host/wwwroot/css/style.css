@@ -4685,6 +4685,23 @@ td.lap-cell__tyre { cursor: default; }
     cursor: pointer;
 }
 .tc-mode.active { background: var(--accent-brand); color: #fff; }
+.tc-insights-toggle {
+    background: transparent;
+    border: 1px solid var(--color-border-default);
+    border-radius: 999px;
+    color: var(--text-dim);
+    padding: 4px 10px;
+    font-size: 11px;
+    cursor: pointer;
+}
+.tc-insights-toggle.active { border-color: var(--accent-brand); color: var(--text-primary); }
+.tc-insights { flex-basis: 100%; border: 1px solid var(--color-border-default); border-radius: 8px; padding: 8px; background: color-mix(in srgb, var(--accent-brand) 4%, transparent); }
+.tc-insights-title { font-size: 11px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; }
+.tc-loss-zone { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center; margin-bottom: 6px; }
+.tc-loss-zone:last-child { margin-bottom: 0; }
+.tc-loss-meta { font-size: 11px; color: var(--text-primary); }
+.tc-loss-tip { grid-column: 1 / -1; font-size: 11px; color: var(--text-dim); }
+.tc-insights-empty { font-size: 11px; color: var(--text-dim); padding: 4px 0; flex-basis: 100%; }
 
 .tc-badge {
     background: var(--color-bg-card);

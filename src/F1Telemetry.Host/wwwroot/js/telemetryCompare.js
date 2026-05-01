@@ -18,6 +18,7 @@
         miniPerSector: 3,
         focusPinMode: false,
         focusPinned: null,
+        insightsEnabled: true,
     };
 
     var PERSIST_KEY = 'tcCompareUi';
@@ -32,6 +33,7 @@
             if (p.heightOverride && typeof p.heightOverride === 'object') compareState.heightOverride = p.heightOverride;
             if ([1, 3, 4].indexOf(Number(p.miniPerSector)) >= 0) compareState.miniPerSector = Number(p.miniPerSector);
             compareState.focusPinMode = !!p.focusPinMode;
+            compareState.insightsEnabled = p.insightsEnabled !== false;
         } catch (e) { /* ignore corrupt storage */ }
     }
 
@@ -43,6 +45,7 @@
                 heightOverride: compareState.heightOverride,
                 miniPerSector: compareState.miniPerSector,
                 focusPinMode: compareState.focusPinMode,
+                insightsEnabled: compareState.insightsEnabled,
             }));
         } catch (e) { /* storage may be disabled */ }
     }
@@ -274,6 +277,8 @@
 
         // --- Second row: metric visibility chips + height presets + reset-heights. ---
         html += '<div class="tc-metrics-toolbar">';
+        html += '<button class="tc-insights-toggle ' + (compareState.insightsEnabled ? 'active' : '') + '" data-action="insights">'
+            + 'Insights ' + (compareState.insightsEnabled ? 'On' : 'Off') + '</button>';
         METRICS.forEach(function (m) {
             var pressed = !compareState.hiddenMetrics.has(m.key);
             html += '<button class="tc-metric-chip" data-key="' + m.key + '"'
@@ -288,6 +293,9 @@
         });
         html += '<button class="tc-size-chip tc-reset-heights">Reset heights</button>';
         html += '</div>';
+        if (compareState.insightsEnabled) {
+            html += renderTopLossZones(lapData, sess);
+        }
         host.innerHTML = html;
 
         host.querySelectorAll('.tc-badge').forEach(function (b) {
@@ -348,6 +356,103 @@
                 drawChartStack(lapData);
             });
         }
+        var insightsBtn = host.querySelector('.tc-insights-toggle');
+        if (insightsBtn) {
+            insightsBtn.addEventListener('click', function () {
+                compareState.insightsEnabled = !compareState.insightsEnabled;
+                persistState();
+                drawBadges(lapData);
+            });
+        }
+    }
+
+    function renderTopLossZones(lapData, sess) {
+        var zones = detectTopLossZones(lapData, sess, 3);
+        if (!zones.length) return '<div class="tc-insights-empty">Top Loss Zones: not enough comparable data.</div>';
+        var html = '<div class="tc-insights"><div class="tc-insights-title">Top Loss Zones</div>';
+        zones.forEach(function (z, i) {
+            html += '<div class="tc-loss-zone">'
+                + '<button class="tc-loss-jump tc-badge" data-start="' + z.start + '" data-end="' + z.end + '">#' + (i + 1) + ' '
+                + Math.round(z.start) + '–' + Math.round(z.end) + 'm</button>'
+                + '<div class="tc-loss-meta">Δ +' + z.loss.toFixed(3) + 's · ' + escapeHtml(z.cause) + '</div>'
+                + '<div class="tc-loss-tip">' + escapeHtml(z.recommendation) + '</div>'
+                + '</div>';
+        });
+        html += '</div>';
+        return html;
+    }
+
+    function detectTopLossZones(lapData, sess, topN) {
+        var refSel = ensureReferenceSelection(lapData);
+        if (!refSel) return [];
+        var entries = Array.from(window.HistoryDetail.state.driverSelection.entries());
+        var cmpEntry = entries.find(function (kv) { return Number(kv[0]) !== refSel.carIdx; });
+        if (!cmpEntry) return [];
+        var cmpData = lapData.get(cmpEntry[0]);
+        var refData = lapData.get(refSel.carIdx);
+        if (!cmpData || !refData) return [];
+        var deltaSeries = computeDeltaSeries(cmpData.samples, refData.samples, sess);
+        if (deltaSeries.length < 4) return [];
+        var zones = [];
+        var start = null;
+        for (var i = 1; i < deltaSeries.length; i++) {
+            var slope = deltaSeries[i].v - deltaSeries[i - 1].v;
+            if (slope > 0.015 && start == null) start = i - 1;
+            if ((slope <= 0 || i === deltaSeries.length - 1) && start != null) {
+                var end = i;
+                if (end - start >= 2) zones.push(buildZoneInsight(start, end, deltaSeries, cmpData.samples, refData.samples));
+                start = null;
+            }
+        }
+        zones.sort(function (a, b) { return b.loss - a.loss; });
+        return zones.slice(0, topN);
+    }
+
+    function buildZoneInsight(i0, i1, deltaSeries, cmpSamples, refSamples) {
+        var start = deltaSeries[i0].d, end = deltaSeries[i1].d;
+        var loss = Math.max(0, deltaSeries[i1].v - deltaSeries[i0].v);
+        var cmpA = interpAtDistance(cmpSamples, start), cmpB = interpAtDistance(cmpSamples, end);
+        var refA = interpAtDistance(refSamples, start), refB = interpAtDistance(refSamples, end);
+        var avgCmpBrake = avgMetric(cmpSamples, start, end, 'brk');
+        var avgRefBrake = avgMetric(refSamples, start, end, 'brk');
+        var thrVar = metricVariance(cmpSamples, start, end, 'thr');
+        var minCmpSpd = minMetric(cmpSamples, start, end, 'spd');
+        var minRefSpd = minMetric(refSamples, start, end, 'spd');
+        var exitThrCmp = avgMetric(cmpSamples, Math.max(start, end - 80), end, 'thr');
+        var exitThrRef = avgMetric(refSamples, Math.max(start, end - 80), end, 'thr');
+        var cause = 'mixed execution';
+        var recommendation = 'Стабилизируйте траекторию и педали в этом отрезке.';
+        if ((avgCmpBrake + 8) < avgRefBrake) {
+            cause = 'поздний тормоз';
+            recommendation = 'Начинайте торможение чуть раньше и плавнее нарастанием усилия.';
+        } else if (thrVar > 220 || avgMetric(cmpSamples, start, end, 'thr') < avgMetric(refSamples, start, end, 'thr') - 10) {
+            cause = 'ранний/рваный газ';
+            recommendation = 'Подавайте газ позже, но ровнее: меньше пиков и сбросов дросселя.';
+        } else if (minCmpSpd + 4 < minRefSpd) {
+            cause = 'низкая min speed';
+            recommendation = 'Сфокусируйтесь на большей скорости в апексе: мягче отпуск тормоза и шире дуга.';
+        } else if (exitThrCmp + 8 < exitThrRef || (cmpB.spd + 6 < refB.spd)) {
+            cause = 'плохой exit';
+            recommendation = 'Раньше раскрывайте руль на выходе и ускоряйтесь прогрессивно.';
+        }
+        return { start: start, end: end, loss: loss, cause: cause, recommendation: recommendation };
+    }
+
+    function avgMetric(samples, start, end, key) {
+        var vals = samples.filter(function (s) { return s.d >= start && s.d <= end; }).map(function (s) { return Number(s[key] || 0); });
+        if (!vals.length) return 0;
+        return vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+    }
+    function minMetric(samples, start, end, key) {
+        var vals = samples.filter(function (s) { return s.d >= start && s.d <= end; }).map(function (s) { return Number(s[key] || 0); });
+        if (!vals.length) return 0;
+        return Math.min.apply(null, vals);
+    }
+    function metricVariance(samples, start, end, key) {
+        var vals = samples.filter(function (s) { return s.d >= start && s.d <= end; }).map(function (s) { return Number(s[key] || 0); });
+        if (vals.length < 2) return 0;
+        var mean = vals.reduce(function (a, b) { return a + b; }, 0) / vals.length;
+        return vals.reduce(function (acc, v) { var d = v - mean; return acc + d * d; }, 0) / vals.length;
     }
 
 
