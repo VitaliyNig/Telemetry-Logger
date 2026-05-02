@@ -835,8 +835,8 @@
         if (!totalLaps) totalLaps = 1;
         var totalDrivers = Math.max(20, Object.keys(sess.drivers || {}).length);
 
-        // SVG dims (intrinsic); CSS scales it. Extra L/R pad = driver-code labels.
-        var W = 960, H = 500, PAD_L = 58, PAD_R = 58, PAD_T = 32, PAD_B = 18;
+        // SVG dims (intrinsic); CSS scales it. Extra L/R pad for 3-letter codes and "1st SURNAME" labels.
+        var W = 960, H = 500, PAD_L = 58, PAD_R = 112, PAD_T = 32, PAD_B = 18;
         var plotW = W - PAD_L - PAD_R;
         var plotH = H - PAD_T - PAD_B;
         var lapStep = plotW / Math.max(1, totalLaps - 1);
@@ -872,14 +872,13 @@
             }
         }
 
-        // Grid lines + Y labels at every position (bold at 1/5/10/15/20), lap labels at top.
+        // Grid lines + Y labels at every position (left axis only; right side = driver labels).
         var ticks = '';
         for (var p = 1; p <= totalDrivers; p++) {
             var yp = y(p);
             ticks += '<line class="pos-grid" x1="' + PAD_L + '" x2="' + (W - PAD_R) + '" y1="' + yp + '" y2="' + yp + '"/>';
             if (p === 1 || p % 5 === 0 || p === totalDrivers) {
                 ticks += '<text class="pos-ytick" x="' + (PAD_L - 8) + '" y="' + (yp + 4) + '" text-anchor="end">' + p + '</text>';
-                ticks += '<text class="pos-ytick" x="' + (W - PAD_R + 8) + '" y="' + (yp + 4) + '" text-anchor="start">' + p + '</text>';
             }
         }
         for (var lx = 1; lx <= totalLaps; lx++) {
@@ -891,7 +890,7 @@
             }
         }
 
-        // Driver polylines + pit badges + end/start code labels.
+        // Driver polylines + pit badges + start (3-letter) / end (ordinal + surname) labels.
         var lines = '';
         var markers = '';
         var labels = '';
@@ -899,7 +898,8 @@
             var d = sess.drivers[k];
             var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
             var code = driverCode(d.name);
-            var racePos = getDriverRacePosition(sess, Number(k));
+            var carIdx = Number(k);
+            var cls = getClassificationEntry(sess, carIdx);
             var validLaps = (d.laps || []).filter(function (l) { return l.position > 0; });
             if (validLaps.length === 0) return;
 
@@ -918,10 +918,13 @@
 
             var first = validLaps[0];
             var last = validLaps[validLaps.length - 1];
-            labels += '<text class="pos-driver-label" x="' + (PAD_L - 10) + '" y="' + (y(first.position) + 4)
+            var endMeta = positionChartEndLabel(sess, d, cls, carIdx, totalLaps);
+            var rightText = endMeta.text;
+            var rightClass = 'pos-driver-label pos-driver-label--end' + (endMeta.dnf ? ' pos-driver-label--dnf' : '');
+            labels += '<text class="pos-driver-label pos-driver-label--start" x="' + (PAD_L - 10) + '" y="' + (y(first.position) + 4)
                 + '" text-anchor="end" fill="' + color + '">' + escapeHtml(code) + '</text>';
-            labels += '<text class="pos-driver-label" x="' + (W - PAD_R + 10) + '" y="' + (y(last.position) + 4)
-                + '" text-anchor="start" fill="' + color + '">' + escapeHtml(code) + (racePos ? ' P' + racePos : '') + '</text>';
+            labels += '<text class="' + rightClass + '" x="' + (W - PAD_R + 10) + '" y="' + (y(last.position) + 4)
+                + '" text-anchor="start" fill="' + color + '">' + escapeHtml(rightText) + '</text>';
         });
 
         host.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="pos-svg" preserveAspectRatio="xMidYMid meet">'
@@ -955,9 +958,91 @@
         return raw.length > 12 ? raw.substring(0, 12) : raw;
     }
 
-    function getDriverRacePosition(sess, carIdx) {
+    function getClassificationEntry(sess, carIdx) {
         var cd = sess && sess.finalClassification && sess.finalClassification.classificationData;
-        if (cd && cd[carIdx] && cd[carIdx].position > 0) return Number(cd[carIdx].position);
+        if (!cd) return null;
+        var row = cd[carIdx];
+        if (row == null) return null;
+        if (typeof row === 'object' && !Array.isArray(row)) return row;
+        return null;
+    }
+
+    function driverLastNameUpper(name) {
+        var raw = String(name || '').trim();
+        if (!raw) return 'UNKNOWN';
+        raw = raw.replace(/^\[G\]\s*/i, '').trim();
+        var bracket = raw.match(/\[([A-Za-z0-9]+)\]/);
+        if (bracket) return String(bracket[1]).toUpperCase();
+        var parts = raw.split(/\s+/).filter(Boolean);
+        if (parts.length >= 1) {
+            var last = parts[parts.length - 1].replace(/[^A-Za-zÀ-ÿ\-']/gi, '');
+            if (last) return last.toUpperCase();
+        }
+        return raw.toUpperCase().substring(0, 16);
+    }
+
+    /** F1 m_resultStatus: 3=finished, 4=DNF, 5=DSQ, 6=NC, 7=retired */
+    function isNonFinisherResultStatus(st) {
+        var n = Number(st);
+        return n === 4 || n === 5 || n === 6 || n === 7;
+    }
+
+    function isFinishedResultStatus(st) {
+        return Number(st) === 3;
+    }
+
+    function ordinalEnglish(n) {
+        var num = Number(n);
+        if (!num || num < 1) return '';
+        var v = num % 100;
+        if (v >= 11 && v <= 13) return num + 'th';
+        switch (num % 10) {
+            case 1: return num + 'st';
+            case 2: return num + 'nd';
+            case 3: return num + 'rd';
+            default: return num + 'th';
+        }
+    }
+
+    /**
+     * Right-side label for the lap chart: "1st HAMILTON" for finishers; "VERSTAPPEN" (pale) for DNF etc.
+     */
+    function positionChartEndLabel(sess, driver, cls, carIdx, totalLaps) {
+        var surname = driverLastNameUpper(driver && driver.name);
+        var lastLaps = (driver && driver.laps) ? driver.laps.filter(function (l) { return l.position > 0; }) : [];
+        var lastLap = lastLaps.length ? lastLaps[lastLaps.length - 1] : null;
+
+        if (cls && cls.resultStatus != null && cls.resultStatus !== '') {
+            var rs = Number(cls.resultStatus);
+            if (!isNaN(rs) && rs > 0) {
+                if (isFinishedResultStatus(rs) && cls.position > 0) {
+                    return { text: ordinalEnglish(cls.position) + ' ' + surname, dnf: false };
+                }
+                if (isNonFinisherResultStatus(rs)) {
+                    return { text: surname, dnf: true };
+                }
+            }
+        }
+
+        var racePos = getDriverRacePosition(sess, carIdx);
+        if (racePos != null && racePos > 0) {
+            return { text: ordinalEnglish(racePos) + ' ' + surname, dnf: false };
+        }
+
+        if (lastLap && lastLap.position > 0) {
+            var completedRace = totalLaps > 0 && lastLap.lapNum >= totalLaps;
+            if (completedRace) {
+                return { text: ordinalEnglish(lastLap.position) + ' ' + surname, dnf: false };
+            }
+            return { text: surname, dnf: true };
+        }
+
+        return { text: surname, dnf: true };
+    }
+
+    function getDriverRacePosition(sess, carIdx) {
+        var row = getClassificationEntry(sess, carIdx);
+        if (row && row.position > 0) return Number(row.position);
         return null;
     }
 

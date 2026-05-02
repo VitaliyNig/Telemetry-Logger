@@ -4462,6 +4462,22 @@ td.lap-cell__tyre { cursor: default; }
     font-family: var(--font-mono, 'Courier New', monospace);
 }
 
+.pos-driver-label--start {
+    font-weight: 700;
+    letter-spacing: 0.02em;
+}
+
+.pos-driver-label--end {
+    font-weight: 600;
+    letter-spacing: 0.04em;
+}
+
+/* DNF / DSQ / retired: surname only, muted like official lap charts */
+.pos-driver-label--dnf {
+    fill: rgba(180, 186, 198, 0.45) !important;
+    font-weight: 500;
+}
+
 .pos-pit-badge rect {
     paint-order: stroke fill;
 }
