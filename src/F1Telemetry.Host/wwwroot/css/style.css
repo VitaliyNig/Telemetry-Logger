@@ -4737,7 +4737,7 @@ td.lap-cell__tyre { cursor: default; }
 .tc-badge-label-short { display: none; }
 
 .tc-charts {
-    --tc-label-w: 90px;
+    --tc-label-w: 20px;
     position: relative;
     background: var(--color-bg-card);
     border: 1px solid var(--color-border-default);
@@ -4788,6 +4788,14 @@ td.lap-cell__tyre { cursor: default; }
     padding-left: 6px;
 }
 
+/* Narrow color rail — metric title now drawn inside the SVG (bottom-left). */
+.tc-chart-label--rail {
+    padding: 0;
+    border-left-width: 3px;
+    border-radius: 2px 0 0 2px;
+    background: color-mix(in srgb, var(--tc-metric-color) 14%, transparent);
+}
+
 .tc-chart-svg-host {
     position: relative;
     min-width: 0;
@@ -4802,6 +4810,31 @@ td.lap-cell__tyre { cursor: default; }
         );
 }
 .tc-chart { width: 100%; height: 100%; display: block; }
+
+.tc-grid-h {
+    stroke: color-mix(in srgb, var(--tc-metric-color) 28%, rgba(255, 255, 255, 0.06));
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+    shape-rendering: crispEdges;
+    pointer-events: none;
+}
+
+.tc-axis-tick {
+    font-size: 9px;
+    font-family: var(--font-mono, 'Courier New', monospace);
+    fill: var(--text-dim);
+    opacity: 0.85;
+    pointer-events: none;
+}
+
+.tc-plot-title {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.75px;
+    text-transform: uppercase;
+    fill: var(--tc-metric-color);
+    pointer-events: none;
+}
 
 /* Y-axis min/max labels drawn inside the SVG. */
 .tc-axis-label {
@@ -5065,7 +5098,7 @@ td.lap-cell__tyre { cursor: default; }
     }
     .tc-side { position: static; }
     .tc-side .history-driver-picker { max-height: 260px; }
-    .tc-charts { --tc-label-w: 64px; }
+    .tc-charts { --tc-label-w: 18px; }
     .tc-chart-label { font-size: 9px; letter-spacing: 0.3px; }
     .tc-compare-content { grid-template-columns: 1fr; }
     .tc-focus { position: static; }
@@ -5089,7 +5122,7 @@ td.lap-cell__tyre { cursor: default; }
     }
     .tc-metrics-toolbar { gap: 3px; }
     .tc-metric-chip { padding: 3px 6px; }
-    .tc-charts { padding: 6px; --tc-label-w: 52px; }
+    .tc-charts { padding: 6px; --tc-label-w: 16px; }
     .tc-chart-row { gap: 4px; }
     .tc-row-chip { font-size: 9px; padding: 1px 4px; }
     .tc-map { padding: 6px; max-width: 100%; }

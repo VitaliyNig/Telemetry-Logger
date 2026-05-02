@@ -103,31 +103,19 @@
     }
 
     var METRICS = [
-        { key: 'delta', label: 'Δ (s)', height: 70, getValue: null /* computed */, min: -1, max: 1 },
-        { key: 'spd',   label: 'Speed (km/h)', height: 70, min: 0, max: 370 },
-        { key: 'thr',   label: 'Throttle', height: 50, min: 0, max: 100 },
-        { key: 'brk',   label: 'Brake', height: 50, min: 0, max: 100 },
-        { key: 'str',   label: 'Steering', height: 50, min: -100, max: 100 },
-        { key: 'gr',    label: 'Gear', height: 50, min: -1, max: 8 },
-        { key: 'rpm',   label: 'RPM', height: 60, min: 0, max: 14000 },
-        { key: 'ers',   label: 'ERS (%)', height: 60, min: 0, max: 100 },
-        { key: 'drs',   label: 'DRS', height: 22, min: 0, max: 1, style: 'band' },
+        { key: 'delta', label: 'Δ (s)', plotTitle: 'DELTA', height: 70, getValue: null /* computed */, min: -1, max: 1 },
+        { key: 'spd',   label: 'Speed (km/h)', plotTitle: 'SPEED', height: 70, min: 0, max: 370 },
+        { key: 'thr',   label: 'Throttle', plotTitle: 'THROTTLE', height: 50, min: 0, max: 100 },
+        { key: 'brk',   label: 'Brake', plotTitle: 'BRAKE', height: 50, min: 0, max: 100 },
+        { key: 'str',   label: 'Steering', plotTitle: 'STEERING', height: 50, min: -100, max: 100 },
+        { key: 'gr',    label: 'Gear', plotTitle: 'GEAR', height: 50, min: -1, max: 8 },
+        { key: 'rpm',   label: 'RPM', plotTitle: 'RPM', height: 60, min: 0, max: 14000 },
+        { key: 'ers',   label: 'ERS (%)', plotTitle: 'ERS', height: 60, min: 0, max: 100 },
+        { key: 'drs',   label: 'DRS', plotTitle: 'DRS', height: 22, min: 0, max: 1, style: 'band' },
     ];
 
     var ERS_MODE_NAMES = ['None', 'Medium', 'Hotlap', 'Overtake'];
     var ERS_MODE_TAGS = ['', 'MED', 'HOT', 'OT'];
-
-    // Y-axis min/max labels per metric. Compact so they don't eat plot space.
-    var AXIS_LABELS = {
-        delta: { max: '+1s',  min: '-1s'  },
-        spd:   { max: '370',  min: '0'    },
-        thr:   { max: '100%', min: '0%'   },
-        brk:   { max: '100%', min: '0%'   },
-        str:   { max: '+100', min: '-100' },
-        gr:    { max: '8',    min: 'R'    },
-        rpm:   { max: '14k',  min: '0'    },
-        ers:   { max: '100%', min: '0%'   },
-    };
 
     // Compact chip-value formatter per metric. Returns string for a sample+metric pair.
     function formatChipValue(metricKey, sample, deltaAt) {
@@ -605,7 +593,7 @@
             var h = effectiveHeight(m);
             var priority = getMetricPriority(m.key);
             html += '<div class="tc-chart-row" data-priority="' + priority + '" data-metric="' + m.key + '" style="--tc-row-h:' + h + 'px">'
-                + '<div class="tc-chart-label">' + m.label + '</div>'
+                + '<div class="tc-chart-label tc-chart-label--rail" role="presentation"></div>'
                 + '<div class="tc-chart-svg-host"></div>'
                 + '<div class="tc-resize-handle" data-metric="' + m.key + '" title="Drag to resize"></div>'
                 + '</div>';
@@ -714,6 +702,119 @@
         return runs.filter(function (r) { return r.to >= xMin && r.from <= xMax; });
     }
 
+    /** Horizontal grid levels + label strings for Y-axis ticks inside the plot area. */
+    function getHorizontalGridSpec(metric, plotVMin, plotVMax) {
+        var key = metric.key;
+        if (key === 'delta') {
+            var n = 5;
+            var out = [];
+            for (var i = 0; i < n; i++) {
+                var t = i / (n - 1);
+                var v = plotVMin + t * (plotVMax - plotVMin);
+                out.push({ v: v, label: (v >= 0 ? '+' : '') + v.toFixed(3) });
+            }
+            return out;
+        }
+        if (key === 'spd') {
+            return [
+                { v: 0, label: '0' },
+                { v: 100, label: '100' },
+                { v: 200, label: '200' },
+                { v: 300, label: '300' },
+                { v: 370, label: '370' },
+            ];
+        }
+        if (key === 'thr' || key === 'brk' || key === 'ers') {
+            return [
+                { v: 0, label: '0%' },
+                { v: 50, label: '50%' },
+                { v: 100, label: '100%' },
+            ];
+        }
+        if (key === 'str') {
+            return [
+                { v: -100, label: '−100' },
+                { v: -50, label: '−50' },
+                { v: 0, label: '0' },
+                { v: 50, label: '+50' },
+                { v: 100, label: '+100' },
+            ];
+        }
+        if (key === 'gr') {
+            var out = [];
+            for (var g = -1; g <= 8; g++) {
+                out.push({ v: g, label: g < 0 ? 'R' : (g === 0 ? 'N' : String(g)) });
+            }
+            return out;
+        }
+        if (key === 'rpm') {
+            return [
+                { v: 0, label: '0' },
+                { v: 7000, label: '7k' },
+                { v: 14000, label: '14k' },
+            ];
+        }
+        if (key === 'drs') {
+            return [
+                { v: 0, label: '0' },
+                { v: 0.5, label: '·' },
+                { v: 1, label: '1' },
+            ];
+        }
+        var n = 3;
+        var out = [];
+        var span = Math.max(0.0001, plotVMax - plotVMin);
+        for (var i = 0; i < n; i++) {
+            var t = i / (n - 1);
+            var v = plotVMin + t * span;
+            out.push({ v: v, label: (Math.abs(v) < 1e-6 ? '0' : (v < 1 ? v.toFixed(1) : String(Math.round(v)))) });
+        }
+        return out;
+    }
+
+    function computePlotValueRange(metric, lapData, selections, refSamples, refCarIdx, xMin, xMax, sess) {
+        if (metric.key !== 'delta') {
+            return { min: metric.min, max: metric.max };
+        }
+        var maxAbs = 0.05;
+        if (!refSamples) {
+            return { min: -1, max: 1 };
+        }
+        selections.forEach(function (kv) {
+            var carIdx = kv[0];
+            var d = lapData && lapData.get(carIdx);
+            if (!d || !d.samples || carIdx === refCarIdx) return;
+            var values = getDeltaSeriesForRange(carIdx, refCarIdx, d.samples, refSamples, xMin, xMax, sess);
+            values.forEach(function (pt) {
+                maxAbs = Math.max(maxAbs, Math.abs(pt.v));
+            });
+        });
+        maxAbs = Math.min(2, Math.max(0.05, maxAbs * 1.08));
+        return { min: -maxAbs, max: maxAbs };
+    }
+
+    function buildHorizontalGridAndYLabels(metric, plotVMin, plotVMax, PAD_T, plotH, W) {
+        var ticks = getHorizontalGridSpec(metric, plotVMin, plotVMax).filter(function (t) {
+            return t.v >= plotVMin - 1e-9 && t.v <= plotVMax + 1e-9;
+        });
+        var grid = '';
+        var yLabels = '';
+        ticks.forEach(function (t) {
+            var yn = PAD_T + plotH - (t.v - plotVMin) / Math.max(0.0001, plotVMax - plotVMin) * plotH;
+            if (yn < PAD_T - 0.5 || yn > PAD_T + plotH + 0.5) return;
+            grid += '<line class="tc-grid-h" x1="0" x2="' + W + '" y1="' + yn + '" y2="' + yn + '"/>';
+            var lx = 5;
+            var anchor = 'start';
+            if (yn <= PAD_T + 11) anchor = 'hanging';
+            if (yn >= PAD_T + plotH - 3) anchor = 'auto';
+            var dy = anchor === 'hanging' ? 0.5 : 0;
+            yLabels += '<text class="tc-axis-tick" x="' + lx + '" y="' + (yn + dy) + '"'
+                + (anchor === 'hanging' ? ' dominant-baseline="hanging"' : '')
+                + '>' + escapeHtml(t.label) + '</text>';
+        });
+        return { grid: grid, yLabels: yLabels };
+    }
+
     function renderChartSvg(metric, lapData, selections, refSamples, refCarIdx, xMin, xMax, sess, H) {
         var W = 900;
         var PAD_T = 4, PAD_B = 16;
@@ -721,9 +822,17 @@
         var idSuffix = '-' + String(metric.key || 'm').replace(/[^a-z0-9_-]/gi, '');
         function x(d) { return (d - xMin) / Math.max(1, xMax - xMin) * W; }
 
+        var plotRange = computePlotValueRange(metric, lapData, selections, refSamples, refCarIdx, xMin, xMax, sess);
+        var vMinPlot = plotRange.min;
+        var vMaxPlot = plotRange.max;
+
         // Reference driver samples for overlays (DRS overlay on Speed; ERS bg band).
         var refDriverData = (refCarIdx != null && lapData) ? lapData.get(refCarIdx) : null;
         var refDriverSamples = refDriverData ? refDriverData.samples : null;
+
+        var gridPack = buildHorizontalGridAndYLabels(metric, vMinPlot, vMaxPlot, PAD_T, plotH, W);
+        var titleStr = escapeHtml(metric.plotTitle || metric.label);
+        var insetTitle = '<text class="tc-plot-title" x="8" y="' + (H - 3) + '">' + titleStr + '</text>';
 
         // ---- DRS band row: filled blocks where drs===1, no polyline. ----
         if (metric.style === 'band' && metric.key === 'drs') {
@@ -739,7 +848,7 @@
                 });
             }
             return '<svg class="tc-chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
-                + bandSvg + '</svg>';
+                + gridPack.grid + bandSvg + gridPack.yLabels + insetTitle + '</svg>';
         }
 
         // ---- ERS row: background mode band + floating mode tags, polyline on top. ----
@@ -792,12 +901,7 @@
             if (values.length === 0) return;
 
             var pts = values.map(function (pt) {
-                var vMin = metric.min, vMax = metric.max;
-                if (metric.key === 'delta') {
-                    // auto-scale ± max(|v|)
-                    vMax = 1; vMin = -1;
-                }
-                var yv = PAD_T + plotH - (pt.v - vMin) / Math.max(0.0001, vMax - vMin) * plotH;
+                var yv = PAD_T + plotH - (pt.v - vMinPlot) / Math.max(0.0001, vMaxPlot - vMinPlot) * plotH;
                 return x(pt.d) + ',' + yv;
             });
             var roleClass = 'tc-line tc-line-extra';
@@ -809,9 +913,9 @@
             if (carIdx !== refCarIdx) compareSeriesCount++;
         });
 
-        // Axis baseline.
-        var baseY = PAD_T + plotH - (0 - metric.min) / Math.max(0.0001, metric.max - metric.min) * plotH;
-        if (baseY >= PAD_T && baseY <= PAD_T + plotH) {
+        // Zero baseline when visible in range (speed / inputs / delta / steering).
+        var baseY = PAD_T + plotH - (0 - vMinPlot) / Math.max(0.0001, vMaxPlot - vMinPlot) * plotH;
+        if (0 >= vMinPlot - 1e-9 && 0 <= vMaxPlot + 1e-9 && baseY >= PAD_T && baseY <= PAD_T + plotH) {
             lines += '<line class="tc-baseline" x1="0" x2="' + W + '" y1="' + baseY + '" y2="' + baseY + '"/>';
         }
 
@@ -825,14 +929,6 @@
             }
         });
 
-        // Y-axis min/max labels at the top-left and bottom-left corners of the plot.
-        var axis = '';
-        var ax = AXIS_LABELS[metric.key];
-        if (ax && plotH > 24) {
-            axis += '<text class="tc-axis-label" x="4" y="' + (PAD_T + 9) + '">' + ax.max + '</text>';
-            axis += '<text class="tc-axis-label" x="4" y="' + (PAD_T + plotH - 2) + '">' + ax.min + '</text>';
-        }
-
         var defs = '<defs>'
             + '<marker id="tcMarkerRef' + idSuffix + '" markerWidth="4" markerHeight="4" refX="2" refY="2"><circle cx="2" cy="2" r="1" class="tc-line-marker-ref"/></marker>'
             + '<marker id="tcMarkerCurrent' + idSuffix + '" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5"><rect x="1" y="1" width="3" height="3" class="tc-line-marker-current"/></marker>'
@@ -842,7 +938,7 @@
             + '<pattern id="tcPatternExtra' + idSuffix + '" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 0 L6 6" class="tc-line-pattern-extra"/></pattern>'
             + '</defs>';
         return '<svg class="tc-chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
-            + defs + ersBg + speedDrsOverlay + sectorMarkers + lines + axis + '</svg>';
+            + defs + gridPack.grid + ersBg + speedDrsOverlay + sectorMarkers + lines + gridPack.yLabels + insetTitle + '</svg>';
     }
 
     // Resamples driverSamples onto reference sample distances and returns per-distance Δtime (seconds).
@@ -1169,14 +1265,30 @@
             if (signature === lastHoverSignature) return;
             lastHoverSignature = signature;
 
+            var rangeCache = new Map();
+            function getYRange(mk) {
+                if (rangeCache.has(mk)) return rangeCache.get(mk);
+                var mdef = metricByKey.get(mk);
+                var r = mdef ? computePlotValueRange(mdef, lapData, selections, refSamples, refCarIdx, xMin, xMax, sess) : { min: 0, max: 1 };
+                rangeCache.set(mk, r);
+                return r;
+            }
+            var PAD_T = 4, PAD_B = 16;
             chips.forEach(function (chip) {
                 var metricKey = chip.dataset.metric;
                 if (perDriver.length === 0) { chip.hidden = true; return; }
                 var metricDef = metricByKey.get(metricKey);
                 var y = 8;
-                if (metricDef && metricDef.min != null && metricDef.max != null && pair.current && pair.current.sample) {
-                    var yNorm = (pair.current.sample[metricKey] - metricDef.min) / Math.max(0.0001, metricDef.max - metricDef.min);
-                    y = Math.max(2, Math.min((chip.parentElement.clientHeight || 40) - 20, (1 - yNorm) * (chip.parentElement.clientHeight || 40)));
+                var hostH = chip.parentElement.clientHeight || 40;
+                var plotH = Math.max(1, hostH - PAD_T - PAD_B);
+                if (metricDef && pair.current) {
+                    var yv;
+                    if (metricKey === 'delta') yv = (pair.current.delta != null) ? pair.current.delta : 0;
+                    else if (pair.current.sample) yv = pair.current.sample[metricKey] != null ? pair.current.sample[metricKey] : 0;
+                    else yv = 0;
+                    var pr = getYRange(metricKey);
+                    var yNorm = (yv - pr.min) / Math.max(0.0001, pr.max - pr.min);
+                    y = Math.max(2, Math.min(hostH - 18, PAD_T + (1 - yNorm) * plotH));
                 }
                 var rows = '';
                 if (compareState.chipMode === 'diff') {
