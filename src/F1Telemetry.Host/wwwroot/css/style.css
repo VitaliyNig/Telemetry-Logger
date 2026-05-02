@@ -5386,8 +5386,26 @@ td.lap-cell__tyre { cursor: default; }
 }
 .tc-lap-card-top { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
 .tc-lap-card.is-muted { opacity: 0.45; }
-.tc-lap-card-vis, .tc-lap-card-remove {
+.tc-lap-card-actions {
     margin-left: auto;
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+}
+.tc-lap-card-ref {
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    line-height: 1.2;
+    padding: 4px 8px;
+}
+.tc-lap-card-ref:hover { color: var(--text-primary); border-color: var(--accent-brand); }
+.tc-lap-card-vis, .tc-lap-card-remove {
     border: 0;
     background: transparent;
     color: var(--text-dim);
@@ -5395,7 +5413,7 @@ td.lap-cell__tyre { cursor: default; }
     font-size: 14px;
     line-height: 1;
 }
-.tc-lap-card-remove { margin-left: 6px; font-size: 18px; }
+.tc-lap-card-remove { font-size: 18px; }
 .tc-lap-card-vis:hover, .tc-lap-card-remove:hover { color: var(--text-primary); }
 .tc-lap-card-lap { font-size: 28px; font-weight: 700; letter-spacing: 0.2px; }
 .tc-lap-card-add { min-height: 130px; display: grid; place-items: center; cursor: pointer; background: transparent; }

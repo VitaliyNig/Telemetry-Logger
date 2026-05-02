@@ -1502,9 +1502,11 @@
                         + '<span class="driver-dot" style="background:' + teamColor + '"></span>'
                         + '<span>' + escapeHtml(shortDriverName(d.name || ('Car ' + item.sourceCarIdx))) + '</span>'
                         + (isRef ? '<span class="driver-ref-badge">REF</span>' : '')
+                        + '<span class="tc-lap-card-actions">'
+                        + '<button type="button" class="tc-lap-card-ref" data-act="set-ref" data-car="' + item.key + '" title="Set as reference lap">Set REF</button>'
                         + '<button type="button" class="tc-lap-card-vis" data-act="vis" data-car="' + item.key + '" title="Show/hide lap">👁</button>'
                         + '<button type="button" class="tc-lap-card-remove" data-act="remove" data-car="' + item.key + '" title="Remove lap">×</button>'
-                        + '</div><div class="tc-lap-card-lap">Lap ' + item.sel.lap + '</div></div>';
+                        + '</span></div><div class="tc-lap-card-lap">Lap ' + item.sel.lap + '</div></div>';
                 });
                 cards += '<button type="button" class="tc-lap-card tc-lap-card-add" id="tcAddLapCard"><span>+</span></button></div>';
                 container.innerHTML = cards;
@@ -1529,6 +1531,19 @@
                             state.compareState.referenceCarIdx = null;
                             state.compareState.referenceLap = null;
                         }
+                        render();
+                        if (opts.onChange) opts.onChange();
+                    });
+                });
+                container.querySelectorAll('[data-act="set-ref"]').forEach(function (btn) {
+                    btn.addEventListener('click', function (ev) {
+                        ev.stopPropagation();
+                        var key = Number(btn.dataset.car);
+                        var sel = state.driverSelection.get(key);
+                        if (!sel || sel.lap == null) return;
+                        if (!state.compareState) state.compareState = { referenceCarIdx: null, referenceLap: null };
+                        state.compareState.referenceCarIdx = key;
+                        state.compareState.referenceLap = sel.lap;
                         render();
                         if (opts.onChange) opts.onChange();
                     });
@@ -1617,10 +1632,21 @@
         var url = '/api/sessions/' + encodeURIComponent(state.folder) + '/'
                 + encodeURIComponent(state.slug) + '/lap-samples?carIdx=' + carIdx + '&lap=' + lap;
         return fetch(url)
-            .then(function (r) { return r.json(); })
+            .then(function (r) {
+                if (!r.ok) {
+                    return r.json().catch(function () { return {}; }).then(function (j) {
+                        throw new Error(j.error || j.message || ('HTTP ' + r.status));
+                    });
+                }
+                return r.json();
+            })
             .then(function (data) {
                 state.lapSamplesCache.set(key, data);
                 return data;
+            })
+            .catch(function (err) {
+                if (window.console && console.warn) console.warn('fetchLapSamples', key, err);
+                return { samples: [], motion: [], error: String(err.message || err) };
             });
     }
 
