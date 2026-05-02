@@ -35,6 +35,8 @@
 
         setBreadcrumb(weekendName || folder, slug);
         ensureActionsBar();
+        // Until meta loads, treat session type as unknown: hide Positions so FP/Q/etc. never flash it.
+        updateHistorySubTabsVisibility();
         switchSubTab(state.subTab || 'laptimes');
 
         fetch('/api/sessions/' + encodeURIComponent(folder) + '/' + encodeURIComponent(slug))
@@ -113,7 +115,18 @@
 
 
     function isRaceSession() {
-        return state.session && sessionCategory((state.session.meta || {}).sessionType) === 'race';
+        var meta = state.session && state.session.meta;
+        if (!meta) return false;
+        var t = meta.sessionType;
+        if (typeof t === 'number' && !isNaN(t)) {
+            return sessionCategory(t) === 'race';
+        }
+        // Fallback for odd payloads: filename slug / display name from logger.
+        var slug = (meta.sessionTypeSlug || meta.sessionSlug || '').toLowerCase();
+        if (slug === 'race' || slug === 'race2' || slug === 'race3') return true;
+        var name = (meta.sessionTypeName || '').trim().toLowerCase();
+        if (name === 'race' || name === 'race 2' || name === 'race 3') return true;
+        return false;
     }
 
     function updateHistorySubTabsVisibility() {
