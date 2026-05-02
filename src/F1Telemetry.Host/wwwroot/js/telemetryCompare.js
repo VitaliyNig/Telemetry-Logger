@@ -27,6 +27,8 @@
 
     };
     var shortcutsBound = false;
+    /** Updated on every redraw so the global R shortcut does not keep stale lap data. */
+    var latestCompareLapData = null;
 
     var PERSIST_KEY = 'tcCompareUi';
 
@@ -198,6 +200,7 @@
     }
 
     function redraw(lapData) {
+        latestCompareLapData = lapData;
         clearDeltaSeriesCache();
         ensureReferenceSelection(lapData);
         drawBadges(lapData);
@@ -226,7 +229,7 @@
 
         var first = null;
         st.driverSelection.forEach(function (sel, carIdx) {
-            if (first || !sel || sel.lap == null) return;
+            if (first || !sel || sel.lap == null || sel.hidden) return;
             if (lapData && !lapData.has(carIdx)) return;
             first = { carIdx: Number(carIdx), lap: Number(sel.lap) };
         });
@@ -561,6 +564,15 @@
             ? 'primary'
             : 'secondary';
     }
+
+    /** Lap compare uses synthetic selection keys; resolve the real car for team colour / labels. */
+    function resolveCompareDriver(sess, selectionKey, sel) {
+        if (!sess || !sess.drivers) return null;
+        var src = sel && sel.sourceCarIdx != null ? Number(sel.sourceCarIdx) : Number(selectionKey);
+        if (sess.drivers[src]) return sess.drivers[src];
+        if (sess.drivers[selectionKey]) return sess.drivers[selectionKey];
+        return null;
+    }
     // ---------- chart stack ----------
 
     function effectiveHeight(m) {
@@ -620,18 +632,19 @@
 
         wireResizeHandles(host, lapData);
         wireHover(host, lapData, selections, refSamples, refIdx, xMin, xMax, sess);
-        bindCompareShortcuts(lapData);
+        bindCompareShortcuts();
     }
 
-    function bindCompareShortcuts(lapData) {
+    function bindCompareShortcuts() {
         if (shortcutsBound) return;
         shortcutsBound = true;
         document.addEventListener('keydown', function (e) {
             if ((e.key || '').toLowerCase() !== 'r') return;
             if (e.target && (/input|textarea|select/i).test(e.target.tagName || '')) return;
+            if (!latestCompareLapData || !document.getElementById('tcCharts')) return;
             compareState.zoomStart = null;
             compareState.zoomEnd = null;
-            redraw(lapData);
+            redraw(latestCompareLapData);
         });
     }
 
@@ -705,6 +718,7 @@
         var W = 900;
         var PAD_T = 4, PAD_B = 16;
         var plotH = H - PAD_T - PAD_B;
+        var idSuffix = '-' + String(metric.key || 'm').replace(/[^a-z0-9_-]/gi, '');
         function x(d) { return (d - xMin) / Math.max(1, xMax - xMin) * W; }
 
         // Reference driver samples for overlays (DRS overlay on Speed; ERS bg band).
@@ -764,8 +778,8 @@
             var carIdx = kv[0];
             var d = lapData && lapData.get(carIdx);
             if (!d || !d.samples) return;
-            var driver = sess.drivers[carIdx];
-            var color = (typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
+            var driver = resolveCompareDriver(sess, carIdx, kv[1]);
+            var color = (driver && typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
 
             var values;
             if (metric.key === 'delta') {
@@ -789,8 +803,8 @@
             var roleClass = 'tc-line tc-line-extra';
             if (carIdx === refCarIdx) roleClass = 'tc-line tc-line-ref';
             else if (compareSeriesCount === 0) roleClass = 'tc-line tc-line-current';
-            var markerAttr = roleClass.indexOf('tc-line-ref') >= 0 ? ' marker-mid="url(#tcMarkerRef)"' :
-                (roleClass.indexOf('tc-line-current') >= 0 ? ' marker-mid="url(#tcMarkerCurrent)"' : ' marker-mid="url(#tcMarkerExtra)"');
+            var markerAttr = roleClass.indexOf('tc-line-ref') >= 0 ? ' marker-mid="url(#tcMarkerRef' + idSuffix + ')"' :
+                (roleClass.indexOf('tc-line-current') >= 0 ? ' marker-mid="url(#tcMarkerCurrent' + idSuffix + ')"' : ' marker-mid="url(#tcMarkerExtra' + idSuffix + ')"');
             lines += '<polyline class="' + roleClass + '" stroke="' + color + '" points="' + pts.join(' ') + '"' + markerAttr + '/>';
             if (carIdx !== refCarIdx) compareSeriesCount++;
         });
@@ -820,12 +834,12 @@
         }
 
         var defs = '<defs>'
-            + '<marker id="tcMarkerRef" markerWidth="4" markerHeight="4" refX="2" refY="2"><circle cx="2" cy="2" r="1" class="tc-line-marker-ref"/></marker>'
-            + '<marker id="tcMarkerCurrent" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5"><rect x="1" y="1" width="3" height="3" class="tc-line-marker-current"/></marker>'
-            + '<marker id="tcMarkerExtra" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5"><path d="M1 2.5 L4 2.5 M2.5 1 L2.5 4" class="tc-line-marker-extra"/></marker>'
-            + '<pattern id="tcPatternRef" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 6 L6 0" class="tc-line-pattern-ref"/></pattern>'
-            + '<pattern id="tcPatternCurrent" width="4" height="4" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="0.7" class="tc-line-pattern-current"/></pattern>'
-            + '<pattern id="tcPatternExtra" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 0 L6 6" class="tc-line-pattern-extra"/></pattern>'
+            + '<marker id="tcMarkerRef' + idSuffix + '" markerWidth="4" markerHeight="4" refX="2" refY="2"><circle cx="2" cy="2" r="1" class="tc-line-marker-ref"/></marker>'
+            + '<marker id="tcMarkerCurrent' + idSuffix + '" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5"><rect x="1" y="1" width="3" height="3" class="tc-line-marker-current"/></marker>'
+            + '<marker id="tcMarkerExtra' + idSuffix + '" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5"><path d="M1 2.5 L4 2.5 M2.5 1 L2.5 4" class="tc-line-marker-extra"/></marker>'
+            + '<pattern id="tcPatternRef' + idSuffix + '" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 6 L6 0" class="tc-line-pattern-ref"/></pattern>'
+            + '<pattern id="tcPatternCurrent' + idSuffix + '" width="4" height="4" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="0.7" class="tc-line-pattern-current"/></pattern>'
+            + '<pattern id="tcPatternExtra' + idSuffix + '" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 0 L6 6" class="tc-line-pattern-extra"/></pattern>'
             + '</defs>';
         return '<svg class="tc-chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
             + defs + ersBg + speedDrsOverlay + sectorMarkers + lines + axis + '</svg>';
@@ -1077,8 +1091,8 @@
                 var carIdx = kv[0];
                 var data = lapData && lapData.get(carIdx);
                 if (!data || !data.samples) return null;
-                var driver = sess.drivers[carIdx];
-                var color = (typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
+                var driver = resolveCompareDriver(sess, carIdx, kv[1]);
+                var color = (driver && typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
                 var sample = null;
                 var idxKey = String(carIdx);
                 var nearestIdx = findNearestSampleIndex(data.samples, d);
@@ -1240,6 +1254,7 @@
         function onBrushUp() {
             document.removeEventListener('mousemove', onBrushMove);
             document.removeEventListener('mouseup', onBrushUp);
+            brushStartPx = null;
             if (!compareState.brush) return;
             var rect = overlay.getBoundingClientRect();
             var x0 = Math.min(compareState.brush.start, compareState.brush.end);
