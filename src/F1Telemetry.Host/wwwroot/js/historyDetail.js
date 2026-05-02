@@ -1062,7 +1062,9 @@
     }
     // ---------- Phase H: Events ----------
 
-    var HISTORY_EVENT_FILTER_KEY = 'f1telemetry_event_filter_v1';
+    // Separate from Live telemetry (`f1telemetry_event_filter_v1` in telemetry.js) so the two modes do not share filter state.
+    var HISTORY_EVENT_FILTER_KEY = 'f1telemetry_event_filter_history_v1';
+    var LEGACY_SHARED_EVENT_FILTER_KEY = 'f1telemetry_event_filter_v1';
     var EVENT_NAMES = {
         'SSTA': 'Session Start', 'SEND': 'Session End',
         'FTLP': 'Fastest Lap', 'RTMT': 'Retirement',
@@ -1126,6 +1128,13 @@
     function loadEventFilter() {
         try {
             var raw = localStorage.getItem(HISTORY_EVENT_FILTER_KEY);
+            if (!raw) {
+                var legacy = localStorage.getItem(LEGACY_SHARED_EVENT_FILTER_KEY);
+                if (legacy) {
+                    raw = legacy;
+                    localStorage.setItem(HISTORY_EVENT_FILTER_KEY, legacy);
+                }
+            }
             if (raw) {
                 var saved = JSON.parse(raw);
                 var filter = {};
