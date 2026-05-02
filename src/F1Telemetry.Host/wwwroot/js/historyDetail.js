@@ -799,6 +799,8 @@
         var picker = DriverPicker({
             drivers: sess.drivers,
             supportLapSelector: false,
+            hideHeader: true,
+            skipReferenceRadios: true,
             onChange: function () { drawPositionChart(); },
         });
         side.appendChild(picker);
@@ -1414,7 +1416,7 @@
     }
 
     // ---------- DriverPicker component ----------
-    // opts: { drivers: {carIdx: {...}}, supportLapSelector: bool, compareCardMode: bool, allowGhosts: bool, onChange: fn }
+    // opts: { drivers, supportLapSelector, compareCardMode, allowGhosts, hideHeader, skipReferenceRadios, onChange }
     // Returns a DOM node the caller appends somewhere. Re-renderable via .refresh() on the node.
     function DriverPicker(opts) {
         var container = document.createElement('div');
@@ -1618,8 +1620,12 @@
                 });
                 return;
             }
-            // default picker
-            var html = '<div class="driver-picker-header">Drivers</div>';
+            // default picker (History Positions, etc.)
+            var html = '';
+            if (!opts.hideHeader) {
+                html += '<div class="driver-picker-header">Drivers</div>';
+            }
+            var skipRefRadios = !!opts.skipReferenceRadios;
             rows.forEach(function (carIdx) { /* unchanged */
                 var d = opts.drivers[carIdx];
                 var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
@@ -1630,7 +1636,9 @@
                 var ghostBadge = (sel && sel.ghost) ? '<span class="driver-ghost-badge">G</span>' : '';
                 var isRef = !!sel && state.compareState && Number(state.compareState.referenceCarIdx) === Number(carIdx) && Number(state.compareState.referenceLap) === Number(sel.lap);
                 var refBadge = isRef ? '<span class="driver-ref-badge">REF</span>' : '';
-                html += '<label class="driver-row" data-car="' + carIdx + '">' + '<input type="checkbox" class="driver-check" ' + checked + ' />' + '<input type="radio" name="driver-reference" class="driver-ref" ' + (isRef ? 'checked' : '') + ' title="Set as Reference" />' + '<span class="driver-dot" style="background:' + teamColor + '"></span>' + '<span class="driver-name">' + (racePos ? '<span class="driver-race-pos">P' + racePos + '</span> ' : '') + escapeHtml(shortDriverName(d.name || ('Car ' + carIdx))) + '</span>' + ghostBadge + refBadge;
+                var refRadio = skipRefRadios ? ''
+                    : '<input type="radio" name="driver-reference" class="driver-ref" ' + (isRef ? 'checked' : '') + ' title="Set as Reference" />';
+                html += '<label class="driver-row" data-car="' + carIdx + '">' + '<input type="checkbox" class="driver-check" ' + checked + ' />' + refRadio + '<span class="driver-dot" style="background:' + teamColor + '"></span>' + '<span class="driver-name">' + (racePos ? '<span class="driver-race-pos">P' + racePos + '</span> ' : '') + escapeHtml(shortDriverName(d.name || ('Car ' + carIdx))) + '</span>' + ghostBadge + refBadge;
                 if (opts.supportLapSelector) {
                     html += '<select class="driver-lap-select">';
                     (d.laps || []).forEach(function (l) { var selAttr = (sel && sel.lap === l.lapNum) ? ' selected' : ''; var lapLabel = 'L' + l.lapNum + ' — ' + formatLapTime(l.lapTimeMs) + (l.valid ? '' : ' ✗'); html += '<option value="' + l.lapNum + '"' + selAttr + '>' + escapeHtml(lapLabel) + '</option>'; });
