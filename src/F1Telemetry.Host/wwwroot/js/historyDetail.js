@@ -181,7 +181,7 @@
                 + '</div>';
         } else if (isTT) {
             toolbar = '<div class="lt-toolbar lt-toolbar--tt">'
-                + '<p class="lt-tt-hint">Lap time and sectors. Column Prev is the gap vs the previous valid lap in this session (time trial has no tyre wear).</p>'
+                + '<p class="lt-tt-hint">Lap time and sectors. Column PB Δ is the gap vs your best valid lap in this session (time trial has no tyre wear).</p>'
                 + '</div>';
         }
 
@@ -276,13 +276,13 @@
         practice:   ['time', 'wear'],
         qualifying: ['time', 'sectors', 'wear'],
         race:       ['time', 'delta', 'wear', 'perf'],
-        // No tyre wear in TT — replace with Δ vs previous valid lap (session-long progression).
+        // No tyre wear in TT — gap vs session personal best (valid laps only).
         time_trial: ['time', 'sectors', 'tt_delta'],
         unknown:    ['time', 'wear'],
     };
 
     var SUB_COL_LABELS = {
-        time: 'Time', sectors: 'Sec', wear: 'Wear', delta: 'Δ', perf: 'Perf', tt_delta: 'Prev',
+        time: 'Time', sectors: 'Sec', wear: 'Wear', delta: 'Δ', perf: 'Perf', tt_delta: 'PB Δ',
     };
 
     // Delta classification (seconds) relative to REF lap within a stint.
@@ -394,34 +394,22 @@
                 case 'wear':     out += wearCellHtml(l); break;
                 case 'delta':    out += deltaCellHtml(l, ctx); break;
                 case 'perf':     out += perfCellHtml(l); break;
-                case 'tt_delta': out += timeTrialPrevDeltaCellHtml(l, drivers, carIdx); break;
+                case 'tt_delta': out += timeTrialBestDeltaCellHtml(l, pb); break;
                 default:         out += '<td class="lap-cell lap-sub--' + key + '">—</td>';
             }
         }
         return out;
     }
 
-    /** Δ (seconds) vs the driver's previous valid lap in this session (Time Trial). */
-    function timeTrialPrevDeltaCellHtml(l, drivers, carIdx) {
-        var d = drivers && carIdx != null ? drivers[carIdx] : null;
-        var laps = d && d.laps;
-        if (!laps || laps.length === 0) {
-            return '<td class="lap-cell lap-sub--tt_delta">—</td>';
-        }
-        var sorted = laps.slice().sort(function (a, b) { return a.lapNum - b.lapNum; });
-        var prevMs = null;
-        for (var i = 0; i < sorted.length; i++) {
-            var lap = sorted[i];
-            if (lap.lapNum >= l.lapNum) break;
-            if (lap.valid && lap.lapTimeMs > 0) prevMs = lap.lapTimeMs;
-        }
-        if (prevMs == null) {
-            return '<td class="lap-cell lap-sub--tt_delta lap-tt-delta--na" title="No previous valid lap">—</td>';
+    /** Δ (seconds) vs the driver's best valid lap in this session (Time Trial). */
+    function timeTrialBestDeltaCellHtml(l, pb) {
+        if (!pb || pb.lap === Infinity) {
+            return '<td class="lap-cell lap-sub--tt_delta lap-tt-delta--na" title="No valid lap in session">—</td>';
         }
         if (!l.valid || !l.lapTimeMs) {
             return '<td class="lap-cell lap-sub--tt_delta lap-cell--invalid">—</td>';
         }
-        var delta = (l.lapTimeMs - prevMs) / 1000;
+        var delta = (l.lapTimeMs - pb.lap) / 1000;
         var deltaCls = 'lap-delta';
         if (delta < 0) deltaCls += ' lap-delta--faster';
         else if (delta <= DELTA_THRESHOLDS.neutral) deltaCls += ' lap-delta--neutral';
@@ -429,7 +417,8 @@
         else deltaCls += ' lap-delta--bad';
         var sign = delta >= 0 ? '+' : '';
         var text = sign + delta.toFixed(3);
-        return '<td class="lap-cell lap-sub--tt_delta" title="Δ vs previous valid lap">'
+        var title = 'Δ vs session PB (' + formatLapTime(pb.lap) + ')';
+        return '<td class="lap-cell lap-sub--tt_delta" title="' + escapeHtml(title) + '">'
             + '<span class="' + deltaCls + '">' + text + '</span></td>';
     }
 
