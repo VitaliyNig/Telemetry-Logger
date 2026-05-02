@@ -4933,7 +4933,10 @@ td.lap-cell__tyre { cursor: default; }
     right: 8px;
     bottom: 8px;
     pointer-events: auto;
+    touch-action: none;
+    cursor: crosshair;
 }
+.tc-hover-layer:active { cursor: grabbing; }
 
 .tc-crosshair {
     position: absolute;
@@ -4973,6 +4976,18 @@ td.lap-cell__tyre { cursor: default; }
     border-radius: 999px;
     background: color-mix(in srgb, var(--accent-brand) 42%, transparent);
     border: 1px solid color-mix(in srgb, var(--accent-brand) 72%, transparent);
+    cursor: grab;
+    touch-action: none;
+}
+.tc-overview-window:active { cursor: grabbing; }
+
+.tc-interact-hint {
+    font-size: 10px;
+    color: var(--text-dim);
+    padding: 4px 2px 0;
+    margin-left: calc(var(--tc-label-w, 20px) + 6px);
+    line-height: 1.35;
+    opacity: 0.75;
 }
 
 .tc-map-stage { position: relative; width: 100%; aspect-ratio: 1; }
@@ -5105,7 +5120,7 @@ td.lap-cell__tyre { cursor: default; }
 }
 
 @media (max-width: 600px) {
-    .tc-layout { padding: 0; }
+    .tc-interact-hint { display: none; }
     .tc-sector-badges { gap: 6px; padding: 4px 0; }
     .tc-sector-groups { gap: 6px; }
     .tc-sector-group { gap: 4px; padding: 2px 4px; }

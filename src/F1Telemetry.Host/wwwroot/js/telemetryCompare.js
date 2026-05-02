@@ -603,7 +603,8 @@
              + '<div class="tc-crosshair" id="tcCrosshair"></div>'
              + '<div class="tc-brush" id="tcBrush"></div>'
              + '</div>';
-        html += '<div class="tc-overview" id="tcOverview"><div class="tc-overview-window" id="tcOverviewWin"></div></div>';
+        html += '<div class="tc-overview" id="tcOverview" title="Drag window to pan · click empty track to center"><div class="tc-overview-window" id="tcOverviewWin" title="Drag to move zoom window"></div></div>'
+            + '<div class="tc-interact-hint" aria-hidden="true">Wheel zoom · Shift+drag pan · drag select zoom · dbl-click reset · Esc reset · [← →] pan · [+ −] zoom</div>';
         host.innerHTML = html;
 
         var selections = Array.from(window.HistoryDetail.state.driverSelection.entries()).filter(function (kv) {
@@ -627,13 +628,74 @@
         if (shortcutsBound) return;
         shortcutsBound = true;
         document.addEventListener('keydown', function (e) {
-            if ((e.key || '').toLowerCase() !== 'r') return;
             if (e.target && (/input|textarea|select/i).test(e.target.tagName || '')) return;
             if (!latestCompareLapData || !document.getElementById('tcCharts')) return;
+            var key = e.key || '';
+            var kl = key.toLowerCase();
+            if (kl === 'escape') {
+                compareState.zoomStart = null;
+                compareState.zoomEnd = null;
+                compareState.brush = null;
+                redraw(latestCompareLapData);
+                return;
+            }
+            if (kl === 'r' && !e.ctrlKey && !e.metaKey) {
+                compareState.zoomStart = null;
+                compareState.zoomEnd = null;
+                redraw(latestCompareLapData);
+                return;
+            }
+            var sess = window.HistoryDetail && window.HistoryDetail.state && window.HistoryDetail.state.session;
+            var trackLen = (sess && sess.meta && sess.meta.trackLengthM) || 5000;
+            var z0 = compareState.zoomStart != null ? compareState.zoomStart : 0;
+            var z1 = compareState.zoomEnd != null ? compareState.zoomEnd : trackLen;
+            var span = Math.max(1, z1 - z0);
+            var step = span * 0.1;
+            if (key === 'ArrowLeft') {
+                e.preventDefault();
+                compareState.zoomStart = Math.max(0, z0 - step);
+                compareState.zoomEnd = Math.min(trackLen, z1 - step);
+                if (compareState.zoomEnd - compareState.zoomStart < span - 1e-6) {
+                    compareState.zoomEnd = compareState.zoomStart + span;
+                    compareState.zoomEnd = Math.min(trackLen, compareState.zoomEnd);
+                    compareState.zoomStart = Math.max(0, compareState.zoomEnd - span);
+                }
+                redraw(latestCompareLapData);
+                return;
+            }
+            if (key === 'ArrowRight') {
+                e.preventDefault();
+                compareState.zoomStart = Math.min(trackLen - span, z0 + step);
+                compareState.zoomEnd = Math.min(trackLen, z1 + step);
+                redraw(latestCompareLapData);
+                return;
+            }
+            if (key === '+' || key === '=') {
+                e.preventDefault();
+                zoomFromCenter(latestCompareLapData, trackLen, z0, z1, 0.85);
+                return;
+            }
+            if (key === '-' || key === '_') {
+                e.preventDefault();
+                zoomFromCenter(latestCompareLapData, trackLen, z0, z1, 1.15);
+                return;
+            }
+        });
+    }
+
+    /** Zoom around center of current window; factor &lt; 1 zooms in. */
+    function zoomFromCenter(lapData, trackLen, z0, z1, factor) {
+        var span = Math.max(1, z1 - z0);
+        var center = z0 + span / 2;
+        var newSpan = Math.min(trackLen, Math.max(trackLen * 0.002, span * factor));
+        compareState.zoomStart = Math.max(0, center - newSpan / 2);
+        compareState.zoomEnd = Math.min(trackLen, compareState.zoomStart + newSpan);
+        compareState.zoomStart = Math.max(0, compareState.zoomEnd - newSpan);
+        if (compareState.zoomStart <= 0 && compareState.zoomEnd >= trackLen - 1e-6) {
             compareState.zoomStart = null;
             compareState.zoomEnd = null;
-            redraw(latestCompareLapData);
-        });
+        }
+        redraw(lapData);
     }
 
     function zoomOut2x() {
@@ -1173,7 +1235,6 @@
         var scheduled = false, lastX = 0;
         var rafToken = 0;
         var hoverCacheByDriver = new Map();
-        var lastHoverDistance = null;
         var lastHoverSignature = null;
         var brushStartPx = null;
         var brushEl = overlay.querySelector('.tc-brush');
@@ -1253,9 +1314,8 @@
             var rect = overlay.getBoundingClientRect();
             var pct = Math.max(0, Math.min(1, lastX / rect.width));
             var d = xMin + pct * (xMax - xMin);
-            if (lastHoverDistance != null && Math.abs(lastHoverDistance - d) < 0.0001) return;
-            lastHoverDistance = d;
             crosshair.style.left = (pct * 100) + '%';
+            lastHoverDistance = d;
 
             var perDriver = resolvePerDriver(d, interpCtx);
             var pair = resolveHoverPair(perDriver);
@@ -1321,7 +1381,79 @@
             recordHoverPerf(elapsed, interpCtx.interpCount || 0);
         }
 
+        var trackLenAll = (sess && sess.meta && sess.meta.trackLengthM) || 5000;
+        var panStart = null;
+
+        function applyPan(nextZ0, nextZ1) {
+            var span = Math.max(1, nextZ1 - nextZ0);
+            var z0 = Math.max(0, Math.min(trackLenAll - span, nextZ0));
+            var z1 = z0 + span;
+            compareState.zoomStart = z0;
+            compareState.zoomEnd = Math.min(trackLenAll, z1);
+            updateOverviewWindow();
+            drawChartStack(lapData);
+        }
+
+        function clientXToDistance(clientX) {
+            var rect = overlay.getBoundingClientRect();
+            var pct = Math.max(0, Math.min(1, (clientX - rect.left) / rect.width));
+            return xMin + pct * (xMax - xMin);
+        }
+
+        overlay.addEventListener('wheel', function (e) {
+            var rect = overlay.getBoundingClientRect();
+            if (rect.width < 2) return;
+            e.preventDefault();
+            var z0 = compareState.zoomStart != null ? compareState.zoomStart : 0;
+            var z1 = compareState.zoomEnd != null ? compareState.zoomEnd : trackLenAll;
+            var span = Math.max(1, z1 - z0);
+            var factor = e.deltaY > 0 ? 1.12 : 0.88;
+            var anchorPct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+            var anchorD = z0 + anchorPct * span;
+            var newSpan = Math.min(trackLenAll, Math.max(trackLenAll * 0.001, span * factor));
+            var rel = (anchorD - z0) / span;
+            var n0 = anchorD - rel * newSpan;
+            compareState.zoomStart = Math.max(0, n0);
+            compareState.zoomEnd = Math.min(trackLenAll, compareState.zoomStart + newSpan);
+            compareState.zoomStart = Math.max(0, compareState.zoomEnd - newSpan);
+            if (compareState.zoomStart <= 0 && compareState.zoomEnd >= trackLenAll - 1e-6) {
+                compareState.zoomStart = null;
+                compareState.zoomEnd = null;
+            }
+            redraw(lapData);
+        }, { passive: false });
+
+        overlay.addEventListener('dblclick', function (e) {
+            e.preventDefault();
+            compareState.zoomStart = null;
+            compareState.zoomEnd = null;
+            compareState.brush = null;
+            updateBrushVisual();
+            redraw(lapData);
+        });
+
+        overlay.addEventListener('pointermove', function (e) {
+            if (panStart && panStart.id === e.pointerId) {
+                e.preventDefault();
+                var rect = overlay.getBoundingClientRect();
+                var px = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+                var dxPx = px - panStart.lastPx;
+                panStart.lastPx = px;
+                var deltaM = -(dxPx / Math.max(1, rect.width)) * panStart.span;
+                var cur0 = compareState.zoomStart != null ? compareState.zoomStart : 0;
+                var cur1 = compareState.zoomEnd != null ? compareState.zoomEnd : trackLenAll;
+                applyPan(cur0 + deltaM, cur1 + deltaM);
+                return;
+            }
+            var rect = overlay.getBoundingClientRect();
+            lastX = e.clientX - rect.left;
+            if (!scheduled) {
+                scheduled = true;
+                rafToken = requestAnimationFrame(update);
+            }
+        });
         overlay.addEventListener('mousemove', function (e) {
+            if (panStart) return;
             var rect = overlay.getBoundingClientRect();
             lastX = e.clientX - rect.left;
             if (!scheduled) {
@@ -1339,33 +1471,66 @@
         });
         overlay.addEventListener('click', function (e) {
             if (!compareState.focusPinMode) return;
-            var rect = overlay.getBoundingClientRect();
-            var pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-            var d = xMin + pct * (xMax - xMin);
-            var perDriver = resolvePerDriver(d);
+            var d = clientXToDistance(e.clientX);
+            var interpCtx = createInterpContext();
+            var perDriver = resolvePerDriver(d, interpCtx);
             if (!compareState.focusPinned) compareState.focusPinned = { base: perDriver, baseDistance: d };
             else compareState.focusPinned = { base: compareState.focusPinned.base, baseDistance: compareState.focusPinned.baseDistance, compare: perDriver, compareDistance: d };
             renderFocusPanel(perDriver, d);
         });
-        overlay.addEventListener('mousedown', function (e) {
-            if (e.button !== 0) return;
+
+        overlay.addEventListener('pointerdown', function (e) {
+            if (e.button !== 0 && e.pointerType === 'mouse') return;
             var rect = overlay.getBoundingClientRect();
-            brushStartPx = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+            var px = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+            if (e.shiftKey || (e.pointerType !== 'mouse' && !compareState.focusPinMode)) {
+                e.preventDefault();
+                try { overlay.setPointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+                panStart = {
+                    id: e.pointerId,
+                    lastPx: px,
+                    span: Math.max(1, (compareState.zoomEnd != null ? compareState.zoomEnd : trackLenAll)
+                        - (compareState.zoomStart != null ? compareState.zoomStart : 0)),
+                };
+                return;
+            }
+            if (compareState.focusPinMode) return;
+            brushStartPx = px;
             compareState.brush = { start: brushStartPx, end: brushStartPx };
             updateBrushVisual();
             document.addEventListener('mousemove', onBrushMove);
             document.addEventListener('mouseup', onBrushUp);
+            document.addEventListener('pointerup', onBrushUp);
+            document.addEventListener('touchmove', onBrushMove, { passive: false });
+            document.addEventListener('touchend', onBrushUp);
+            document.addEventListener('touchcancel', onBrushUp);
         });
+        overlay.addEventListener('pointerup', function (e) {
+            if (panStart && panStart.id === e.pointerId) {
+                try { overlay.releasePointerCapture(e.pointerId); } catch (err) { /* ignore */ }
+                panStart = null;
+            }
+        });
+        overlay.addEventListener('pointercancel', function (e) {
+            if (panStart && panStart.id === e.pointerId) panStart = null;
+        });
+
         function onBrushMove(e) {
             if (brushStartPx == null) return;
             var rect = overlay.getBoundingClientRect();
-            var px = Math.max(0, Math.min(rect.width, e.clientX - rect.left));
+            var clientX = e.clientX;
+            if (e.type === 'touchmove' && e.touches && e.touches[0]) clientX = e.touches[0].clientX;
+            var px = Math.max(0, Math.min(rect.width, clientX - rect.left));
             compareState.brush.end = px;
             updateBrushVisual();
         }
         function onBrushUp() {
             document.removeEventListener('mousemove', onBrushMove);
             document.removeEventListener('mouseup', onBrushUp);
+            document.removeEventListener('pointerup', onBrushUp);
+            document.removeEventListener('touchmove', onBrushMove);
+            document.removeEventListener('touchend', onBrushUp);
+            document.removeEventListener('touchcancel', onBrushUp);
             brushStartPx = null;
             if (!compareState.brush) return;
             var rect = overlay.getBoundingClientRect();
@@ -1407,6 +1572,7 @@
         }
         if (overview) {
             overview.addEventListener('mousedown', function (e) {
+                if (e.target && e.target.closest && e.target.closest('#tcOverviewWin')) return;
                 var rect = overview.getBoundingClientRect();
                 var pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
                 var trackLen = (sess && sess.meta && sess.meta.trackLengthM) || 1;
@@ -1418,6 +1584,36 @@
                 compareState.zoomEnd = Math.min(trackLen, center + span / 2);
                 redraw(lapData);
             });
+            if (overviewWin) {
+                overviewWin.addEventListener('mousedown', function (e) {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    var barRect = overview.getBoundingClientRect();
+                    var winRect = overviewWin.getBoundingClientRect();
+                    overviewDrag = {
+                        offsetFrac: (e.clientX - winRect.left) / barRect.width,
+                        spanFrac: winRect.width / barRect.width,
+                    };
+                    document.addEventListener('mousemove', onOverviewDragMove);
+                    document.addEventListener('mouseup', onOverviewDragUp);
+                });
+            }
+        }
+        function onOverviewDragMove(e) {
+            if (!overviewDrag || !overview) return;
+            var barRect = overview.getBoundingClientRect();
+            var trackLen = (sess && sess.meta && sess.meta.trackLengthM) || 1;
+            var frac = (e.clientX - barRect.left) / barRect.width - overviewDrag.offsetFrac;
+            frac = Math.max(0, Math.min(1 - overviewDrag.spanFrac, frac));
+            compareState.zoomStart = frac * trackLen;
+            compareState.zoomEnd = compareState.zoomStart + overviewDrag.spanFrac * trackLen;
+            updateOverviewWindow();
+            drawChartStack(lapData);
+        }
+        function onOverviewDragUp() {
+            document.removeEventListener('mousemove', onOverviewDragMove);
+            document.removeEventListener('mouseup', onOverviewDragUp);
+            overviewDrag = null;
         }
         updateOverviewWindow();
         renderFocusPanel([], null);
@@ -1460,7 +1656,8 @@
         var pin = compareState.focusPinned;
         host.innerHTML = ''
             + '<div class="tc-focus-head"><h4>Compare Focus</h4><button class="tc-pin-btn ' + (compareState.focusPinMode ? 'active' : '') + '" data-act="pin">Pin</button></div>'
-            + '<div class="tc-focus-sub">' + (distance == null ? 'Hover chart to inspect' : ('d=' + Math.round(distance) + 'm')) + '</div>'
+            + '<div class="tc-focus-sub">' + (distance == null ? 'Hover chart to inspect' : ('d=' + Math.round(distance) + 'm'))
+            + ' · Pin mode: tap chart · Elsewhere: drag zoom · Shift-drag pan · wheel zoom · Esc reset</div>'
             + row('Delta', diffs ? diffs.delta : null, true)
             + row('Speed diff', diffs ? diffs.spd : null, true)
             + row('Throttle diff', diffs ? diffs.thr : null, true)
