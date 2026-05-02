@@ -146,6 +146,80 @@ public sealed class SessionLoggerTests
         }
     }
 
+    /// <summary>
+    /// After a rewind the game may emit packets with OverallFrameIdentifier lower than pre-flashback
+    /// values. HandleFlashback resets the processed-frame baseline so telemetry is not dropped.
+    /// </summary>
+    [Fact]
+    public void Flashback_AllowsLowerOverallFrameIdentifier_SamplesStillRecorded()
+    {
+        var tempRoot = Path.Combine(Path.GetTempPath(), $"sessionlogger-tests-{Guid.NewGuid():N}");
+        Directory.CreateDirectory(tempRoot);
+        HistoryRoot.PersistentDefault = tempRoot;
+        try
+        {
+            var logger = new SessionLogger(new LapSetupStore(), NullLogger<SessionLogger>.Instance);
+            const ulong sessionUid = 88ul;
+            const byte carIdx = 1;
+
+            logger.ProcessPacket(Header(sessionUid, 1f, (byte)F125PacketId.Session, carIdx, 1), (byte)F125PacketId.Session, new SessionPacket
+            {
+                TrackId = 0, SessionType = 10, WeekendLinkIdentifier = 42, SessionLinkIdentifier = 24, TrackLength = 5400, TotalLaps = 10,
+            });
+
+            static LapDataPacket LapOn(byte lap, uint curMs, uint lastMs) => new()
+            {
+                LapDataItems = Enumerable.Range(0, 22).Select(i => i == carIdx
+                    ? new LapData
+                    {
+                        CurrentLapNum = lap,
+                        CurrentLapTimeInMs = curMs,
+                        LastLapTimeInMs = lastMs,
+                        CarPosition = 1,
+                        LapDistance = 500,
+                        Sector = 1,
+                    }
+                    : new LapData()).ToArray()
+            };
+
+            static CarTelemetryPacket Tel(ushort speed, byte gear = 8) => new()
+            {
+                CarTelemetryData = Enumerable.Range(0, 22).Select(i => i == carIdx
+                    ? new CarTelemetryData { Speed = speed, Throttle = 1f, Gear = gear, EngineRpm = 10_000 }
+                    : new CarTelemetryData()).ToArray()
+            };
+
+            logger.ProcessPacket(Header(sessionUid, 5f, (byte)F125PacketId.LapData, carIdx, 2), (byte)F125PacketId.LapData, LapOn(2, 10_000, 0));
+            logger.ProcessPacket(Header(sessionUid, 5.05f, (byte)F125PacketId.CarTelemetry, carIdx, 50), (byte)F125PacketId.CarTelemetry, Tel(111));
+
+            logger.ProcessPacket(Header(sessionUid, 6f, (byte)F125PacketId.Event, carIdx, 51), (byte)F125PacketId.Event, new EventPacket
+            {
+                EventCode = "FLBK",
+                Details = new FlashbackEvent { FlashbackFrameIdentifier = 1, FlashbackSessionTime = 4f }
+            });
+
+            // Lower OverallFrameIdentifier than the pre-flashback telemetry packet (50); must still sample.
+            logger.ProcessPacket(Header(sessionUid, 6.1f, (byte)F125PacketId.CarTelemetry, carIdx, 10), (byte)F125PacketId.CarTelemetry, Tel(222));
+
+            logger.ProcessPacket(Header(sessionUid, 20f, (byte)F125PacketId.LapData, carIdx, 52), (byte)F125PacketId.LapData, LapOn(3, 1_000, 88_000));
+            logger.ProcessPacket(Header(sessionUid, 21f, (byte)F125PacketId.Event, carIdx, 53), (byte)F125PacketId.Event, new EventPacket { EventCode = "SEND" });
+
+            var jsonPath = Directory.GetFiles(tempRoot, "*.json", SearchOption.AllDirectories).Single();
+            using var doc = JsonDocument.Parse(File.ReadAllText(jsonPath));
+            var samples = doc.RootElement.GetProperty("drivers").GetProperty(carIdx.ToString()).GetProperty("laps")
+                .EnumerateArray().Single(l => l.GetProperty("lapNum").GetByte() == 2)
+                .GetProperty("samples").EnumerateArray().ToList();
+
+            Assert.Equal(2, samples.Count);
+            Assert.Equal(111, samples[0].GetProperty("spd").GetInt32());
+            Assert.Equal(222, samples[1].GetProperty("spd").GetInt32());
+        }
+        finally
+        {
+            Directory.Delete(tempRoot, recursive: true);
+        }
+    }
+
     private static TelemetryPacketHeader Header(ulong sessionUid, float sessionTime, byte packetId, byte playerCarIdx, uint overallFrameIdentifier = 1) =>
         new(
             PacketFormat: 2025,

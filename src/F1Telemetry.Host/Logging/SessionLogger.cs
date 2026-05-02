@@ -459,6 +459,9 @@ public sealed class SessionLogger
     private void HandleFlashback(SessionEntry entry, TelemetryPacketHeader header, EventPacket evt)
     {
         var rewindToTime = (evt.Details as FlashbackEvent)?.FlashbackSessionTime ?? header.SessionTime;
+        // Timeline rewind: the game may resume with lower OverallFrameIdentifier values than we had
+        // already processed. Reset so ShouldAcceptFrame does not drop all post-rewind telemetry.
+        entry.LastOverallFrameIdentifierProcessed = 0;
         for (var i = 0; i < MaxCars; i++)
         {
             entry.CurrentLapSamples[i] = null;
@@ -466,12 +469,17 @@ public sealed class SessionLogger
             entry.LastTelemetryTickS[i] = rewindToTime;
             entry.LastMotionTickS[i] = rewindToTime;
             entry.CurrentLapStartSessionTimeS[i] = rewindToTime;
+            entry.LapBlueFlag[i] = false;
+            // Same lap number after rewind, but the in-lap flag accumulation should reflect only
+            // the retaken segment (matches cleared motion/telemetry buffers).
+            entry.LapMaxFlag[i] = entry.CurrentRaceFlag;
         }
     }
 
     private static bool ShouldAcceptFrame(SessionEntry entry, TelemetryPacketHeader header)
     {
-        // Protect against duplicated/out-of-order high-frequency packets around timeline rewinds.
+        // Drop duplicated/out-of-order high-frequency packets. Baseline resets on flashback
+        // (see HandleFlashback) so rewind timelines are not mistaken for stale duplicates.
         if (header.OverallFrameIdentifier < entry.LastOverallFrameIdentifierProcessed)
             return false;
 
