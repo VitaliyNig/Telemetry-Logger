@@ -5304,6 +5304,27 @@ td.lap-cell__tyre { cursor: default; }
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
+/* Compare-lap picker: wider shell, column flex so inner scroll regions get a real max-height */
+.history-modal-overlay--compare-laps .history-modal {
+    width: min(520px, 94vw);
+    max-width: 94vw;
+    max-height: min(88vh, 900px);
+    display: flex;
+    flex-direction: column;
+}
+.history-modal-overlay--compare-laps .history-modal-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+}
+.history-modal-overlay--compare-laps .history-modal-header,
+.history-modal-overlay--compare-laps .history-modal-footer {
+    flex-shrink: 0;
+}
+
 .history-modal-header {
     display: flex;
     justify-content: space-between;
@@ -5418,23 +5439,101 @@ td.lap-cell__tyre { cursor: default; }
 .tc-lap-card-lap { font-size: 28px; font-weight: 700; letter-spacing: 0.2px; }
 .tc-lap-card-add { min-height: 130px; display: grid; place-items: center; cursor: pointer; background: transparent; }
 .tc-lap-card-add span { font-size: 64px; line-height: 1; color: var(--text-dim); font-weight: 300; }
-.tc-lap-modal { display: grid; gap: 10px; min-width: min(760px, 85vw); }
-.tc-lap-modal-title { font-size: 12px; color: var(--text-dim); }
-.tc-lap-driver-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 8px; }
-.tc-lap-driver-btn, .tc-lap-option {
+/* Telemetry Compare — add lap modal (accordion) */
+.tc-lap-modal {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    min-height: 0;
+    width: 100%;
+    box-sizing: border-box;
+}
+.tc-lap-modal-title {
+    margin: 0;
+    font-size: 12px;
+    line-height: 1.45;
+    color: var(--text-dim);
+}
+.tc-lap-accordion {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-height: 0;
+}
+.tc-lap-acc-item {
+    border: 1px solid var(--color-border-default);
+    border-radius: 10px;
+    background: var(--bg-dark);
+    overflow: hidden;
+}
+.tc-lap-acc-item.is-open {
+    border-color: var(--accent-brand);
+}
+.tc-lap-acc-trigger {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px;
+    border: 0;
+    background: transparent;
+    color: var(--text-primary);
+    cursor: pointer;
+    text-align: left;
+    font: inherit;
+    box-sizing: border-box;
+}
+.tc-lap-acc-trigger:hover {
+    background: rgba(255, 255, 255, 0.04);
+}
+.tc-lap-acc-name {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 13px;
+    font-weight: 600;
+}
+.tc-lap-acc-chevron {
+    flex-shrink: 0;
+    width: 0;
+    height: 0;
+    border-top: 5px solid transparent;
+    border-bottom: 5px solid transparent;
+    border-left: 7px solid var(--text-dim);
+    margin-left: 4px;
+    transition: transform 0.15s ease;
+}
+.tc-lap-acc-item.is-open .tc-lap-acc-chevron {
+    transform: rotate(90deg);
+}
+.tc-lap-acc-panel {
+    border-top: 1px solid var(--border);
+    padding: 8px 10px 10px;
+    max-height: min(280px, 42vh);
+    overflow-y: auto;
+    box-sizing: border-box;
+}
+.tc-lap-acc-laps {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+.tc-lap-option {
+    display: grid;
+    gap: 4px;
+    width: 100%;
+    box-sizing: border-box;
     border: 1px solid var(--color-border-default);
     border-radius: 8px;
-    background: var(--bg-dark);
+    background: color-mix(in srgb, var(--color-bg-card) 88%, transparent);
     color: var(--text-primary);
     text-align: left;
-    padding: 8px;
+    padding: 8px 10px;
     cursor: pointer;
+    font: inherit;
 }
-.tc-lap-driver-btn { display: flex; align-items: center; gap: 8px; }
-.tc-lap-option { display: grid; gap: 4px; width: 100%; }
-.tc-lap-driver-btn:hover, .tc-lap-option:hover { border-color: var(--accent-brand); }
-.tc-lap-list { border-top: 1px solid var(--border); padding-top: 8px; }
-.tc-lap-list-head { margin-bottom: 6px; font-size: 12px; color: var(--text-dim); }
-.tc-lap-option-main { font-weight: 700; }
+.tc-lap-option:hover {
+    border-color: var(--accent-brand);
+}
+.tc-lap-option-main { font-weight: 700; font-size: 13px; }
 .tc-lap-option-meta { font-size: 11px; color: var(--text-dim); }
-.tc-lap-empty { font-size: 12px; color: var(--text-dim); padding: 8px 0; }
+.tc-lap-empty { font-size: 12px; color: var(--text-dim); padding: 6px 4px; line-height: 1.4; }

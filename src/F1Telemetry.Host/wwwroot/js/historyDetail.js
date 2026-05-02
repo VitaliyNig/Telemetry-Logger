@@ -1420,60 +1420,50 @@
         function openCompareLapModal() {
             var rows = rowsSorted();
             if (!rows.length) return;
-            var modalBody = '<div class="tc-lap-modal">'
-                + '<div class="tc-lap-modal-title">Select driver and lap</div>'
-                + '<div class="tc-lap-driver-list">';
+            var parts = [
+                '<div class="tc-lap-modal">',
+                '<p class="tc-lap-modal-title">Tap a driver to expand their laps. Laps already in the compare list are omitted.</p>',
+                '<div class="tc-lap-accordion" id="tcLapAccordion" role="list">',
+            ];
             rows.forEach(function (carIdx) {
                 var d = opts.drivers[carIdx];
                 var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
                 var racePos = getDriverRacePosition(state.session, Number(carIdx));
-                modalBody += '<button type="button" class="tc-lap-driver-btn" data-car="' + carIdx + '">'
+                var name = escapeHtml(shortDriverName(d.name || ('Car ' + carIdx)));
+                parts.push(
+                    '<div class="tc-lap-acc-item" data-car="' + carIdx + '" role="listitem">'
+                    + '<button type="button" class="tc-lap-acc-trigger" aria-expanded="false">'
                     + '<span class="driver-dot" style="background:' + teamColor + '"></span>'
-                    + '<span class="tc-lap-driver-name">' + (racePos ? '<span class="driver-race-pos">P' + racePos + '</span> ' : '') + escapeHtml(shortDriverName(d.name || ('Car ' + carIdx))) + '</span>'
-                    + '</button>';
+                    + '<span class="tc-lap-acc-name">' + (racePos ? '<span class="driver-race-pos">P' + racePos + '</span> ' : '') + name + '</span>'
+                    + '<span class="tc-lap-acc-chevron" aria-hidden="true"></span>'
+                    + '</button>'
+                    + '<div class="tc-lap-acc-panel" id="tc-acc-panel-' + carIdx + '" hidden></div>'
+                    + '</div>'
+                );
             });
-            modalBody += '</div><div class="tc-lap-list" id="tcLapList"></div></div>';
-
-            var overlay = openModal('Add lap to compare', modalBody, null);
+            parts.push('</div></div>');
+            var overlay = openModal('Add lap to compare', parts.join(''), null);
             if (!overlay) return;
+            overlay.classList.add('history-modal-overlay--compare-laps');
             overlay.querySelector('.history-modal-footer').style.display = 'none';
-            var list = overlay.querySelector('#tcLapList');
+            var accordion = overlay.querySelector('#tcLapAccordion');
 
-            function renderLapList(carIdx) {
-                var d = opts.drivers[carIdx];
-                if (!d) return;
-                var laps = (d.laps || []).slice().sort(function (a, b) { return Number(a.lapNum) - Number(b.lapNum); });
-                if (!laps.length) {
-                    list.innerHTML = '<div class="tc-lap-empty">No laps available</div>';
-                    return;
-                }
-                var html = '<div class="tc-lap-list-head">' + escapeHtml(shortDriverName(d.name || ('Car ' + carIdx))) + '</div>';
-                laps.forEach(function (l) {
-                    var duplicate = false;
-                    state.driverSelection.forEach(function (sel) {
-                        if (duplicate || !sel || sel.lap == null) return;
-                        var src = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : carIdx);
-                        if (src === Number(carIdx) && Number(sel.lap) === Number(l.lapNum)) duplicate = true;
-                    });
-                    if (duplicate) return;
-                    var tyre = l.compound || l.tyreCompound || l.tyre || '—';
-                    html += '<button type="button" class="tc-lap-option" data-car="' + carIdx + '" data-lap="' + l.lapNum + '">'
-                        + '<span class="tc-lap-option-main">Lap ' + l.lapNum + '</span>'
-                        + '<span class="tc-lap-option-meta">' + escapeHtml(formatLapTime(l.lapTimeMs) + ' • ' + String(tyre)) + (l.valid ? '' : ' • invalid') + '</span>'
-                        + '</button>';
+            function isLapDuplicate(carIdx, lapNum) {
+                var dup = false;
+                state.driverSelection.forEach(function (sel) {
+                    if (dup || !sel || sel.lap == null) return;
+                    var src = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : carIdx);
+                    if (src === Number(carIdx) && Number(sel.lap) === Number(lapNum)) dup = true;
                 });
-                list.innerHTML = html;
-                list.querySelectorAll('.tc-lap-option').forEach(function (btn) {
+                return dup;
+            }
+
+            function wireLapButtons(panel) {
+                panel.querySelectorAll('.tc-lap-option').forEach(function (btn) {
                     btn.addEventListener('click', function () {
                         var pickedCar = Number(btn.dataset.car);
                         var pickedLap = Number(btn.dataset.lap);
-                        var duplicate = false;
-                        state.driverSelection.forEach(function (sel) {
-                            if (duplicate || !sel || sel.lap == null) return;
-                            var src = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : pickedCar);
-                            if (src === pickedCar && Number(sel.lap) === pickedLap) duplicate = true;
-                        });
-                        if (duplicate) return;
+                        if (isLapDuplicate(pickedCar, pickedLap)) return;
                         var key = nextCompareSelectionKey();
                         state.driverSelection.set(key, { lap: pickedLap, ghost: false, sourceCarIdx: pickedCar, hidden: false });
                         if (opts.onChange) opts.onChange();
@@ -1481,9 +1471,58 @@
                     });
                 });
             }
-            overlay.querySelectorAll('.tc-lap-driver-btn').forEach(function (btn, idx) {
-                btn.addEventListener('click', function () { renderLapList(Number(btn.dataset.car)); });
-                if (idx === 0) renderLapList(Number(btn.dataset.car));
+
+            function fillPanelIfNeeded(carIdx, panel) {
+                if (panel.getAttribute('data-filled') === '1') return;
+                var d = opts.drivers[carIdx];
+                if (!d) {
+                    panel.innerHTML = '<div class="tc-lap-empty">No driver data.</div>';
+                    panel.setAttribute('data-filled', '1');
+                    return;
+                }
+                var laps = (d.laps || []).slice().sort(function (a, b) { return Number(a.lapNum) - Number(b.lapNum); });
+                var html = '<div class="tc-lap-acc-laps">';
+                var count = 0;
+                laps.forEach(function (l) {
+                    if (isLapDuplicate(carIdx, l.lapNum)) return;
+                    count++;
+                    var tyre = l.compound || l.tyreCompound || l.tyre || '—';
+                    html += '<button type="button" class="tc-lap-option" data-car="' + carIdx + '" data-lap="' + l.lapNum + '">'
+                        + '<span class="tc-lap-option-main">Lap ' + l.lapNum + '</span>'
+                        + '<span class="tc-lap-option-meta">' + escapeHtml(formatLapTime(l.lapTimeMs) + ' · ' + String(tyre)) + (l.valid ? '' : ' · invalid') + '</span>'
+                        + '</button>';
+                });
+                html += '</div>';
+                if (count === 0) {
+                    html = '<div class="tc-lap-empty">No laps left to add for this driver (or no lap data).</div>';
+                }
+                panel.innerHTML = html;
+                panel.setAttribute('data-filled', '1');
+                wireLapButtons(panel);
+            }
+
+            accordion.querySelectorAll('.tc-lap-acc-trigger').forEach(function (btn) {
+                btn.addEventListener('click', function () {
+                    var item = btn.closest('.tc-lap-acc-item');
+                    if (!item) return;
+                    var carIdx = Number(item.dataset.car);
+                    var panel = item.querySelector('.tc-lap-acc-panel');
+                    if (!panel) return;
+                    var wasOpen = item.classList.contains('is-open');
+                    accordion.querySelectorAll('.tc-lap-acc-item').forEach(function (it) {
+                        it.classList.remove('is-open');
+                        var t = it.querySelector('.tc-lap-acc-trigger');
+                        var p = it.querySelector('.tc-lap-acc-panel');
+                        if (t) t.setAttribute('aria-expanded', 'false');
+                        if (p) p.hidden = true;
+                    });
+                    if (!wasOpen) {
+                        fillPanelIfNeeded(carIdx, panel);
+                        item.classList.add('is-open');
+                        btn.setAttribute('aria-expanded', 'true');
+                        panel.hidden = false;
+                    }
+                });
             });
         }
 
