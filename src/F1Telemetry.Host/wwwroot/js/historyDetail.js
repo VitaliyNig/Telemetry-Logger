@@ -113,6 +113,20 @@
         return 'unknown';
     }
 
+    /** Resolves practice / quali / race / time_trial from meta. TT is also detected from slug
+     *  or name so older logs where sessionType was wrong or missing still get the right grid. */
+    function resolveSessionCategory(meta) {
+        if (!meta) return 'unknown';
+        var t = meta.sessionType;
+        if (typeof t === 'number' && !isNaN(t) && t !== 0) {
+            return sessionCategory(t);
+        }
+        var slug = (meta.sessionTypeSlug || meta.sessionSlug || '').toLowerCase();
+        if (slug === 'time_trial' || slug === 'timetrial') return 'time_trial';
+        var name = (meta.sessionTypeName || '').trim().toLowerCase();
+        if (name === 'time trial' || name.indexOf('time trial') === 0) return 'time_trial';
+        return 'unknown';
+    }
 
     function isRaceSession() {
         var meta = state.session && state.session.meta;
@@ -144,8 +158,9 @@
 
     function renderLapTimes(body) {
         var sess = state.session;
-        var cat = sessionCategory(sess.meta.sessionType);
+        var cat = resolveSessionCategory(sess.meta);
         var isQuali = cat === 'qualifying';
+        var isTT = cat === 'time_trial';
 
         var bests = computeBests(sess.drivers);
         var pbByDriver = {};
@@ -163,6 +178,10 @@
                 + '<button class="lt-mode ' + (!lapTimesState.virtualMode ? 'active' : '') + '" data-mode="real">Real</button>'
                 + '<button class="lt-mode ' + (lapTimesState.virtualMode ? 'active' : '') + '" data-mode="virtual">Virtual Best</button>'
                 + '</div>'
+                + '</div>';
+        } else if (isTT) {
+            toolbar = '<div class="lt-toolbar lt-toolbar--tt">'
+                + '<p class="lt-tt-hint">Lap time and sectors. Column PB Δ is the gap vs your best valid lap in this session (time trial has no tyre wear).</p>'
                 + '</div>';
         }
 
@@ -257,12 +276,13 @@
         practice:   ['time', 'wear'],
         qualifying: ['time', 'sectors', 'wear'],
         race:       ['time', 'delta', 'wear', 'perf'],
-        time_trial: ['time', 'sectors', 'wear'],
+        // No tyre wear in TT — gap vs session personal best (valid laps only).
+        time_trial: ['time', 'sectors', 'tt_delta'],
         unknown:    ['time', 'wear'],
     };
 
     var SUB_COL_LABELS = {
-        time: 'Time', sectors: 'Sec', wear: 'Wear', delta: 'Δ', perf: 'Perf',
+        time: 'Time', sectors: 'Sec', wear: 'Wear', delta: 'Δ', perf: 'Perf', tt_delta: 'PB Δ',
     };
 
     // Delta classification (seconds) relative to REF lap within a stint.
@@ -310,7 +330,7 @@
                     return filler;
                 }
                 return renderLapCells(lap, cat, cols, bests, pbByDriver[carIdx], virtualMode,
-                    refIndex ? refIndex[carIdx] : null);
+                    refIndex ? refIndex[carIdx] : null, drivers, carIdx);
             }).join('');
             rowsHtml += '<tr class="' + rowCls + '">'
                 + '<th class="lap-grid__lap-th">' + lapNum + '</th>'
@@ -363,21 +383,43 @@
 
     // Emits one <td> per sub-column listed in `cols`. Each renderer receives the same
     // (lap, ctx) bundle and decides what to draw.
-    function renderLapCells(l, cat, cols, bests, pb, virtualMode, refForDriver) {
+    function renderLapCells(l, cat, cols, bests, pb, virtualMode, refForDriver, drivers, carIdx) {
         var ctx = { cat: cat, bests: bests, pb: pb, virtualMode: virtualMode, refForDriver: refForDriver };
         var out = '';
         for (var i = 0; i < cols.length; i++) {
             var key = cols[i];
             switch (key) {
-                case 'time':    out += timeCellHtml(l, ctx); break;
-                case 'sectors': out += sectorsCellHtml(l, ctx); break;
-                case 'wear':    out += wearCellHtml(l); break;
-                case 'delta':   out += deltaCellHtml(l, ctx); break;
-                case 'perf':    out += perfCellHtml(l); break;
-                default:        out += '<td class="lap-cell lap-sub--' + key + '">—</td>';
+                case 'time':     out += timeCellHtml(l, ctx); break;
+                case 'sectors':  out += sectorsCellHtml(l, ctx); break;
+                case 'wear':     out += wearCellHtml(l); break;
+                case 'delta':    out += deltaCellHtml(l, ctx); break;
+                case 'perf':     out += perfCellHtml(l); break;
+                case 'tt_delta': out += timeTrialBestDeltaCellHtml(l, pb); break;
+                default:         out += '<td class="lap-cell lap-sub--' + key + '">—</td>';
             }
         }
         return out;
+    }
+
+    /** Δ (seconds) vs the driver's best valid lap in this session (Time Trial). */
+    function timeTrialBestDeltaCellHtml(l, pb) {
+        if (!pb || pb.lap === Infinity) {
+            return '<td class="lap-cell lap-sub--tt_delta lap-tt-delta--na" title="No valid lap in session">—</td>';
+        }
+        if (!l.valid || !l.lapTimeMs) {
+            return '<td class="lap-cell lap-sub--tt_delta lap-cell--invalid">—</td>';
+        }
+        var delta = (l.lapTimeMs - pb.lap) / 1000;
+        var deltaCls = 'lap-delta';
+        if (delta < 0) deltaCls += ' lap-delta--faster';
+        else if (delta <= DELTA_THRESHOLDS.neutral) deltaCls += ' lap-delta--neutral';
+        else if (delta <= DELTA_THRESHOLDS.warn) deltaCls += ' lap-delta--warn';
+        else deltaCls += ' lap-delta--bad';
+        var sign = delta >= 0 ? '+' : '';
+        var text = sign + delta.toFixed(3);
+        var title = 'Δ vs session PB (' + formatLapTime(pb.lap) + ')';
+        return '<td class="lap-cell lap-sub--tt_delta" title="' + escapeHtml(title) + '">'
+            + '<span class="' + deltaCls + '">' + text + '</span></td>';
     }
 
     function timeCellHtml(l, ctx) {

@@ -3888,6 +3888,16 @@
 
 .lt-toolbar { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
 
+.lt-toolbar--tt { justify-content: flex-start; }
+
+.lt-tt-hint {
+    margin: 0;
+    max-width: 52rem;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--color-text-secondary);
+}
+
 .lt-toggle { display: flex; border: 1px solid var(--color-border-default); border-radius: 6px; overflow: hidden; }
 
 .lt-mode {
