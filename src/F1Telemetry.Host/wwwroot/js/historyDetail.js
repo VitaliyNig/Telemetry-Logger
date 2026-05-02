@@ -1326,12 +1326,18 @@
         function dismiss() { overlay.remove(); }
         overlay.querySelector('.history-modal-close').addEventListener('click', dismiss);
         overlay.querySelector('.history-modal-cancel').addEventListener('click', dismiss);
-        overlay.querySelector('.history-modal-confirm').addEventListener('click', function () {
-            Promise.resolve(onConfirm(overlay)).then(dismiss, function (err) {
-                var body = overlay.querySelector('.history-modal-body');
-                body.insertAdjacentHTML('beforeend', '<div class="history-modal-error">' + escapeHtml(String(err)) + '</div>');
+        var confirmBtn = overlay.querySelector('.history-modal-confirm');
+        if (typeof onConfirm === 'function') {
+            confirmBtn.addEventListener('click', function () {
+                Promise.resolve(onConfirm(overlay)).then(dismiss, function (err) {
+                    var body = overlay.querySelector('.history-modal-body');
+                    body.insertAdjacentHTML('beforeend', '<div class="history-modal-error">' + escapeHtml(String(err)) + '</div>');
+                });
             });
-        });
+        } else {
+            confirmBtn.addEventListener('click', dismiss);
+        }
+        return overlay;
     }
 
     function openExportModal() {
@@ -1428,8 +1434,7 @@
             });
             modalBody += '</div><div class="tc-lap-list" id="tcLapList"></div></div>';
 
-            openModal('Add lap to compare', modalBody, null);
-            var overlay = document.querySelector('.history-modal-overlay:last-of-type');
+            var overlay = openModal('Add lap to compare', modalBody, null);
             if (!overlay) return;
             overlay.querySelector('.history-modal-footer').style.display = 'none';
             var list = overlay.querySelector('#tcLapList');
