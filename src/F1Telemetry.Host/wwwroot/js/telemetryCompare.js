@@ -103,14 +103,14 @@
     }
 
     var METRICS = [
-        { key: 'delta', label: 'Δ (s)', plotTitle: 'DELTA', height: 70, getValue: null /* computed */, min: -1, max: 1 },
-        { key: 'spd',   label: 'Speed (km/h)', plotTitle: 'SPEED', height: 70, min: 0, max: 370 },
+        { key: 'delta', label: 'Δ', plotTitle: 'DELTA', height: 70, getValue: null /* computed */, min: -1, max: 1 },
+        { key: 'spd',   label: 'Speed', plotTitle: 'SPEED', height: 70, min: 0, max: 370 },
         { key: 'thr',   label: 'Throttle', plotTitle: 'THROTTLE', height: 50, min: 0, max: 100 },
         { key: 'brk',   label: 'Brake', plotTitle: 'BRAKE', height: 50, min: 0, max: 100 },
         { key: 'str',   label: 'Steering', plotTitle: 'STEERING', height: 50, min: -100, max: 100 },
         { key: 'gr',    label: 'Gear', plotTitle: 'GEAR', height: 50, min: -1, max: 8 },
         { key: 'rpm',   label: 'RPM', plotTitle: 'RPM', height: 60, min: 0, max: 14000 },
-        { key: 'ers',   label: 'ERS (%)', plotTitle: 'ERS', height: 60, min: 0, max: 100 },
+        { key: 'ers',   label: 'ERS', plotTitle: 'ERS', height: 60, min: 0, max: 100 },
         { key: 'drs',   label: 'DRS', plotTitle: 'DRS', height: 22, min: 0, max: 1, style: 'band' },
     ];
 
@@ -148,11 +148,9 @@
             +     '<div class="tc-layer tc-layer-b" data-priority="primary">'
             +       '<div class="tc-charts" id="tcCharts"></div>'
             +     '</div>'
-            +     '<div class="tc-layer tc-layer-c tc-compare-content" data-priority="secondary">'
-            +       '<aside class="tc-focus" id="tcFocusPanel" data-priority="secondary"></aside>'
-            +     '</div>'
             +   '</div>'
             +   '<div class="tc-map tc-layer tc-layer-c" id="tcMap" data-priority="secondary"></div>'
+            +   '<aside class="tc-focus" id="tcFocusPanel" data-priority="secondary"></aside>'
             + '</div>';
 
         var side = body.querySelector('#tcSide');
@@ -273,18 +271,6 @@
         var trackLen = sess.meta.trackLengthM || 0;
         var segments = buildSegmentBoundaries(sess.meta, compareState.miniPerSector);
 
-        var html = '<div class="tc-controls-row">'
-            + '<div class="tc-delta-toggle">'
-            + '<button class="tc-mode ' + (compareState.deltaMode === 'cumulative' ? 'active' : '') + '" data-mode="cumulative">Δ cumulative</button>'
-            + '<button class="tc-mode ' + (compareState.deltaMode === 'sector' ? 'active' : '') + '" data-mode="sector">Δ per-sector</button>'
-            + '</div>'
-            + '<div class="tc-segment-toggle">'
-            + '<button class="tc-segment-mode ' + (compareState.miniPerSector === 1 ? 'active' : '') + '" data-mini="1">3</button>'
-            + '<button class="tc-segment-mode ' + (compareState.miniPerSector === 3 ? 'active' : '') + '" data-mini="3">9</button>'
-            + '<button class="tc-segment-mode ' + (compareState.miniPerSector === 4 ? 'active' : '') + '" data-mini="4">12</button>'
-            + '</div>'
-            + '</div>';
-        // One badge per sector with inter-driver deltas.
         var resolvedRef = ensureReferenceSelection(lapData);
         var refIdx = resolvedRef ? resolvedRef.carIdx : null;
         var refDriverLap = refIdx != null ? sess.drivers[refIdx] : null;
@@ -294,7 +280,38 @@
             refLap = (refDriverLap.laps || []).find(function (l) { return l.lapNum === sel.lap; });
         }
 
-        html += '<div class="tc-sector-groups">';
+        // ---------- Toolbar ----------
+        var html = '<div class="tc-toolbar">'
+            // Delta mode
+            + '<div class="tc-toolbar-group">'
+            + '<span class="tc-toolbar-label">Delta</span>'
+            + '<div class="tc-segmented">'
+            + '<button class="tc-seg-btn ' + (compareState.deltaMode === 'cumulative' ? 'active' : '') + '" data-mode="cumulative">Cumulative</button>'
+            + '<button class="tc-seg-btn ' + (compareState.deltaMode === 'sector' ? 'active' : '') + '" data-mode="sector">Per Sector</button>'
+            + '</div></div>'
+            // Segment split
+            + '<div class="tc-toolbar-group">'
+            + '<span class="tc-toolbar-label">Split</span>'
+            + '<div class="tc-segmented">'
+            + '<button class="tc-seg-btn ' + (compareState.miniPerSector === 1 ? 'active' : '') + '" data-mini="1">3</button>'
+            + '<button class="tc-seg-btn ' + (compareState.miniPerSector === 3 ? 'active' : '') + '" data-mini="3">9</button>'
+            + '<button class="tc-seg-btn ' + (compareState.miniPerSector === 4 ? 'active' : '') + '" data-mini="4">12</button>'
+            + '</div></div>'
+            // Zoom actions
+            + '<div class="tc-toolbar-group">'
+            + '<span class="tc-toolbar-label">Zoom</span>'
+            + '<div class="tc-zoom-actions">'
+            + '<button class="tc-zoom-btn" data-start="0" data-end="' + trackLen + '">Full Lap</button>'
+            + '<button class="tc-zoom-btn" data-action="reset-zoom">Reset</button>'
+            + '<button class="tc-zoom-btn" data-action="zoom-out-2x">Zoom Out</button>'
+            + '</div></div>'
+            + '</div>';
+
+        // ---------- Sector badges ----------
+        html += '<div class="tc-toolbar">'
+            + '<div class="tc-toolbar-group tc-toolbar-group--sectors">'
+            + '<span class="tc-toolbar-label">Sectors</span>'
+            + '<div class="tc-sector-groups">';
         var miniCount = Math.max(1, Number(compareState.miniPerSector) || 1);
         var currentSector = null;
         segments.forEach(function (seg, idx) {
@@ -318,31 +335,43 @@
             }
         });
         if (currentSector !== null) html += '</div>';
-        html += '<button class="tc-badge tc-badge-reset" data-start="0" data-end="' + trackLen + '">Full Lap</button>';
-        html += '<button class="tc-badge" data-action="reset-zoom">Reset Zoom</button>';
-        html += '<button class="tc-badge" data-action="zoom-out-2x">Zoom Out 2x</button>';
-        html += '</div>';
+        html += '</div></div></div>';
 
-        // --- Second row: metric visibility chips + height presets + reset-heights. ---
-        html += '<div class="tc-metrics-toolbar">';
-        html += '<button class="tc-insights-toggle ' + (compareState.insightsEnabled ? 'active' : '') + '" data-action="insights">'
-            + 'Insights ' + (compareState.insightsEnabled ? 'On' : 'Off') + '</button>';
+        // ---------- Channels + Display ----------
+        html += '<div class="tc-toolbar">'
+            + '<div class="tc-toolbar-group tc-toolbar-group--channels">'
+            + '<span class="tc-toolbar-label">Channels</span>'
+            + '<div class="tc-channel-list">';
         METRICS.forEach(function (m) {
             var pressed = !compareState.hiddenMetrics.has(m.key);
-            html += '<button class="tc-metric-chip" data-key="' + m.key + '"'
+            html += '<button class="tc-channel ' + (pressed ? 'active' : '') + '" data-key="' + m.key + '"'
                 + ' aria-pressed="' + (pressed ? 'true' : 'false') + '">'
                 + escapeHtml(m.label) + '</button>';
         });
-        html += '<span class="tc-toolbar-sep"></span>';
-        html += '<button class="tc-size-chip tc-chip-mode ' + (compareState.chipMode === 'pair' ? 'active' : '') + '" data-chip-mode="pair">Chip: C/Ref</button>';
-        html += '<button class="tc-size-chip tc-chip-mode ' + (compareState.chipMode === 'diff' ? 'active' : '') + '" data-chip-mode="diff">Chip: Δ</button>'; 
+        html += '</div></div>'
+            // Display options
+            + '<div class="tc-toolbar-group">'
+            + '<span class="tc-toolbar-label">Display</span>'
+            + '<div class="tc-display-row">'
+            + '<div class="tc-segmented">'
+            + '<button class="tc-seg-btn tc-chip-mode ' + (compareState.chipMode === 'pair' ? 'active' : '') + '" data-chip-mode="pair">Values</button>'
+            + '<button class="tc-seg-btn tc-chip-mode ' + (compareState.chipMode === 'diff' ? 'active' : '') + '" data-chip-mode="diff">Delta</button>'
+            + '</div>'
+            + '<div class="tc-segmented">';
         [[0.75, 'Compact'], [1.0, 'Normal'], [1.4, 'Tall']].forEach(function (pair) {
             var active = Math.abs(compareState.heightScale - pair[0]) < 0.01;
-            html += '<button class="tc-size-chip ' + (active ? 'active' : '') + '"'
+            html += '<button class="tc-seg-btn ' + (active ? 'active' : '') + '"'
                 + ' data-scale="' + pair[0] + '">' + pair[1] + '</button>';
         });
-        html += '<button class="tc-size-chip tc-reset-heights">Reset heights</button>';
-        html += '</div>';
+        html += '</div>'
+            + '<button class="tc-icon-btn tc-reset-heights" title="Reset heights">↺</button>'
+            + '</div></div>'
+            // Insights toggle
+            + '<div class="tc-toolbar-group">'
+            + '<span class="tc-toolbar-label">Insights</span>'
+            + '<button class="tc-seg-btn tc-insights-toggle ' + (compareState.insightsEnabled ? 'active' : '') + '" data-action="insights">'
+            + (compareState.insightsEnabled ? 'On' : 'Off') + '</button>'
+            + '</div></div>';
         if (compareState.insightsEnabled) {
             html += renderTopLossZones(lapData, sess);
         }
@@ -373,7 +402,7 @@
                 redraw(lapData);
             });
         });
-        host.querySelectorAll('.tc-segment-mode').forEach(function (m) {
+        host.querySelectorAll('.tc-seg-btn[data-mini]').forEach(function (m) {
             m.addEventListener('click', function () {
                 var next = Number(m.dataset.mini);
                 if (next === compareState.miniPerSector) return;
@@ -385,13 +414,13 @@
                 redraw(lapData);
             });
         });
-        host.querySelectorAll('.tc-mode').forEach(function (m) {
+        host.querySelectorAll('.tc-seg-btn[data-mode]').forEach(function (m) {
             m.addEventListener('click', function () {
                 compareState.deltaMode = m.dataset.mode;
                 redraw(lapData);
             });
         });
-        host.querySelectorAll('.tc-metric-chip').forEach(function (chip) {
+        host.querySelectorAll('.tc-channel').forEach(function (chip) {
             chip.addEventListener('click', function () {
                 var key = chip.dataset.key;
                 if (compareState.hiddenMetrics.has(key)) compareState.hiddenMetrics.delete(key);
@@ -409,12 +438,37 @@
                 drawBadges(lapData);
             });
         });
-        host.querySelectorAll('.tc-size-chip[data-scale]').forEach(function (btn) {
+        host.querySelectorAll('.tc-seg-btn[data-scale]').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 compareState.heightScale = Number(btn.dataset.scale);
                 persistState();
                 drawBadges(lapData);
                 drawChartStack(lapData);
+            });
+        });
+        host.querySelectorAll('.tc-zoom-btn').forEach(function (b) {
+            b.addEventListener('click', function () {
+                var action = b.dataset.action;
+                if (action === 'reset-zoom') {
+                    compareState.zoomStart = null;
+                    compareState.zoomEnd = null;
+                    redraw(lapData);
+                    return;
+                }
+                if (action === 'zoom-out-2x') {
+                    zoomOut2x();
+                    redraw(lapData);
+                    return;
+                }
+                var start = Number(b.dataset.start), end = Number(b.dataset.end);
+                if (compareState.zoomStart === start && compareState.zoomEnd === end) {
+                    compareState.zoomStart = null;
+                    compareState.zoomEnd = null;
+                } else {
+                    compareState.zoomStart = start;
+                    compareState.zoomEnd = end;
+                }
+                redraw(lapData);
             });
         });
         var resetBtn = host.querySelector('.tc-reset-heights');
@@ -969,9 +1023,7 @@
             var roleClass = 'tc-line tc-line-extra';
             if (carIdx === refCarIdx) roleClass = 'tc-line tc-line-ref';
             else if (compareSeriesCount === 0) roleClass = 'tc-line tc-line-current';
-            var markerAttr = roleClass.indexOf('tc-line-ref') >= 0 ? ' marker-mid="url(#tcMarkerRef' + idSuffix + ')"' :
-                (roleClass.indexOf('tc-line-current') >= 0 ? ' marker-mid="url(#tcMarkerCurrent' + idSuffix + ')"' : ' marker-mid="url(#tcMarkerExtra' + idSuffix + ')"');
-            lines += '<polyline class="' + roleClass + '" stroke="' + color + '" points="' + pts.join(' ') + '"' + markerAttr + '/>';
+            lines += '<polyline class="' + roleClass + '" stroke="' + color + '" points="' + pts.join(' ') + '"/>';
             if (carIdx !== refCarIdx) compareSeriesCount++;
         });
 
@@ -992,9 +1044,6 @@
         });
 
         var defs = '<defs>'
-            + '<marker id="tcMarkerRef' + idSuffix + '" markerWidth="4" markerHeight="4" refX="2" refY="2"><circle cx="2" cy="2" r="1" class="tc-line-marker-ref"/></marker>'
-            + '<marker id="tcMarkerCurrent' + idSuffix + '" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5"><rect x="1" y="1" width="3" height="3" class="tc-line-marker-current"/></marker>'
-            + '<marker id="tcMarkerExtra' + idSuffix + '" markerWidth="5" markerHeight="5" refX="2.5" refY="2.5"><path d="M1 2.5 L4 2.5 M2.5 1 L2.5 4" class="tc-line-marker-extra"/></marker>'
             + '<pattern id="tcPatternRef' + idSuffix + '" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 6 L6 0" class="tc-line-pattern-ref"/></pattern>'
             + '<pattern id="tcPatternCurrent' + idSuffix + '" width="4" height="4" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="0.7" class="tc-line-pattern-current"/></pattern>'
             + '<pattern id="tcPatternExtra' + idSuffix + '" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 0 L6 6" class="tc-line-pattern-extra"/></pattern>'
@@ -1101,7 +1150,7 @@
             if (!firstCmp && resolvedRef && Number(carIdx) !== resolvedRef.carIdx) firstCmp = d;
             var sourceCarIdx = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : carIdx);
             var driver = sess.drivers[sourceCarIdx];
-            var color = (typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
+            var color = (driver && typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
             var pts = d.motion.map(function (m) {
                 var p = project(m.x, m.z);
                 return p[0] + ',' + p[1];
@@ -1236,6 +1285,7 @@
         var rafToken = 0;
         var hoverCacheByDriver = new Map();
         var lastHoverSignature = null;
+        var lastHoverDistance = 0;
         var brushStartPx = null;
         var brushEl = overlay.querySelector('.tc-brush');
         var overviewWin = host.querySelector('#tcOverviewWin');

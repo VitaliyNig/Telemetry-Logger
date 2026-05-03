@@ -2,7 +2,7 @@
 // Four sub-tabs: Lap Times / Positions / Telemetry Compare / Events. Owned modules:
 //   - renderLapTimes, renderPositions, renderTelemetryCompare, renderEvents
 //     (defined in the same file for now; extract later if file grows > 800 lines)
-//   - DriverPicker: shared component, rendered into the side rail of Positions / Compare.
+//   - DriverPicker: Telemetry Compare sidebar; Positions toggles visibility on chart labels instead.
 // State lives on the module (not window) so switching to Live tab doesn't tear it down.
 (function () {
     'use strict';
@@ -12,7 +12,7 @@
         slug: null,
         session: null,               // full session detail JSON (from /api/sessions/{folder}/{slug})
         subTab: 'laptimes',
-        // Map<carIdx, { lap: number, ghost: bool }>. `lap` = selected lap for Compare.
+        // Map<carIdx, { lap, ghost?, hidden?, posHidden? }>. Compare uses `hidden`; Positions chart uses `posHidden`.
         driverSelection: new Map(),
         compareState: { referenceCarIdx: null, referenceLap: null },
         lapSamplesCache: new Map(),  // key: carIdx + ':' + lap
@@ -153,9 +153,6 @@
         }
     }
 
-    // Lap Times local state (toggles for quali). Re-created on each open.
-    var lapTimesState = { virtualMode: false };
-
     function renderLapTimes(body) {
         var sess = state.session;
         var cat = resolveSessionCategory(sess.meta);
@@ -168,24 +165,17 @@
             pbByDriver[k] = personalBest(sess.drivers[k].laps);
         });
 
-        var driverOrder = orderDriversForTable(cat, sess, isQuali && lapTimesState.virtualMode);
+        var driverOrder = orderDriversForTable(cat, sess, false);
         var maxLap = computeMaxLap(sess.drivers);
 
         var toolbar = '';
-        if (isQuali) {
-            toolbar = '<div class="lt-toolbar">'
-                + '<div class="lt-toggle">'
-                + '<button class="lt-mode ' + (!lapTimesState.virtualMode ? 'active' : '') + '" data-mode="real">Real</button>'
-                + '<button class="lt-mode ' + (lapTimesState.virtualMode ? 'active' : '') + '" data-mode="virtual">Virtual Best</button>'
-                + '</div>'
-                + '</div>';
-        } else if (isTT) {
+        if (isTT) {
             toolbar = '<div class="lt-toolbar lt-toolbar--tt">'
                 + '<p class="lt-tt-hint">Lap time and sectors. Column PB Δ is the gap vs your best valid lap in this session (time trial has no tyre wear).</p>'
                 + '</div>';
         }
 
-        var pivot = renderLapPivotTable(cat, sess, bests, pbByDriver, lapTimesState.virtualMode, driverOrder, maxLap);
+        var pivot = renderLapPivotTable(cat, sess, bests, pbByDriver, false, driverOrder, maxLap);
         var virtualGrid = isQuali ? renderVirtualGrid(sess.drivers) : '';
 
         body.innerHTML =
@@ -194,13 +184,6 @@
             + pivot
             + virtualGrid
             + '</div>';
-
-        body.querySelectorAll('.lt-mode').forEach(function (btn) {
-            btn.addEventListener('click', function () {
-                lapTimesState.virtualMode = btn.dataset.mode === 'virtual';
-                renderLapTimes(body);
-            });
-        });
 
         var wrap = body.querySelector('.lap-grid-wrap');
         if (wrap) attachTyrePopupHandlers(wrap);
@@ -212,21 +195,22 @@
         Object.keys(drivers).forEach(function (k) {
             (drivers[k].laps || []).forEach(function (l) {
                 if (l.valid && l.lapTimeMs > 0 && l.lapTimeMs < best.lap) best.lap = l.lapTimeMs;
-                if (l.s1Ms > 0 && l.s1Ms < best.s1) best.s1 = l.s1Ms;
-                if (l.s2Ms > 0 && l.s2Ms < best.s2) best.s2 = l.s2Ms;
-                if (l.s3Ms > 0 && l.s3Ms < best.s3) best.s3 = l.s3Ms;
+                if (l.valid && l.s1Ms > 0 && l.s1Ms < best.s1) best.s1 = l.s1Ms;
+                if (l.valid && l.s2Ms > 0 && l.s2Ms < best.s2) best.s2 = l.s2Ms;
+                if (l.valid && l.s3Ms > 0 && l.s3Ms < best.s3) best.s3 = l.s3Ms;
             });
         });
         return best;
     }
 
-    function personalBest(laps) {
+    function personalBest(laps, requireSectors) {
         var pb = { lap: Infinity, s1: Infinity, s2: Infinity, s3: Infinity };
         (laps || []).forEach(function (l) {
-            if (l.valid && l.lapTimeMs > 0 && l.lapTimeMs < pb.lap) pb.lap = l.lapTimeMs;
-            if (l.s1Ms > 0 && l.s1Ms < pb.s1) pb.s1 = l.s1Ms;
-            if (l.s2Ms > 0 && l.s2Ms < pb.s2) pb.s2 = l.s2Ms;
-            if (l.s3Ms > 0 && l.s3Ms < pb.s3) pb.s3 = l.s3Ms;
+            var hasSectors = l.s1Ms > 0 && l.s2Ms > 0 && l.s3Ms > 0;
+            if (l.valid && l.lapTimeMs > 0 && (!requireSectors || hasSectors) && l.lapTimeMs < pb.lap) pb.lap = l.lapTimeMs;
+            if (l.valid && l.s1Ms > 0 && l.s1Ms < pb.s1) pb.s1 = l.s1Ms;
+            if (l.valid && l.s2Ms > 0 && l.s2Ms < pb.s2) pb.s2 = l.s2Ms;
+            if (l.valid && l.s3Ms > 0 && l.s3Ms < pb.s3) pb.s3 = l.s3Ms;
         });
         return pb;
     }
@@ -311,8 +295,9 @@
 
         // Second header row: sub-column labels per driver.
         var subCells = driverOrder.map(function () {
-            return cols.map(function (key) {
-                return '<th class="lap-grid__sub-th lap-grid__sub-th--' + key + '">' + SUB_COL_LABELS[key] + '</th>';
+            return cols.map(function (key, idx) {
+                var lastCls = (idx === cols.length - 1) ? ' lap-grid__sub-th--last' : '';
+                return '<th class="lap-grid__sub-th lap-grid__sub-th--' + key + lastCls + '">' + SUB_COL_LABELS[key] + '</th>';
             }).join('');
         }).join('');
 
@@ -325,7 +310,8 @@
                 if (!lap) {
                     var filler = '';
                     for (var k = 0; k < colCount; k++) {
-                        filler += '<td class="lap-cell lap-cell--empty lap-sub--' + cols[k] + '">—</td>';
+                        var lastCls = (k === colCount - 1) ? ' lap-sub--last' : '';
+                        filler += '<td class="lap-cell lap-cell--empty lap-sub--' + cols[k] + lastCls + '">—</td>';
                     }
                     return filler;
                 }
@@ -388,15 +374,20 @@
         var out = '';
         for (var i = 0; i < cols.length; i++) {
             var key = cols[i];
+            var cellHtml = '';
             switch (key) {
-                case 'time':     out += timeCellHtml(l, ctx); break;
-                case 'sectors':  out += sectorsCellHtml(l, ctx); break;
-                case 'wear':     out += wearCellHtml(l); break;
-                case 'delta':    out += deltaCellHtml(l, ctx); break;
-                case 'perf':     out += perfCellHtml(l); break;
-                case 'tt_delta': out += timeTrialBestDeltaCellHtml(l, pb); break;
-                default:         out += '<td class="lap-cell lap-sub--' + key + '">—</td>';
+                case 'time':     cellHtml = timeCellHtml(l, ctx); break;
+                case 'sectors':  cellHtml = sectorsCellHtml(l, ctx); break;
+                case 'wear':     cellHtml = wearCellHtml(l); break;
+                case 'delta':    cellHtml = deltaCellHtml(l, ctx); break;
+                case 'perf':     cellHtml = perfCellHtml(l); break;
+                case 'tt_delta': cellHtml = timeTrialBestDeltaCellHtml(l, pb); break;
+                default:         cellHtml = '<td class="lap-cell lap-sub--' + key + '">—</td>';
             }
+            if (i === cols.length - 1 && cellHtml.indexOf('class="') !== -1) {
+                cellHtml = cellHtml.replace('class="', 'class="lap-sub--last ');
+            }
+            out += cellHtml;
         }
         return out;
     }
@@ -481,6 +472,45 @@
             + '</td>';
     }
 
+    function hexToRgb(hex) {
+        return [
+            parseInt(hex.slice(1, 3), 16),
+            parseInt(hex.slice(3, 5), 16),
+            parseInt(hex.slice(5, 7), 16)
+        ];
+    }
+    function rgbToHex(r, g, b) {
+        return '#' + [r, g, b].map(function (v) {
+            var h = Math.round(v).toString(16);
+            return h.length === 1 ? '0' + h : h;
+        }).join('');
+    }
+    function interpolateColor(c1, c2, t) {
+        var a = hexToRgb(c1), b = hexToRgb(c2);
+        return rgbToHex(
+            a[0] + (b[0] - a[0]) * t,
+            a[1] + (b[1] - a[1]) * t,
+            a[2] + (b[2] - a[2]) * t
+        );
+    }
+    function wearColorFor(avg) {
+        var stops = [
+            [10, '#B6F2B6'], [20, '#CFF7B0'], [30, '#E8FCA8'], [40, '#FFF7A1'],
+            [50, '#FFE89C'], [60, '#FFD3A1'], [70, '#FFBFA1'], [80, '#FFA8A8'],
+            [90, '#FF8A8A'], [100, '#D97A7A']
+        ];
+        if (avg <= 10) return stops[0][1];
+        if (avg >= 100) return stops[stops.length - 1][1];
+        for (var i = 0; i < stops.length - 1; i++) {
+            var t1 = stops[i][0], c1 = stops[i][1];
+            var t2 = stops[i + 1][0], c2 = stops[i + 1][1];
+            if (avg >= t1 && avg <= t2) {
+                return interpolateColor(c1, c2, (avg - t1) / (t2 - t1));
+            }
+        }
+        return stops[stops.length - 1][1];
+    }
+
     // The <td> itself carries the `.lap-cell__tyre` class + data-* attrs that
     // attachTyrePopupHandlers looks for, so the existing popup works without changes.
     function wearCellHtml(l) {
@@ -494,6 +524,8 @@
         var hasWear = wearArr && wearArr.length === 4;
         var avg = hasWear ? Math.round((wearArr[0] + wearArr[1] + wearArr[2] + wearArr[3]) / 4) : null;
 
+        var wearColor = avg != null ? wearColorFor(avg) : '#666';
+
         // tyreWearEnd order matches UDP spec: [RL, RR, FL, FR].
         var dataAttrs = 'data-tyre-name="' + escapeHtml(name) + '"';
         if (l.tyreAge != null) dataAttrs += ' data-tyre-age="' + l.tyreAge + '"';
@@ -506,8 +538,8 @@
 
         return '<td class="lap-cell lap-sub--wear lap-cell__tyre" ' + dataAttrs + '>'
             + '<div class="lap-cell__wear-inner">'
-            +   '<span class="compound-badge" style="background:' + color + '">' + label + '</span>'
-            +   (avg != null ? '<span class="lap-cell__wear">' + avg + '%</span>' : '')
+            +   '<span class="wear-badge" style="background:' + color + '">' + escapeHtml(label) + '</span>'
+            +   (avg != null ? '<span class="wear-badge" style="background:' + wearColor + '">' + avg + '%</span>' : '')
             + '</div>'
             + '</td>';
     }
@@ -768,14 +800,17 @@
         if (!drivers) return '';
         var rows = Object.keys(drivers).map(function (carIdx) {
             var d = drivers[carIdx];
+            var pb = personalBest(d.laps, true);
             return {
                 carIdx: Number(carIdx),
                 name: d.name,
                 teamId: d.teamId,
-                actual: personalBest(d.laps).lap,
+                actual: pb.lap,
                 virtual: virtualBestMs(d.laps),
             };
-        });
+        }).filter(function (r) { return r.actual !== Infinity; });
+
+        if (rows.length === 0) return '';
 
         var actualSorted = rows.slice().sort(function (a, b) { return a.actual - b.actual; });
         var virtualSorted = rows.slice().sort(function (a, b) { return a.virtual - b.virtual; });
@@ -785,45 +820,100 @@
 
         var html = '<div class="lt-virtual-grid">'
             + '<div class="lt-virtual-title">Virtual Best Grid</div>'
-            + '<table class="lt-table">'
-            + '<thead><tr><th>Driver</th><th>Actual</th><th>Virtual</th><th>Δ</th></tr></thead><tbody>';
-        virtualSorted.forEach(function (r) {
+            + '<div class="lt-virtual-table-wrap">'
+            + '<table class="lt-virtual-table">'
+            + '<thead><tr>'
+            + '<th class="lt-virtual-th lt-virtual-th--pos">Pos</th>'
+            + '<th>Driver</th>'
+            + '<th class="lt-virtual-th lt-virtual-th--time">Actual</th>'
+            + '<th class="lt-virtual-th lt-virtual-th--time">Virtual</th>'
+            + '<th class="lt-virtual-th lt-virtual-th--delta">Δ Pos</th>'
+            + '<th class="lt-virtual-th lt-virtual-th--time">Δ Time</th>'
+            + '</tr></thead><tbody>';
+        virtualSorted.forEach(function (r, idx) {
             var teamColor = (typeof teamAccentColor === 'function')
                 ? teamAccentColor(r.teamId) : '#9aa0a6';
-            var delta = actualPos[r.carIdx] - virtualPos[r.carIdx];
-            var arrow = delta > 0 ? '<span class="delta-up">▲' + delta + '</span>'
-                       : delta < 0 ? '<span class="delta-down">▼' + (-delta) + '</span>'
+            var aPos = actualPos[r.carIdx];
+            var vPos = virtualPos[r.carIdx];
+            var deltaPos = aPos - vPos;
+            var arrow = deltaPos > 0 ? '<span class="delta-up">▲ ' + deltaPos + '</span>'
+                       : deltaPos < 0 ? '<span class="delta-down">▼ ' + (-deltaPos) + '</span>'
                        : '<span class="delta-same">–</span>';
-            html += '<tr>'
-                + '<td><span class="driver-dot" style="background:' + teamColor + '"></span> ' + escapeHtml(r.name) + '</td>'
-                + '<td>P' + actualPos[r.carIdx] + ' — ' + formatLapTime(r.actual === Infinity ? 0 : r.actual) + '</td>'
-                + '<td>P' + virtualPos[r.carIdx] + ' — ' + formatLapTime(r.virtual === Infinity ? 0 : r.virtual) + '</td>'
-                + '<td>' + arrow + '</td>'
+
+            var deltaTimeMs = r.virtual !== Infinity ? r.virtual - r.actual : null;
+            var deltaTimeText = deltaTimeMs != null && deltaTimeMs >= 0
+                ? '+' + (deltaTimeMs / 1000).toFixed(3)
+                : deltaTimeMs != null ? (deltaTimeMs / 1000).toFixed(3) : '—';
+            var deltaTimeCls = 'lt-virtual-delta-time';
+            if (deltaTimeMs != null) {
+                if (deltaTimeMs <= 0) deltaTimeCls += ' lt-virtual-delta-time--faster';
+                else deltaTimeCls += ' lt-virtual-delta-time--slower';
+            }
+
+            var actualText = formatLapTime(r.actual === Infinity ? 0 : r.actual);
+            var virtualText = formatLapTime(r.virtual === Infinity ? 0 : r.virtual);
+
+            var rowCls = 'lt-virtual-row';
+            if (idx === 0) rowCls += ' lt-virtual-row--leader';
+
+            html += '<tr class="' + rowCls + '" style="border-left-color:' + teamColor + '">'
+                + '<td class="lt-virtual-cell lt-virtual-cell--pos"><span class="lt-virtual-pos">' + vPos + '</span></td>'
+                + '<td class="lt-virtual-cell lt-virtual-cell--driver">' + escapeHtml(r.name) + '</td>'
+                + '<td class="lt-virtual-cell lt-virtual-cell--time">' + actualText + '</td>'
+                + '<td class="lt-virtual-cell lt-virtual-cell--time">' + virtualText + '</td>'
+                + '<td class="lt-virtual-cell lt-virtual-cell--delta">' + arrow + '</td>'
+                + '<td class="lt-virtual-cell lt-virtual-cell--time"><span class="' + deltaTimeCls + '">' + deltaTimeText + '</span></td>'
                 + '</tr>';
         });
-        html += '</tbody></table></div>';
+        html += '</tbody></table></div></div>';
         return html;
     }
     // ---------- Phase D: Positions ----------
+
+    function ensurePositionsDriverSelections(sess) {
+        if (!sess || !sess.drivers) return;
+        Object.keys(sess.drivers).forEach(function (k) {
+            var carIdx = Number(k);
+            var d = sess.drivers[k];
+            if (!(d.laps || []).length) return;
+            if (!state.driverSelection.has(carIdx)) {
+                state.driverSelection.set(carIdx, { lap: null, ghost: false, posHidden: false });
+            } else {
+                var sel = state.driverSelection.get(carIdx);
+                if (typeof sel.posHidden !== 'boolean') sel.posHidden = false;
+                state.driverSelection.set(carIdx, sel);
+            }
+        });
+    }
+
+    function positionsLineHidden(carIdx) {
+        var sel = state.driverSelection.get(carIdx);
+        return !!(sel && sel.posHidden);
+    }
+
+    function approxMonoLabelWidth(chars, fontSizePx) {
+        return Math.max(String(chars || '').length, 2) * fontSizePx * 0.62;
+    }
+
+    // Small eye SVG for positions chart (stroke matches driver color).
+    function svgPositionEyeMarkup(isHidden, strokeColor) {
+        var esc = escapeHtml(String(strokeColor || '#ccc'));
+        var open = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" class="pos-eye-svg" aria-hidden="true">'
+            + '<path stroke="' + esc + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3" stroke="' + esc + '" stroke-width="2"/></svg>';
+        var off = '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" class="pos-eye-svg pos-eye-svg--off" aria-hidden="true">'
+            + '<path stroke="' + esc + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" '
+            + 'd="M17.94 17.94A10 10 0 0112 20c-7 0-11-8-11-8 .55-1 1.72-3.52 6.94-9.88M14.12 14.12a3 3 0 11-4.24-4.24M10.73 5.08A10 10 0 0112 4c7 0 11 8 11 8 .55 1.33 3.93 11.93 11 23M3 3l18 18"/></svg>';
+        return isHidden ? off : open;
+    }
 
     function renderPositions(body) {
         var sess = state.session;
         var totalLaps = (sess.meta && sess.meta.totalLaps) || computeMaxLap(sess.drivers);
         if (!totalLaps) totalLaps = 1;
 
-        // Pre-select all drivers with at least one completed lap on first render.
-        if (state.driverSelection.size <= 1 && sess.drivers) {
-            Object.keys(sess.drivers).forEach(function (k) {
-                if ((sess.drivers[k].laps || []).length > 0) {
-                    if (!state.driverSelection.has(Number(k))) {
-                        state.driverSelection.set(Number(k), { lap: null, ghost: false });
-                    }
-                }
-            });
-        }
+        ensurePositionsDriverSelections(sess);
 
         body.innerHTML = '<div class="pos-layout">'
-            + '<div class="pos-side" id="posSide"></div>'
             + '<div class="pos-main">'
             +   '<div class="pos-chart">'
             +     '<div class="pos-legend">'
@@ -836,16 +926,6 @@
             +   '</div>'
             + '</div>'
             + '</div>';
-
-        var side = body.querySelector('#posSide');
-        var picker = DriverPicker({
-            drivers: sess.drivers,
-            supportLapSelector: false,
-            hideHeader: true,
-            skipReferenceRadios: true,
-            onChange: function () { drawPositionChart(); },
-        });
-        side.appendChild(picker);
 
         drawPositionChart();
     }
@@ -865,11 +945,21 @@
         var host = document.getElementById('posChart');
         if (!host) return;
         var sess = state.session;
-        var selected = Array.from(state.driverSelection.keys()).filter(function (k) {
-            return sess.drivers && sess.drivers[k];
-        });
-        if (selected.length === 0) {
-            host.innerHTML = '<div class="history-placeholder">Select drivers to plot.</div>';
+
+        function rosterSorted() {
+            var keys = Object.keys(sess.drivers || {}).map(function (k) { return Number(k); })
+                .filter(function (ci) {
+                    var d = sess.drivers[ci];
+                    var valid = (d.laps || []).filter(function (l) { return l.position > 0; });
+                    return valid.length > 0;
+                });
+            keys.sort(function (a, b) { return a - b; });
+            return keys;
+        }
+
+        var roster = rosterSorted();
+        if (roster.length === 0) {
+            host.innerHTML = '<div class="history-placeholder">Нет данных по позициям.</div>';
             return;
         }
 
@@ -877,8 +967,11 @@
         if (!totalLaps) totalLaps = 1;
         var totalDrivers = Math.max(20, Object.keys(sess.drivers || {}).length);
 
-        // SVG dims (intrinsic); CSS scales it. Extra L/R pad for 3-letter codes and "1st SURNAME" labels.
-        var W = 960, H = 500, PAD_L = 58, PAD_R = 112, PAD_T = 32, PAD_B = 18;
+        // SVG dims (intrinsic); CSS scales it. Leave a dedicated left gutter for Y position ticks so
+        // they do not overlap start-of-race driver codes (both were end-anchored near PAD_L — ~2px apart).
+        var PAD_L = 72, PAD_R = 130, PAD_T = 32, PAD_B = 18, H = 500;
+        var W = 960 + (PAD_L - 58) + (PAD_R - 112);
+        var POS_Y_TICK_X = 22; // Y-axis position labels; driver codes stay right, near PAD_L
         var plotW = W - PAD_L - PAD_R;
         var plotH = H - PAD_T - PAD_B;
         var lapStep = plotW / Math.max(1, totalLaps - 1);
@@ -920,7 +1013,7 @@
             var yp = y(p);
             ticks += '<line class="pos-grid" x1="' + PAD_L + '" x2="' + (W - PAD_R) + '" y1="' + yp + '" y2="' + yp + '"/>';
             if (p === 1 || p % 5 === 0 || p === totalDrivers) {
-                ticks += '<text class="pos-ytick" x="' + (PAD_L - 8) + '" y="' + (yp + 4) + '" text-anchor="end">' + p + '</text>';
+                ticks += '<text class="pos-ytick" x="' + POS_Y_TICK_X + '" y="' + (yp + 4) + '" text-anchor="end">' + p + '</text>';
             }
         }
         for (var lx = 1; lx <= totalLaps; lx++) {
@@ -936,37 +1029,55 @@
         var lines = '';
         var markers = '';
         var labels = '';
-        selected.forEach(function (k) {
-            var d = sess.drivers[k];
+        roster.forEach(function (carIdx) {
+            var d = sess.drivers[carIdx];
             var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
             var code = driverCode(d.name);
-            var carIdx = Number(k);
             var cls = getClassificationEntry(sess, carIdx);
             var validLaps = (d.laps || []).filter(function (l) { return l.position > 0; });
             if (validLaps.length === 0) return;
 
+            var hidden = positionsLineHidden(carIdx);
             var pts = validLaps.map(function (l) { return x(l.lapNum) + ',' + y(l.position); });
-            lines += '<polyline class="pos-line" stroke="' + color + '" points="' + pts.join(' ') + '"/>';
-
-            (d.laps || []).forEach(function (l) {
-                if (isPitLap(l) && l.position > 0) {
-                    var cx = x(l.lapNum), cy = y(l.position);
-                    markers += '<g class="pos-pit-badge">'
-                        + '<rect x="' + (cx - 5.5) + '" y="' + (cy - 5.5) + '" width="11" height="11" rx="2.5" ry="2.5" fill="' + color + '" stroke="#fff" stroke-width="1"/>'
-                        + '<text class="pos-pit-letter" x="' + cx + '" y="' + (cy + 2.4) + '" text-anchor="middle">P</text>'
-                        + '</g>';
-                }
-            });
+            if (!hidden) {
+                lines += '<polyline class="pos-line" stroke="' + color + '" points="' + pts.join(' ') + '"/>';
+                (d.laps || []).forEach(function (l) {
+                    if (isPitLap(l) && l.position > 0) {
+                        var cx = x(l.lapNum), cy = y(l.position);
+                        markers += '<g class="pos-pit-badge">'
+                            + '<rect x="' + (cx - 5.5) + '" y="' + (cy - 5.5) + '" width="11" height="11" rx="2.5" ry="2.5" fill="' + color + '" stroke="#fff" stroke-width="1"/>'
+                            + '<text class="pos-pit-letter" x="' + cx + '" y="' + (cy + 2.4) + '" text-anchor="middle">P</text>'
+                            + '</g>';
+                    }
+                });
+            }
 
             var first = validLaps[0];
             var last = validLaps[validLaps.length - 1];
             var endMeta = positionChartEndLabel(sess, d, cls, carIdx, totalLaps);
             var rightText = endMeta.text;
             var rightClass = 'pos-driver-label pos-driver-label--end' + (endMeta.dnf ? ' pos-driver-label--dnf' : '');
-            labels += '<text class="pos-driver-label pos-driver-label--start" x="' + (PAD_L - 10) + '" y="' + (y(first.position) + 4)
-                + '" text-anchor="end" fill="' + color + '">' + escapeHtml(code) + '</text>';
-            labels += '<text class="' + rightClass + '" x="' + (W - PAD_R + 10) + '" y="' + (y(last.position) + 4)
-                + '" text-anchor="start" fill="' + color + '">' + escapeHtml(rightText) + '</text>';
+            var dimClass = hidden ? ' pos-label-hit--hidden' : '';
+            var tip = hidden ? 'Показать линию на графике' : 'Скрыть линию на графике';
+
+            var lyStart = y(first.position) + 4;
+            labels += '<g class="pos-label-hit pos-label-hit--start' + dimClass + '" data-pos-toggle="' + carIdx
+                + '" transform="translate(' + (PAD_L - 10) + ',' + lyStart + ')">'
+                + '<title>' + tip + '</title>'
+                + '<text class="pos-driver-label pos-driver-label--start" x="0" y="0" dominant-baseline="middle" text-anchor="end" fill="' + color + '">'
+                + escapeHtml(code) + '</text></g>';
+
+            var lyEnd = y(last.position) + 4;
+            var rx = W - PAD_R + 10;
+            var eyeDx = approxMonoLabelWidth(rightText, 11) + 4;
+            labels += '<g class="pos-label-hit pos-label-hit--end' + dimClass + '" data-pos-toggle="' + carIdx
+                + '" transform="translate(' + rx + ',' + lyEnd + ')">'
+                + '<title>' + tip + '</title>'
+                + '<text class="' + rightClass + '" x="0" y="0" dominant-baseline="middle" text-anchor="start" fill="' + color + '">'
+                + escapeHtml(rightText) + '</text>'
+                + '<g class="pos-eye-wrap" transform="translate(' + eyeDx + ',-7)">'
+                + svgPositionEyeMarkup(hidden, color)
+                + '</g></g>';
         });
 
         host.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="pos-svg" preserveAspectRatio="xMidYMid meet">'
@@ -1617,6 +1728,7 @@
                         if (isLapDuplicate(pickedCar, pickedLap)) return;
                         var key = nextCompareSelectionKey();
                         state.driverSelection.set(key, { lap: pickedLap, ghost: false, sourceCarIdx: pickedCar, hidden: false });
+                        render();
                         if (opts.onChange) opts.onChange();
                         overlay.remove();
                     });
@@ -1853,6 +1965,21 @@
 
     // ---------- wire up sub-tab click handlers once ----------
     document.addEventListener('click', function (e) {
+        var posHit = e.target.closest('[data-pos-toggle]');
+        if (posHit && state.session && state.subTab === 'positions') {
+            var chartRoot = posHit.closest('#posChart');
+            if (chartRoot) {
+                var idx = Number(posHit.getAttribute('data-pos-toggle'));
+                var drv = state.session.drivers[idx];
+                if (!isNaN(idx) && drv != null) {
+                    var sel = state.driverSelection.get(idx) || { lap: null, ghost: false, posHidden: false };
+                    sel.posHidden = !sel.posHidden;
+                    state.driverSelection.set(idx, sel);
+                    drawPositionChart();
+                    return;
+                }
+            }
+        }
         var sub = e.target.closest('.history-sidenav-item');
         if (sub) {
             switchSubTab(sub.dataset.sub);

@@ -281,12 +281,15 @@ public sealed class SessionLogger
             completedLapNum >= 1 && completedLapNum <= hist.LapHistoryDataItems.Length)
         {
             var h = hist.LapHistoryDataItems[completedLapNum - 1];
-            if (h.LapTimeInMs > 0) lapTimeMs = h.LapTimeInMs;
-            s1Ms = (uint)(h.Sector1TimeMsPart + h.Sector1TimeMinutesPart * 60_000);
-            s2Ms = (uint)(h.Sector2TimeMsPart + h.Sector2TimeMinutesPart * 60_000);
-            s3Ms = (uint)(h.Sector3TimeMsPart + h.Sector3TimeMinutesPart * 60_000);
-            // Bit 0 = lap valid, bits 1..3 = sector validity. Keep lap-level here.
-            lapValid = (h.LapValidBitFlags & 0x01) != 0;
+            if (h.LapTimeInMs > 0)
+            {
+                lapTimeMs = h.LapTimeInMs;
+                s1Ms = (uint)(h.Sector1TimeMsPart + h.Sector1TimeMinutesPart * 60_000);
+                s2Ms = (uint)(h.Sector2TimeMsPart + h.Sector2TimeMinutesPart * 60_000);
+                s3Ms = (uint)(h.Sector3TimeMsPart + h.Sector3TimeMinutesPart * 60_000);
+                // Bit 0 = lap valid, bits 1..3 = sector validity. Keep lap-level here.
+                lapValid = (h.LapValidBitFlags & 0x01) != 0;
+            }
         }
 
         // Gap to leader: convert the LapData delta fields (minutes + ms).
@@ -514,6 +517,27 @@ public sealed class SessionLogger
         if (lapData == null || lapData.LapDataItems == null)
             return;
 
+        // Backfill sector times for laps that were recorded before SessionHistory arrived.
+        foreach (var driver in entry.Drivers.Values)
+        {
+            if (!entry.LapHistories.TryGetValue(driver.CarIdx, out var hist)) continue;
+            foreach (var lap in driver.Laps)
+            {
+                if (lap.LapNum >= 1 && lap.LapNum <= hist.LapHistoryDataItems.Length)
+                {
+                    var h = hist.LapHistoryDataItems[lap.LapNum - 1];
+                    if (h.LapTimeInMs > 0)
+                    {
+                        if (lap.S1Ms == 0) lap.S1Ms = (uint)(h.Sector1TimeMsPart + h.Sector1TimeMinutesPart * 60_000);
+                        if (lap.S2Ms == 0) lap.S2Ms = (uint)(h.Sector2TimeMsPart + h.Sector2TimeMinutesPart * 60_000);
+                        if (lap.S3Ms == 0) lap.S3Ms = (uint)(h.Sector3TimeMsPart + h.Sector3TimeMinutesPart * 60_000);
+                        if (lap.LapTimeMs == 0) lap.LapTimeMs = h.LapTimeInMs;
+                        lap.Valid = (h.LapValidBitFlags & 0x01) != 0;
+                    }
+                }
+            }
+        }
+
         var count = Math.Min(lapData.LapDataItems.Length, MaxCars);
         for (byte carIdx = 0; carIdx < count; carIdx++)
         {
@@ -522,7 +546,12 @@ public sealed class SessionLogger
                 continue;
 
             var driver = GetOrCreateDriver(entry, carIdx);
-            if (driver.Laps.Any(l => l.LapNum == currentNum))
+            // The most recently completed lap is currentNum - 1.
+            var completedLapNum = (byte)(currentNum - 1);
+            if (completedLapNum == 0)
+                continue;
+
+            if (driver.Laps.Any(l => l.LapNum == completedLapNum))
                 continue;
 
             var lapCompleted =
@@ -532,7 +561,7 @@ public sealed class SessionLogger
             if (!lapCompleted)
                 continue;
 
-            CompleteLap(entry, carIdx, currentNum, lapData.LapDataItems[carIdx], sessionUid);
+            CompleteLap(entry, carIdx, completedLapNum, lapData.LapDataItems[carIdx], sessionUid);
         }
     }
 

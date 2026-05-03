@@ -6,6 +6,7 @@
     --color-bg-card: #1c2128;
     --color-bg-card-alt: #1a1d26;
     --color-bg-card-hover: #22262f;
+    --color-bg-header: rgba(15, 17, 23, 0.95);
 
     --color-border-default: #30363d;
     --color-border-muted: #3d444d;
@@ -26,6 +27,30 @@
     --color-semantic-info: #58a6ff;
     --color-semantic-danger: #e10600;
     --color-semantic-danger-alt: #f85149;
+
+    /* Bright signal accents + telemetry hues (used by connection pill, flags, RPM, pedals, Fuel/ERS, lap tags, compare) */
+    --semantic-red: #e10600;
+    --semantic-red-soft: rgba(225, 6, 0, 0.08);
+    --semantic-red-mid: rgba(225, 6, 0, 0.14);
+    --semantic-red-glow: rgba(225, 6, 0, 0.15);
+    --accent-green: #00d700;
+    --accent-blue: #00a6ff;
+    --accent-yellow: #ffd700;
+    --accent-orange: #ff8c00;
+    --accent-red: var(--color-accent-primary);
+    --throttle: #00d700;
+    --brake: var(--semantic-red);
+    --ers: #ffd700;
+    --drs: #00d0ff;
+    --danger: var(--semantic-red);
+    --warning: #ff8c00;
+    --safe: #00d700;
+
+    /* Ad hoc panel / form surfaces (used e.g. telemetry compare map chips) */
+    --border-color: var(--color-border-default);
+    --panel-bg: var(--color-bg-card);
+    --text-main: var(--color-text-primary);
+    --bg-input: #12141a;
 
     /* Spacing */
     --space-1: 4px;
