@@ -2,6 +2,8 @@ using System.IO;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Windows;
+using System.Windows.Media;
 using System.Xml.Linq;
 using Microsoft.Extensions.Options;
 using F1Telemetry.Config;
@@ -1060,29 +1062,62 @@ static class Program
         // Opens a native WPF folder picker on the app's UI thread and returns the chosen path.
         // Returns 204 No Content if the user cancels. Only works when the WPF Application is alive
         // (i.e. running as the tray app, not a headless web host).
-        app.MapPost("/api/sessions/source/browse", () =>
+        // Await Dispatcher.InvokeAsync (not synchronous Invoke) so the request thread never blocks
+        // waiting on the WPF pump in a way that can deadlock with the UI thread hosting Kestrel.
+        app.MapPost("/api/sessions/source/browse", async () =>
         {
             var wpfApp = System.Windows.Application.Current;
             if (wpfApp == null)
                 return Results.Problem("native folder picker is unavailable in headless mode", statusCode: 503);
 
-            string? picked = null;
-            wpfApp.Dispatcher.Invoke(() =>
+            try
             {
-                var dlg = new Microsoft.Win32.OpenFolderDialog
+                var picked = await wpfApp.Dispatcher.InvokeAsync(() =>
                 {
-                    Title = "Select History Source Folder",
-                    InitialDirectory = Directory.Exists(HistoryRoot.Path)
-                        ? HistoryRoot.Path
-                        : HistoryRoot.PersistentDefault,
-                };
-                if (dlg.ShowDialog() == true)
-                    picked = dlg.FolderName;
-            });
+                    // This host is tray-only (no MainWindow). Win32 folder dialogs need a visible
+                    // owner HWND; without one, ShowDialog() often returns false immediately (204).
+                    var owner = new Window
+                    {
+                        Width = 0,
+                        Height = 0,
+                        Left = -10_000,
+                        Top = -10_000,
+                        ShowInTaskbar = false,
+                        WindowStyle = WindowStyle.None,
+                        AllowsTransparency = true,
+                        Background = Brushes.Transparent,
+                        Opacity = 0,
+                        Topmost = true,
+                    };
+                    owner.Show();
+                    try
+                    {
+                        var dlg = new Microsoft.Win32.OpenFolderDialog
+                        {
+                            Title = "Select History Source Folder",
+                            InitialDirectory = Directory.Exists(HistoryRoot.Path)
+                                ? HistoryRoot.Path
+                                : HistoryRoot.PersistentDefault,
+                        };
+                        return dlg.ShowDialog(owner) == true ? dlg.FolderName : null;
+                    }
+                    finally
+                    {
+                        owner.Close();
+                    }
+                });
 
-            return picked == null
-                ? Results.NoContent()
-                : Results.Ok(new { path = picked });
+                return picked == null
+                    ? Results.NoContent()
+                    : Results.Ok(new { path = picked });
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem(
+                    title: "Folder picker failed",
+                    detail: ex.Message,
+                    statusCode: 500);
+            }
         });
     }
 }

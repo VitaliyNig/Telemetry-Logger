@@ -46,7 +46,7 @@ body.on-live-tab.hide-header .app-header { display: none; }
     display: block;
     width: 24px;
     height: 24px;
-    filter: brightness(0);
+    color: #0d1117;
 }
 
 .tab-nav {

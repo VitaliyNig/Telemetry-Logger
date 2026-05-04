@@ -345,6 +345,19 @@
         if (resetFolderBtn) resetFolderBtn.addEventListener('click', function () {
             setHistorySource(null);
         });
+
+        var pathEl = document.getElementById('historyFolderPath');
+        if (pathEl) {
+            pathEl.addEventListener('change', function () {
+                var newPath = pathEl.value.trim();
+                if (newPath) setHistorySource(newPath);
+            });
+            pathEl.addEventListener('keydown', function (e) {
+                if (e.key === 'Enter') {
+                    pathEl.blur();
+                }
+            });
+        }
     }
 
     function refreshHistorySource() {
@@ -359,34 +372,41 @@
         var badgeEl = document.getElementById('historyFolderBadge');
         var resetBtn = document.getElementById('btnHistoryResetFolder');
         if (pathEl) {
-            pathEl.textContent = info && info.path ? info.path : 'Logs';
-            pathEl.title = pathEl.textContent;
+            pathEl.value = info && info.path ? info.path : 'Logs';
+            pathEl.title = pathEl.value;
         }
         var isDefault = !info || info.isDefault !== false;
         if (badgeEl) badgeEl.hidden = isDefault;
         if (resetBtn) resetBtn.hidden = isDefault;
     }
 
+    function promptHistorySourcePath() {
+        var current = (document.getElementById('historyFolderPath') || {}).value || '';
+        var typed = window.prompt('Enter the absolute path to the History source folder:', current);
+        return typed ? { path: typed.trim() } : null;
+    }
+
+    function browseHistorySourceSignal() {
+        if (typeof AbortSignal !== 'undefined' && typeof AbortSignal.timeout === 'function')
+            return AbortSignal.timeout(120000);
+        return undefined;
+    }
+
     function onSelectHistoryFolder() {
         var btn = document.getElementById('btnHistorySelectFolder');
         if (btn) btn.disabled = true;
 
-        // Try the host's native folder picker first (works in the WPF tray app).
-        // Fall back to a manual path prompt for browsers / headless mode.
-        fetch('/api/sessions/source/browse', { method: 'POST' })
+        // Native folder dialog via host; 503/500 or network loss → manual path (same as headless).
+        fetch('/api/sessions/source/browse', { method: 'POST', signal: browseHistorySourceSignal() })
             .then(function (r) {
-                if (r.status === 204) return null;        // user cancelled
-                if (r.status === 503) return 'fallback';  // no native UI available
+                if (r.status === 204) return null;
+                if (r.status === 503 || r.status === 500) return 'fallback';
                 if (!r.ok) throw new Error('browse failed: ' + r.status);
                 return r.json();
             })
             .then(function (data) {
                 if (data === null) return null;
-                if (data === 'fallback') {
-                    var current = (document.getElementById('historyFolderPath') || {}).textContent || '';
-                    var typed = window.prompt('Enter the absolute path to the History source folder:', current);
-                    return typed ? { path: typed.trim() } : null;
-                }
+                if (data === 'fallback') return promptHistorySourcePath();
                 return data;
             })
             .then(function (picked) {
@@ -394,7 +414,15 @@
                 return setHistorySource(picked.path);
             })
             .catch(function (err) {
-                window.alert('Failed to select folder: ' + (err.message || err));
+                var msg = String(err && err.message ? err.message : err);
+                var isAbort = err && err.name === 'AbortError';
+                var isNetwork = isAbort || /failed to fetch|networkerror|load failed|network request failed/i.test(msg);
+                if (isNetwork) {
+                    var picked = promptHistorySourcePath();
+                    if (picked && picked.path) setHistorySource(picked.path);
+                    return;
+                }
+                window.alert('Failed to select folder: ' + msg);
             })
             .finally(function () {
                 if (btn) btn.disabled = false;
@@ -432,9 +460,15 @@
                 + '<span class="session-pick-date">' + formatSessionDate(s.savedAt) + '</span>'
                 + '</button>';
         }).join('');
+        var flagCode = (typeof TRACK_FLAG_MAP !== 'undefined' && weekend.trackId != null)
+            ? TRACK_FLAG_MAP[weekend.trackId] : null;
+        var flagHtml = flagCode
+            ? '<img class="history-modal-flag" src="/assets/flags/' + flagCode + '.svg" alt="' + flagCode + '" width="32" height="20">'
+            : '';
         overlay.innerHTML = ''
             + '<div class="history-modal">'
-            +   '<div class="history-modal-header">' + escapeHtml(weekendName) + ' — pick a session'
+            +   '<div class="history-modal-header">'
+            +     '<span class="history-modal-header-title">' + flagHtml + '<span class="history-modal-header-text"><span class="history-modal-header-track">' + escapeHtml(weekendName) + '</span><span class="history-modal-header-sub">pick a session</span></span></span>'
             +     '<button class="history-modal-close" aria-label="Close">&times;</button>'
             +   '</div>'
             +   '<div class="history-modal-body">' + rows + '</div>'
@@ -603,10 +637,10 @@
     if (btnSettingsBrowseFolder) {
         btnSettingsBrowseFolder.addEventListener('click', function () {
             btnSettingsBrowseFolder.disabled = true;
-            fetch('/api/sessions/source/browse', { method: 'POST' })
+            fetch('/api/sessions/source/browse', { method: 'POST', signal: browseHistorySourceSignal() })
                 .then(function (r) {
                     if (r.status === 204) return null;
-                    if (r.status === 503) return 'fallback';
+                    if (r.status === 503 || r.status === 500) return 'fallback';
                     if (!r.ok) throw new Error('browse failed: ' + r.status);
                     return r.json();
                 })
@@ -626,8 +660,21 @@
                     autoSaveSettings();
                 })
                 .catch(function (err) {
+                    var msg = String(err && err.message ? err.message : err);
+                    var isAbort = err && err.name === 'AbortError';
+                    var isNetwork = isAbort || /failed to fetch|networkerror|load failed|network request failed/i.test(msg);
+                    if (isNetwork) {
+                        var current = historyFolderInput ? historyFolderInput.value : '';
+                        var typed = window.prompt('Enter the absolute path for the History folder:', current);
+                        if (typed && historyFolderInput) {
+                            historyFolderInput.value = typed.trim();
+                            updateHistoryFolderSettingsUi(null, null);
+                            autoSaveSettings();
+                        }
+                        return;
+                    }
                     if (historyFolderError) {
-                        historyFolderError.textContent = 'Browse failed: ' + (err.message || err);
+                        historyFolderError.textContent = 'Browse failed: ' + msg;
                         historyFolderError.hidden = false;
                     }
                 })
@@ -983,5 +1030,7 @@
     }
 
     // --- Init ---
+    ensureHistoryToolbar();
+    window.f1telemetryBrowseHistorySource = onSelectHistoryFolder;
     loadSettings();
 })();

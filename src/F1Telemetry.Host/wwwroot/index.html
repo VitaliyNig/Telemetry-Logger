@@ -15,7 +15,9 @@
     <main class="app-main">
         <header class="app-header">
             <div class="header-logo">
-                <img class="header-logo__img" src="/logo.svg" width="24" height="24" alt="" aria-hidden="true">
+                <svg class="header-logo__img" width="24" height="24" viewBox="0 0 256 256" fill="none" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+                    <path d="M74 217.193L38.3682 162.364L62.7363 107.536H2.73633L27.1045 52.707H162.104L168.197 39H228.197L222.104 52.707L197.736 107.536H122.736L74 217.193ZM173.368 162.364H218.368L254 217.193H89L131.645 121.243H191.645L173.368 162.364Z" fill="currentColor"/>
+                </svg>
             </div>
             <nav class="tab-nav" id="tabNav">
                 <button class="tab-btn active" data-tab="live">Live</button>
@@ -75,7 +77,7 @@
                     <div class="history-toolbar-row history-toolbar-folder">
                         <div class="history-folder">
                             <span class="history-folder-label">Source folder</span>
-                            <span class="history-folder-path" id="historyFolderPath" title="Logs">Logs</span>
+                            <input type="text" class="history-folder-path" id="historyFolderPath" title="Logs" value="Logs" />
                             <span class="history-folder-badge" id="historyFolderBadge" hidden>custom</span>
                         </div>
                         <div class="history-folder-actions">
@@ -116,7 +118,7 @@
                 <div class="history-detail-layout">
                     <nav class="history-sidenav" role="tablist">
                         <button class="history-sidenav-item active" data-sub="laptimes">Lap Times</button>
-                        <button class="history-sidenav-item" data-sub="positions" hidden>Positions</button>
+                        <button class="history-sidenav-item" data-sub="positions" hidden>Lap Chart</button>
                         <button class="history-sidenav-item" data-sub="compare">Telemetry Compare</button>
                         <button class="history-sidenav-item" data-sub="events">Events</button>
                     </nav>

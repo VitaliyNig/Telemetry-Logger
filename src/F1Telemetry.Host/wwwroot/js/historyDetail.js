@@ -1,8 +1,8 @@
 // History Mode — session detail view controller.
-// Four sub-tabs: Lap Times / Positions / Telemetry Compare / Events. Owned modules:
+// Four sub-tabs: Lap Times / Lap Chart / Telemetry Compare / Events. Owned modules:
 //   - renderLapTimes, renderPositions, renderTelemetryCompare, renderEvents
 //     (defined in the same file for now; extract later if file grows > 800 lines)
-//   - DriverPicker: Telemetry Compare sidebar; Positions toggles visibility on chart labels instead.
+//   - DriverPicker: Telemetry Compare sidebar; Lap Chart toggles visibility on chart labels instead.
 // State lives on the module (not window) so switching to Live tab doesn't tear it down.
 (function () {
     'use strict';
@@ -12,11 +12,69 @@
         slug: null,
         session: null,               // full session detail JSON (from /api/sessions/{folder}/{slug})
         subTab: 'laptimes',
-        // Map<carIdx, { lap, ghost?, hidden?, posHidden? }>. Compare uses `hidden`; Positions chart uses `posHidden`.
+        // Map<carIdx, { lap, ghost?, hidden?, posHidden? }>. Compare uses `hidden`; Lap Chart uses `posHidden`.
         driverSelection: new Map(),
         compareState: { referenceCarIdx: null, referenceLap: null },
         lapSamplesCache: new Map(),  // key: carIdx + ':' + lap
     };
+
+    /** Lap Chart resize + vertical pan helpers (module-local; not persisted on state.session). */
+    var posChartResizeObserver = null;
+    var posChartResizeDebounceTimer = null;
+
+    function disconnectPosChartResize() {
+        if (posChartResizeObserver) {
+            posChartResizeObserver.disconnect();
+            posChartResizeObserver = null;
+        }
+        if (posChartResizeDebounceTimer) {
+            clearTimeout(posChartResizeDebounceTimer);
+            posChartResizeDebounceTimer = null;
+        }
+    }
+
+    /** Read scroll/max from chart wrap; optionally adjust range input visibility. */
+    function syncPosChartVerticalPan() {
+        var wrap = document.getElementById('posChart');
+        var pan = document.getElementById('posChartVPan');
+        var rng = document.getElementById('posChartVRange');
+        if (!wrap || !pan || !rng) return;
+        var maxScroll = wrap.scrollHeight - wrap.clientHeight;
+        if (maxScroll <= 2) {
+            rng.max = '0';
+            rng.value = '0';
+            pan.setAttribute('hidden', '');
+            return;
+        }
+        pan.removeAttribute('hidden');
+        rng.max = String(Math.max(1, Math.round(maxScroll)));
+        rng.value = String(Math.round(Math.min(Number(rng.max), wrap.scrollTop)));
+    }
+
+    function setupPosChartResizeObserver() {
+        disconnectPosChartResize();
+        var wrap = document.getElementById('posChart');
+        if (!wrap || typeof ResizeObserver === 'undefined') return;
+        posChartResizeObserver = new ResizeObserver(function () {
+            if (state.subTab !== 'positions') return;
+            clearTimeout(posChartResizeDebounceTimer);
+            posChartResizeDebounceTimer = setTimeout(function () {
+                if (state.subTab !== 'positions') return;
+                var w = document.getElementById('posChart');
+                if (!w) return;
+                var maxS = w.scrollHeight - w.clientHeight;
+                var ratio = maxS > 1 ? w.scrollTop / maxS : 0;
+                drawPositionChart();
+                w = document.getElementById('posChart');
+                if (w && w.scrollHeight - w.clientHeight > 1) {
+                    var newMax = w.scrollHeight - w.clientHeight;
+                    w.scrollTop = ratio * newMax;
+                }
+                syncPosChartVerticalPan();
+            }, 50);
+        });
+        posChartResizeObserver.observe(wrap);
+    }
 
     // ---------- public API ----------
 
@@ -35,7 +93,7 @@
 
         setBreadcrumb(weekendName || folder, slug);
         ensureActionsBar();
-        // Until meta loads, treat session type as unknown: hide Positions so FP/Q/etc. never flash it.
+        // Until meta loads, treat session type as unknown: hide Lap Chart so FP/Q/etc. never flash it.
         updateHistorySubTabsVisibility();
         switchSubTab(state.subTab || 'laptimes');
 
@@ -69,6 +127,7 @@
         if (list) list.hidden = false;
         if (detail) detail.hidden = true;
         closeEventsFilterPanel();
+        disconnectPosChartResize();
         state.session = null;
     }
 
@@ -86,8 +145,10 @@
     function renderCurrentSubTab() {
         var body = document.getElementById('historyDetailBody');
         if (!body) return;
+        if (state.subTab !== 'positions') disconnectPosChartResize();
         if (state.subTab !== 'events') closeEventsFilterPanel();
         if (!state.session) {
+            disconnectPosChartResize();
             body.innerHTML = '<div class="history-empty"><p>Loading session…</p></div>';
             return;
         }
@@ -868,7 +929,7 @@
         html += '</tbody></table></div></div>';
         return html;
     }
-    // ---------- Phase D: Positions ----------
+    // ---------- Phase D: Lap Chart ----------
 
     function ensurePositionsDriverSelections(sess) {
         if (!sess || !sess.drivers) return;
@@ -908,12 +969,10 @@
 
     function renderPositions(body) {
         var sess = state.session;
-        var totalLaps = (sess.meta && sess.meta.totalLaps) || computeMaxLap(sess.drivers);
-        if (!totalLaps) totalLaps = 1;
-
         ensurePositionsDriverSelections(sess);
 
         body.innerHTML = '<div class="pos-layout">'
+            + '<div class="pos-sidebar" id="posSidebar"></div>'
             + '<div class="pos-main">'
             +   '<div class="pos-chart">'
             +     '<div class="pos-legend">'
@@ -922,12 +981,38 @@
             +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--red"></span>Red Flag</span>'
             +       '<span class="pos-legend-item"><span class="pos-legend-chip pos-legend-chip--pit"></span>Pitstop</span>'
             +     '</div>'
-            +     '<div class="pos-chart-wrap" id="posChart"></div>'
+            +     '<div class="pos-chart-frame">'
+            +       '<div class="pos-chart-wrap" id="posChart"></div>'
+            +       '<div class="pos-chart-v-pan" id="posChartVPan" hidden>'
+            +         '<input type="range" id="posChartVRange" class="pos-chart-v-range" '
+            +         'aria-label="Scroll chart vertically" value="0" />'
+            +       '</div>'
+            +     '</div>'
             +   '</div>'
             + '</div>'
             + '</div>';
 
+        renderPosSidebar();
         drawPositionChart();
+        attachPosChartInteractions();
+        setupPosChartResizeObserver();
+        syncPosChartVerticalPan();
+        requestAnimationFrame(function () {
+            requestAnimationFrame(function () {
+                if (state.subTab !== 'positions') return;
+                var wc = document.getElementById('posChart');
+                if (!wc) return;
+                var maxS = wc.scrollHeight - wc.clientHeight;
+                var ratio = maxS > 1 ? wc.scrollTop / maxS : 0;
+                drawPositionChart();
+                wc = document.getElementById('posChart');
+                if (wc && wc.scrollHeight - wc.clientHeight > 1) {
+                    var nm = wc.scrollHeight - wc.clientHeight;
+                    wc.scrollTop = ratio * nm;
+                }
+                syncPosChartVerticalPan();
+            });
+        });
     }
 
     function computeMaxLap(drivers) {
@@ -941,25 +1026,52 @@
         return max;
     }
 
+    function renderPosSidebar() {
+        var sidebar = document.getElementById('posSidebar');
+        if (!sidebar) return;
+        var sess = state.session;
+        var roster = Object.keys(sess.drivers || {}).map(Number).filter(function (ci) {
+            var d = sess.drivers[ci];
+            return (d.laps || []).some(function (l) { return l.position > 0; });
+        }).sort(function (a, b) { return sortDriversByFinalPosition(sess, a, b); });
+        if (roster.length === 0) { sidebar.innerHTML = ''; return; }
+
+        var html = '<div class="pos-sidebar-header">Drivers</div>';
+        roster.forEach(function (carIdx) {
+            var d = sess.drivers[carIdx];
+            var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
+            var hidden = positionsLineHidden(carIdx);
+            var code = driverCode(d.name);
+            var name = shortDriverName(d.name) || 'Unknown';
+            var cls = hidden ? ' is-hidden' : '';
+            html += '<div class="pos-sidebar-row' + cls + '" data-pos-sidebar-toggle="' + carIdx + '">'
+                + '<span class="pos-sidebar-swatch" style="background:' + color + '"></span>'
+                + '<span class="pos-sidebar-code">' + escapeHtml(code) + '</span>'
+                + '<span class="pos-sidebar-name">' + escapeHtml(name) + '</span>'
+                + '<span class="pos-sidebar-eye">' + svgPositionEyeMarkup(hidden, color) + '</span>'
+                + '</div>';
+        });
+        sidebar.innerHTML = html;
+    }
+
     function drawPositionChart() {
         var host = document.getElementById('posChart');
         if (!host) return;
         var sess = state.session;
 
         function rosterSorted() {
-            var keys = Object.keys(sess.drivers || {}).map(function (k) { return Number(k); })
+            var keys = Object.keys(sess.drivers || {}).map(Number)
                 .filter(function (ci) {
                     var d = sess.drivers[ci];
-                    var valid = (d.laps || []).filter(function (l) { return l.position > 0; });
-                    return valid.length > 0;
+                    return (d.laps || []).some(function (l) { return l.position > 0; });
                 });
-            keys.sort(function (a, b) { return a - b; });
+            keys.sort(function (a, b) { return sortDriversByFinalPosition(sess, a, b); });
             return keys;
         }
 
         var roster = rosterSorted();
         if (roster.length === 0) {
-            host.innerHTML = '<div class="history-placeholder">Нет данных по позициям.</div>';
+            host.innerHTML = '<div class="history-placeholder">No position data.</div>';
             return;
         }
 
@@ -967,19 +1079,48 @@
         if (!totalLaps) totalLaps = 1;
         var totalDrivers = Math.max(20, Object.keys(sess.drivers || {}).length);
 
-        // SVG dims (intrinsic); CSS scales it. Leave a dedicated left gutter for Y position ticks so
-        // they do not overlap start-of-race driver codes (both were end-anchored near PAD_L — ~2px apart).
-        var PAD_L = 72, PAD_R = 130, PAD_T = 32, PAD_B = 18, H = 500;
-        var W = 960 + (PAD_L - 58) + (PAD_R - 112);
-        var POS_Y_TICK_X = 22; // Y-axis position labels; driver codes stay right, near PAD_L
+        // viewBox width W vs wrap width hostWidthPx: painted scale svgCssScale = hostWidthPx / W (≤1).
+        // Text uses user-space font-size = labelPx × (W/hostWidthPx) so screen size stays ~labelPx regardless of scaling.
+        // W never forced to 960 on narrow layouts (that used to shrink all typography horizontally).
+        var PAD_L = 64, PAD_R = 16, PAD_T = 32, PAD_B = 18;
+        var MIN_ROW_PX = 12;
+        var MAX_ROW_PX = 38;
+        var MIN_LAP_COL_PX = 5.5;
+
+        var hostWidthPx = Math.max(280, Math.round(host.clientWidth || 320));
+        var hostHeightMeasured = host.clientHeight || 0;
+
+        var minPlotFx = MIN_LAP_COL_PX * Math.max(1, totalLaps - 1);
+        var W = Math.max(hostWidthPx, Math.ceil(PAD_L + PAD_R + minPlotFx));
+        var svgCssScale = hostWidthPx / W;
+
+        function fontSzUser(labelPxScr) {
+            var u = (Number(labelPxScr) * W) / hostWidthPx;
+            return String(Number(u.toPrecision(8)));
+        }
+        var fAxis = fontSzUser(11);
+        var fPitLt = fontSzUser(6.5);
+
+        var POS_Y_TICK_X = 22;
+
+        var segments = Math.max(1, totalDrivers - 1);
+        var padTbPx = (PAD_T + PAD_B) * svgCssScale;
+        var availPlotPxBase = hostHeightMeasured > 12 ? hostHeightMeasured - padTbPx : 260;
+        var availPlotPx = Math.max(55, availPlotPxBase);
+
+        var idealRowPx = availPlotPx / segments;
+        var rowPx = Math.min(MAX_ROW_PX, Math.max(MIN_ROW_PX, idealRowPx));
+        var plotH_px = rowPx * segments;
+
         var plotW = W - PAD_L - PAD_R;
-        var plotH = H - PAD_T - PAD_B;
+        var plotH = plotH_px / svgCssScale;
+        var H = PAD_T + plotH + PAD_B;
         var lapStep = plotW / Math.max(1, totalLaps - 1);
 
         function x(lap) { return PAD_L + (lap - 1) * lapStep; }
         function y(pos) { return PAD_T + (pos - 1) / Math.max(1, totalDrivers - 1) * plotH; }
 
-        // Race-flag bands (SC/VSC/Red only): max flag per lap, collapsed into consecutive same-flag ranges.
+        // Race-flag bands: Yellow=1, SC=2, VSC=3, Red=4
         var flagByLap = {};
         (sess.events || []).forEach(function (e) {
             if (e.flag != null && e.lap != null && (e.flag === 2 || e.flag === 3 || e.flag === 4)) {
@@ -1007,13 +1148,13 @@
             }
         }
 
-        // Grid lines + Y labels at every position (left axis only; right side = driver labels).
+        // Grid: horizontal line for every race position; Y labels every 5th + first/last
         var ticks = '';
         for (var p = 1; p <= totalDrivers; p++) {
             var yp = y(p);
             ticks += '<line class="pos-grid" x1="' + PAD_L + '" x2="' + (W - PAD_R) + '" y1="' + yp + '" y2="' + yp + '"/>';
             if (p === 1 || p % 5 === 0 || p === totalDrivers) {
-                ticks += '<text class="pos-ytick" x="' + POS_Y_TICK_X + '" y="' + (yp + 4) + '" text-anchor="end">' + p + '</text>';
+                ticks += '<text class="pos-ytick" font-size="' + fAxis + '" x="' + POS_Y_TICK_X + '" y="' + (yp + 4) + '" text-anchor="end">' + p + '</text>';
             }
         }
         for (var lx = 1; lx <= totalLaps; lx++) {
@@ -1021,67 +1162,209 @@
             ticks += '<line class="pos-grid pos-grid--v' + (majorLap ? ' pos-grid--v-major' : '')
                 + '" x1="' + x(lx) + '" x2="' + x(lx) + '" y1="' + PAD_T + '" y2="' + (H - PAD_B) + '"/>';
             if (majorLap) {
-                ticks += '<text class="pos-xtick" x="' + x(lx) + '" y="' + (PAD_T - 10) + '" text-anchor="middle">' + lx + '</text>';
+                ticks += '<text class="pos-xtick" font-size="' + fAxis + '" x="' + x(lx) + '" y="' + (PAD_T - 10) + '" text-anchor="middle">' + lx + '</text>';
             }
         }
 
-        // Driver polylines + pit badges + start (3-letter) / end (ordinal + surname) labels.
-        var lines = '';
-        var markers = '';
-        var labels = '';
+        // Pre-compute pit offsets so multiple pits on same lap don't overlap
+        var pitByLap = {};
+        roster.forEach(function (carIdx) {
+            var d = sess.drivers[carIdx];
+            (d.laps || []).forEach(function (l) {
+                if (isPitLap(l) && l.position > 0) {
+                    if (!pitByLap[l.lapNum]) pitByLap[l.lapNum] = [];
+                    pitByLap[l.lapNum].push(carIdx);
+                }
+            });
+        });
+
+        // Driver groups: line + dots + pits + start label
+        var driverGroups = '';
         roster.forEach(function (carIdx) {
             var d = sess.drivers[carIdx];
             var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
             var code = driverCode(d.name);
-            var cls = getClassificationEntry(sess, carIdx);
             var validLaps = (d.laps || []).filter(function (l) { return l.position > 0; });
             if (validLaps.length === 0) return;
 
             var hidden = positionsLineHidden(carIdx);
             var pts = validLaps.map(function (l) { return x(l.lapNum) + ',' + y(l.position); });
-            if (!hidden) {
-                lines += '<polyline class="pos-line" stroke="' + color + '" points="' + pts.join(' ') + '"/>';
-                (d.laps || []).forEach(function (l) {
-                    if (isPitLap(l) && l.position > 0) {
-                        var cx = x(l.lapNum), cy = y(l.position);
-                        markers += '<g class="pos-pit-badge">'
-                            + '<rect x="' + (cx - 5.5) + '" y="' + (cy - 5.5) + '" width="11" height="11" rx="2.5" ry="2.5" fill="' + color + '" stroke="#fff" stroke-width="1"/>'
-                            + '<text class="pos-pit-letter" x="' + cx + '" y="' + (cy + 2.4) + '" text-anchor="middle">P</text>'
-                            + '</g>';
-                    }
-                });
-            }
+
+            var dots = '';
+            validLaps.forEach(function (l) {
+                dots += '<circle class="pos-dot" cx="' + x(l.lapNum) + '" cy="' + y(l.position) + '" r="1.5" fill="' + color + '"/>';
+            });
+
+            var pits = '';
+            (d.laps || []).forEach(function (l) {
+                if (isPitLap(l) && l.position > 0) {
+                    var lapPits = pitByLap[l.lapNum] || [];
+                    var idx = lapPits.indexOf(carIdx);
+                    var offset = (idx - (lapPits.length - 1) / 2) * 14;
+                    var cx = x(l.lapNum) + offset;
+                    var cy = y(l.position);
+                    pits += '<g class="pos-pit-badge">'
+                        + '<rect x="' + (cx - 5.5) + '" y="' + (cy - 5.5) + '" width="11" height="11" rx="2.5" ry="2.5" fill="' + color + '" stroke="#fff" stroke-width="1"/>'
+                        + '<text class="pos-pit-letter" font-size="' + fPitLt + '" x="' + cx + '" y="' + (cy + 2.4) + '" text-anchor="middle">P</text>'
+                        + '</g>';
+                }
+            });
 
             var first = validLaps[0];
-            var last = validLaps[validLaps.length - 1];
-            var endMeta = positionChartEndLabel(sess, d, cls, carIdx, totalLaps);
-            var rightText = endMeta.text;
-            var rightClass = 'pos-driver-label pos-driver-label--end' + (endMeta.dnf ? ' pos-driver-label--dnf' : '');
-            var dimClass = hidden ? ' pos-label-hit--hidden' : '';
-            var tip = hidden ? 'Показать линию на графике' : 'Скрыть линию на графике';
-
             var lyStart = y(first.position) + 4;
-            labels += '<g class="pos-label-hit pos-label-hit--start' + dimClass + '" data-pos-toggle="' + carIdx
+            var startLabel = '<g class="pos-label-hit pos-label-hit--start' + (hidden ? ' is-hidden' : '') + '" data-pos-toggle="' + carIdx
                 + '" transform="translate(' + (PAD_L - 10) + ',' + lyStart + ')">'
-                + '<title>' + tip + '</title>'
-                + '<text class="pos-driver-label pos-driver-label--start" x="0" y="0" dominant-baseline="middle" text-anchor="end" fill="' + color + '">'
+                + '<text class="pos-driver-label pos-driver-label--start" font-size="' + fAxis + '" x="0" y="0" dominant-baseline="middle" text-anchor="end" fill="' + color + '">'
                 + escapeHtml(code) + '</text></g>';
 
-            var lyEnd = y(last.position) + 4;
-            var rx = W - PAD_R + 10;
-            var eyeDx = approxMonoLabelWidth(rightText, 11) + 4;
-            labels += '<g class="pos-label-hit pos-label-hit--end' + dimClass + '" data-pos-toggle="' + carIdx
-                + '" transform="translate(' + rx + ',' + lyEnd + ')">'
-                + '<title>' + tip + '</title>'
-                + '<text class="' + rightClass + '" x="0" y="0" dominant-baseline="middle" text-anchor="start" fill="' + color + '">'
-                + escapeHtml(rightText) + '</text>'
-                + '<g class="pos-eye-wrap" transform="translate(' + eyeDx + ',-7)">'
-                + svgPositionEyeMarkup(hidden, color)
-                + '</g></g>';
+            driverGroups += '<g class="pos-driver-group' + (hidden ? ' is-hidden' : '') + '" data-car-idx="' + carIdx + '">'
+                + '<polyline class="pos-line" stroke="' + color + '" points="' + pts.join(' ') + '"/>'
+                + '<g class="pos-dots">' + dots + '</g>'
+                + '<g class="pos-pits">' + pits + '</g>'
+                + startLabel
+                + '</g>';
         });
 
-        host.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="pos-svg" preserveAspectRatio="xMidYMid meet">'
-            + bands + ticks + lines + markers + labels + '</svg>';
+        host.innerHTML = '<svg viewBox="0 0 ' + W + ' ' + H + '" class="pos-svg" preserveAspectRatio="xMinYMin meet">'
+            + '<g class="pos-bands">' + bands + '</g>'
+            + '<g class="pos-grid-group">' + ticks + '</g>'
+            + '<line class="pos-crosshair" x1="0" y1="' + PAD_T + '" x2="0" y2="' + (H - PAD_B) + '"/>'
+            + driverGroups
+            + '</svg>'
+            + '<div class="pos-tooltip" id="posTooltip"><div class="pos-tooltip-lap"></div><div class="pos-tooltip-body"></div></div>';
+        syncPosChartVerticalPan();
+    }
+
+    function attachPosChartInteractions() {
+        var wrap = document.getElementById('posChart');
+        if (!wrap) return;
+
+        if (!wrap.dataset.posChartUiBound) {
+            wrap.dataset.posChartUiBound = '1';
+
+            wrap.addEventListener('scroll', function () {
+                syncPosChartVerticalPan();
+            });
+
+            var rngInit = document.getElementById('posChartVRange');
+            if (rngInit) rngInit.addEventListener('input', function () {
+                var w = document.getElementById('posChart');
+                if (w) w.scrollTop = Number(rngInit.value);
+                syncPosChartVerticalPan();
+            });
+
+            wrap.addEventListener('mouseover', function (e) {
+                var line = e.target.closest('.pos-line');
+                if (!line) return;
+                var group = line.closest('.pos-driver-group');
+                if (!group) return;
+                var carIdx = group.getAttribute('data-car-idx');
+                var allGroups = wrap.querySelectorAll('.pos-driver-group');
+                allGroups.forEach(function (g) {
+                    if (g.getAttribute('data-car-idx') === carIdx) {
+                        g.classList.remove('is-dimmed');
+                        g.classList.add('is-hovered');
+                    } else if (!g.classList.contains('is-hidden')) {
+                        g.classList.add('is-dimmed');
+                        g.classList.remove('is-hovered');
+                    }
+                });
+            });
+
+            wrap.addEventListener('mouseout', function (e) {
+                if (!e.target.closest('.pos-driver-group')) return;
+                wrap.querySelectorAll('.pos-driver-group').forEach(function (g) {
+                    g.classList.remove('is-dimmed', 'is-hovered');
+                });
+            });
+
+            wrap.addEventListener('mousemove', function (e) {
+                var svg = wrap.querySelector('svg.pos-svg');
+                var crosshair = wrap.querySelector('.pos-crosshair');
+                var tooltip = document.getElementById('posTooltip');
+                if (!svg || !crosshair || !tooltip) return;
+
+                var sess = state.session;
+                if (!sess) return;
+                var totalLapsMv = (sess.meta && sess.meta.totalLaps) || computeMaxLap(sess.drivers);
+                if (!totalLapsMv) totalLapsMv = 1;
+
+                var rect = svg.getBoundingClientRect();
+                var vbParts = svg.getAttribute('viewBox').split(' ');
+                var viewBoxW = parseFloat(vbParts[2]);
+                var viewBoxH = parseFloat(vbParts[3]);
+                var PAD_L = 64, PAD_R = 16, PAD_T = 32, PAD_B = 18;
+                var plotW = viewBoxW - PAD_L - PAD_R;
+                var plotH = viewBoxH - PAD_T - PAD_B;
+                var mouseX = e.clientX - rect.left;
+                var mouseY = e.clientY - rect.top;
+                var svgX = mouseX * (viewBoxW / rect.width);
+                var svgY = mouseY * (viewBoxH / rect.height);
+
+                if (svgX < PAD_L || svgX > viewBoxW - PAD_R || svgY < PAD_T || svgY > viewBoxH - PAD_B) {
+                    crosshair.style.opacity = '0';
+                    tooltip.classList.remove('is-visible');
+                    return;
+                }
+
+                var lapStep = plotW / Math.max(1, totalLapsMv - 1);
+                var lap = Math.round((svgX - PAD_L) / lapStep) + 1;
+                lap = Math.max(1, Math.min(totalLapsMv, lap));
+
+                var xPos = PAD_L + (lap - 1) * lapStep;
+                crosshair.setAttribute('x1', xPos);
+                crosshair.setAttribute('x2', xPos);
+                crosshair.style.opacity = '1';
+
+                var rows = [];
+                var roster = Object.keys(sess.drivers || {}).map(Number).filter(function (ci) {
+                    var d = sess.drivers[ci];
+                    return (d.laps || []).some(function (l) { return l.position > 0; });
+                }).sort(function (a, b) { return a - b; });
+
+                roster.forEach(function (carIdx) {
+                    var sel = state.driverSelection.get(carIdx);
+                    if (sel && sel.posHidden) return;
+                    var d = sess.drivers[carIdx];
+                    var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
+                    var lapData = (d.laps || []).find(function (l) { return l.lapNum === lap && l.position > 0; });
+                    if (!lapData) return;
+                    rows.push({ pos: lapData.position, name: driverCode(d.name), color: color });
+                });
+                rows.sort(function (a, b) { return a.pos - b.pos; });
+
+                var lapDiv = tooltip.querySelector('.pos-tooltip-lap');
+                var bodyDiv = tooltip.querySelector('.pos-tooltip-body');
+                if (lapDiv) lapDiv.textContent = 'Lap ' + lap;
+                if (bodyDiv) bodyDiv.innerHTML = rows.map(function (r) {
+                    return '<div class="pos-tooltip-row">'
+                        + '<span class="pos-tooltip-swatch" style="background:' + r.color + '"></span>'
+                        + '<span class="pos-tooltip-pos">' + r.pos + '</span>'
+                        + '<span class="pos-tooltip-name">' + escapeHtml(r.name) + '</span>'
+                        + '</div>';
+                }).join('');
+
+                var wrapRect = wrap.getBoundingClientRect();
+                var tipX = mouseX + 14;
+                var tipY = mouseY + 14;
+                var tipW = tooltip.offsetWidth || 160;
+                var tipH = tooltip.offsetHeight || 120;
+                if (tipX + tipW > wrapRect.width) tipX = mouseX - tipW - 10;
+                if (tipY + tipH > wrapRect.height) tipY = mouseY - tipH - 10;
+                tooltip.style.transform = 'translate(' + tipX + 'px,' + tipY + 'px)';
+                tooltip.classList.add('is-visible');
+            });
+
+            wrap.addEventListener('mouseleave', function () {
+                var crosshair = wrap.querySelector('.pos-crosshair');
+                var tooltip = document.getElementById('posTooltip');
+                if (crosshair) crosshair.style.opacity = '0';
+                if (tooltip) tooltip.classList.remove('is-visible');
+                wrap.querySelectorAll('.pos-driver-group').forEach(function (g) {
+                    g.classList.remove('is-dimmed', 'is-hovered');
+                });
+            });
+        }
     }
 
     function driverCode(name) {
@@ -1142,6 +1425,52 @@
 
     function isFinishedResultStatus(st) {
         return Number(st) === 3;
+    }
+
+    /**
+     * Sort key for final race position (finishers first, then DNF/DSQ/Retired by last known position).
+     */
+    function driverFinalSortKey(sess, carIdx) {
+        var d = sess.drivers[carIdx];
+        var cls = getClassificationEntry(sess, carIdx);
+        var validLaps = (d.laps || []).filter(function (l) { return l.position > 0; });
+        var lastLap = validLaps.length ? validLaps[validLaps.length - 1] : null;
+
+        if (cls && cls.resultStatus != null && cls.resultStatus !== '') {
+            var rs = Number(cls.resultStatus);
+            if (!isNaN(rs) && rs > 0) {
+                if (isFinishedResultStatus(rs) && cls.position > 0) {
+                    return { pos: Number(cls.position), dnf: false };
+                }
+                if (isNonFinisherResultStatus(rs)) {
+                    var lastPos = lastLap ? lastLap.position : 99;
+                    return { pos: lastPos + 100, dnf: true };
+                }
+            }
+        }
+
+        var racePos = getDriverRacePosition(sess, carIdx);
+        if (racePos != null && racePos > 0) {
+            return { pos: Number(racePos), dnf: false };
+        }
+
+        if (lastLap && lastLap.position > 0) {
+            var totalLaps = (sess.meta && sess.meta.totalLaps) || computeMaxLap(sess.drivers);
+            var completed = totalLaps > 0 && lastLap.lapNum >= totalLaps;
+            if (completed) {
+                return { pos: Number(lastLap.position), dnf: false };
+            }
+            return { pos: Number(lastLap.position) + 100, dnf: true };
+        }
+
+        return { pos: 999, dnf: true };
+    }
+
+    function sortDriversByFinalPosition(sess, a, b) {
+        var ka = driverFinalSortKey(sess, a);
+        var kb = driverFinalSortKey(sess, b);
+        if (ka.dnf !== kb.dnf) return ka.dnf ? 1 : -1;
+        return ka.pos - kb.pos;
     }
 
     function ordinalEnglish(n) {
@@ -1557,8 +1886,8 @@
         var actions = document.createElement('span');
         actions.className = 'history-actions';
         actions.innerHTML = ''
-            + '<button class="history-action-btn" data-act="export">Export Driver…</button>'
-            + '<button class="history-action-btn" data-act="import">Import Ghost…</button>';
+            + '<button type="button" class="history-action-btn" data-act="export">Export Driver…</button>'
+            + '<button type="button" class="history-action-btn" data-act="import">Import Ghost…</button>';
         bc.appendChild(spacer);
         bc.appendChild(actions);
         actions.addEventListener('click', function (e) {
@@ -1868,7 +2197,7 @@
                 });
                 return;
             }
-            // default picker (History Positions, etc.)
+            // default picker (History Lap Chart, etc.)
             var html = '';
             if (!opts.hideHeader) {
                 html += '<div class="driver-picker-header">Drivers</div>';
@@ -1965,6 +2294,30 @@
 
     // ---------- wire up sub-tab click handlers once ----------
     document.addEventListener('click', function (e) {
+        // Sidebar toggle (Lap Chart driver list)
+        var sidebarToggle = e.target.closest('[data-pos-sidebar-toggle]');
+        if (sidebarToggle && state.session && state.subTab === 'positions') {
+            var idx2 = Number(sidebarToggle.getAttribute('data-pos-sidebar-toggle'));
+            var drv2 = state.session.drivers[idx2];
+            if (!isNaN(idx2) && drv2 != null) {
+                var sel2 = state.driverSelection.get(idx2) || { lap: null, ghost: false, posHidden: false };
+                sel2.posHidden = !sel2.posHidden;
+                state.driverSelection.set(idx2, sel2);
+                var chartRoot2 = document.getElementById('posChart');
+                if (chartRoot2) {
+                    var group2 = chartRoot2.querySelector('.pos-driver-group[data-car-idx="' + idx2 + '"]');
+                    if (group2) group2.classList.toggle('is-hidden', sel2.posHidden);
+                    var label2 = chartRoot2.querySelector('.pos-label-hit[data-pos-toggle="' + idx2 + '"]');
+                    if (label2) label2.classList.toggle('is-hidden', sel2.posHidden);
+                }
+                sidebarToggle.classList.toggle('is-hidden', sel2.posHidden);
+                var eye2 = sidebarToggle.querySelector('.pos-sidebar-eye');
+                if (eye2) eye2.innerHTML = svgPositionEyeMarkup(sel2.posHidden, teamAccentColor(drv2.teamId));
+                return;
+            }
+        }
+
+        // Chart start-label toggle
         var posHit = e.target.closest('[data-pos-toggle]');
         if (posHit && state.session && state.subTab === 'positions') {
             var chartRoot = posHit.closest('#posChart');
@@ -1975,11 +2328,20 @@
                     var sel = state.driverSelection.get(idx) || { lap: null, ghost: false, posHidden: false };
                     sel.posHidden = !sel.posHidden;
                     state.driverSelection.set(idx, sel);
-                    drawPositionChart();
+                    var group = chartRoot.querySelector('.pos-driver-group[data-car-idx="' + idx + '"]');
+                    if (group) group.classList.toggle('is-hidden', sel.posHidden);
+                    posHit.classList.toggle('is-hidden', sel.posHidden);
+                    var sidebarRow = document.querySelector('.pos-sidebar-row[data-pos-sidebar-toggle="' + idx + '"]');
+                    if (sidebarRow) {
+                        sidebarRow.classList.toggle('is-hidden', sel.posHidden);
+                        var eye = sidebarRow.querySelector('.pos-sidebar-eye');
+                        if (eye) eye.innerHTML = svgPositionEyeMarkup(sel.posHidden, teamAccentColor(drv.teamId));
+                    }
                     return;
                 }
             }
         }
+
         var sub = e.target.closest('.history-sidenav-item');
         if (sub) {
             switchSubTab(sub.dataset.sub);
