@@ -55,6 +55,8 @@ function makeWidgetHtml(widgetId) {
         headerExtra = `<button type="button" class="pit-times-toggle" id="btnPitTimesSettings" title="Pit times for all tracks"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>`;
     } else if (widgetId === "tyres") {
         headerExtra = `<button class="tyre-info-btn" title="Legend &amp; temperature scale">?</button>`;
+    } else if (widgetId === "tyreSets") {
+        headerExtra = `<button class="tyre-info-btn" data-legend="tyreSets" title="Legend">?</button>`;
     } else if (widgetId === "lapData") {
         headerExtra = `<button class="event-filter-toggle ld-ref-toggle" id="btnLapDataRef" title="Reference: previous lap vs personal best"><span id="ldRefLabel">vs Prev</span></button><button class="tyre-info-btn ld-legend-btn" id="btnLapDataLegend" title="Legend">?</button>`;
     }

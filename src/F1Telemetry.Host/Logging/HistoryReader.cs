@@ -50,7 +50,37 @@ public static class HistoryReader
         var data = JsonSerializer.Deserialize<SessionLogDataV2>(stream, JsonOptions);
         if (data?.Meta == null) return null;
 
+        EnrichLiveryColors(data);
+
         _cache[key] = new CachedSession(mtime, data);
         return data;
+    }
+
+    /// <summary>
+    /// Back-fills <see cref="DriverSessionData.LiveryColorHex"/> from the stored
+    /// Participants packet snapshot for sessions saved before the field was introduced.
+    /// </summary>
+    private static void EnrichLiveryColors(SessionLogDataV2 data)
+    {
+        if (data.Drivers == null || data.Packets == null) return;
+        if (!data.Packets.TryGetValue("Participants", out var raw) || raw is not JsonElement el) return;
+        if (!el.TryGetProperty("participants", out var parts) || parts.ValueKind != JsonValueKind.Array) return;
+
+        foreach (var (carIdx, driver) in data.Drivers)
+        {
+            if (driver.LiveryColorHex != null) continue;
+            if (carIdx >= parts.GetArrayLength()) continue;
+
+            var p = parts[carIdx];
+            if (!p.TryGetProperty("numColours", out var numColoursEl) || numColoursEl.GetByte() == 0) continue;
+            if (!p.TryGetProperty("liveryColours", out var coloursEl) || coloursEl.GetArrayLength() == 0) continue;
+
+            var c = coloursEl[0];
+            if (!c.TryGetProperty("red", out var r) ||
+                !c.TryGetProperty("green", out var g) ||
+                !c.TryGetProperty("blue", out var b)) continue;
+
+            driver.LiveryColorHex = $"#{r.GetByte():X2}{g.GetByte():X2}{b.GetByte():X2}";
+        }
     }
 }

@@ -159,6 +159,9 @@ public sealed class SessionLogger
                 case CarStatusPacket carStatus:
                     LatchBlueFlags(entry, carStatus);
                     break;
+                case ParticipantsPacket participants:
+                    UpdateDriverLiveryColors(entry, participants);
+                    break;
             }
         }
     }
@@ -410,9 +413,28 @@ public sealed class SessionLogger
             TeamId = p?.TeamId ?? 0,
             DriverId = p?.DriverId ?? 0,
             Name = p?.Name ?? $"Car {idx}",
+            LiveryColorHex = ExtractLiveryColorHex(p),
         };
         entry.Drivers[idx] = driver;
         return driver;
+    }
+
+    private static void UpdateDriverLiveryColors(SessionEntry entry, ParticipantsPacket packet)
+    {
+        if (packet.Participants == null) return;
+        for (byte idx = 0; idx < packet.Participants.Length && idx < MaxCars; idx++)
+        {
+            if (!entry.Drivers.TryGetValue(idx, out var driver) || driver.LiveryColorHex != null) continue;
+            driver.LiveryColorHex = ExtractLiveryColorHex(packet.Participants[idx]);
+        }
+    }
+
+    private static string? ExtractLiveryColorHex(ParticipantData? p)
+    {
+        if (p?.LiveryColours == null || p.NumColours == 0 || p.LiveryColours.Length == 0) return null;
+        var c = p.LiveryColours[0];
+        if (c == null) return null;
+        return $"#{c.Red:X2}{c.Green:X2}{c.Blue:X2}";
     }
 
     private LapTyreSnapshotV2? CaptureTyreSnapshot(SessionEntry entry, byte idx)

@@ -118,9 +118,7 @@ const ACTUAL_COMPOUNDS = {
 const COMPOUND_DOT_COLORS = {
     16: "#ff3333", 17: "#ffd700", 18: "#e0e0e0", 7: "#00cc00", 8: "#00a6ff",
     9: "#e0e0e0", 10: "#00a6ff", 15: "#00a6ff",
-    19: "#ff3333", 20: "#ffd700", 21: "#e0e0e0", 22: "#e0e0e0",
-    // F2 2024/2025
-    11: "#9B3CC4", 12: "#ff3333", 13: "#ffd700", 14: "#e0e0e0",
+    19: "#9B3CC4", 20: "#ff3333", 21: "#ffd700", 22: "#e0e0e0",
 };
 
 /* Per-lap wear rate (%) per actual compound — from in-game wear rates.
@@ -453,22 +451,15 @@ const TEAM_NAMES = {
     193: "McLaren '24", 194: "Sauber '24",
 };
 
-/** Accent for Gap Ring name colour (teamId → hex) */
-const TEAM_ACCENT_COLORS = {
-    0: "#5FE0CF", 1: "#FF5A6E", 2: "#3A5BA9", 3: "#4F8DFF", 4: "#2FBF8F",
-    5: "#00A0E3", 6: "#8EA8FF", 7: "#CCCCCC", 8: "#FF8C3A", 9: "#66E000",
-    41: "#E1E1E1", 104: "#F5F5F5", 129: "#FFD84D", 142: "#a79a72", 154: "#a79a72",
-    155: "#FFD84D",
-    158: "#B83244", 159: "#BFBFBF", 160: "#F2F2F2", 161: "#8C2A2E", 162: "#1F8FA6",
-    163: "#8F8F8F", 164: "#FF9A2F", 165: "#FF4A4F", 166: "#9B3CC4", 167: "#E06A47",
-    168: "#FFD84D",
-    185: "#5FE0CF", 186: "#FF5A6E", 187: "#3A5BA9", 188: "#4F8DFF", 189: "#2FBF8F",
-    190: "#00A0E3", 191: "#8EA8FF", 192: "#CCCCCC", 193: "#FF8C3A", 194: "#66E000",
-};
+function extractLiveryColor(p) {
+    if (!p?.liveryColours || p.liveryColours.length === 0) return null;
+    const c = p.liveryColours[0];
+    if (c?.red == null || c?.green == null || c?.blue == null) return null;
+    return `#${(1 << 24 | c.red << 16 | c.green << 8 | c.blue).toString(16).slice(1).toUpperCase()}`;
+}
 
-function teamAccentColor(teamId) {
-    if (teamId == null || teamId < 0) return "#F5F5F5";
-    return TEAM_ACCENT_COLORS[teamId] || "#F5F5F5";
+function teamAccentColor(teamId, liveryColor) {
+    return liveryColor || "#F5F5F5";
 }
 
 /** m_platform — Participants / Lobby */
@@ -492,6 +483,8 @@ let playerCarIndex = 0;
 let participantNames = [];
 /** @type {number[]} parallel to participantNames */
 let participantTeamIds = [];
+/** @type {string[]} parallel to participantNames */
+let participantLiveryColors = [];
 let lastCarStatusItems = null;
 let maxEvents = 500;
 let events = [];
@@ -540,6 +533,9 @@ const SESSION_FIELDS = [
     { id: "trackTemp", name: "Track Temp" },
     { id: "airTemp", name: "Air Temp" },
     { id: "progress", name: "Time / Laps" },
+    { id: "pitLimit", name: "Pit Limit" },
+    { id: "aiLevel", name: "AI Level" },
+    { id: "equalCars", name: "Equal Cars" },
     { id: "flags", name: "Flags" },
 ];
 const SESSION_FIELD_VIS_KEY = "f1telemetry_session_fields_v1";
@@ -841,20 +837,44 @@ function openTyreInfo(anchor) {
     closeTyreInfo();
     const panel = document.createElement("div");
     panel.className = "tyre-info-panel";
-    panel.innerHTML =
-        `<div class="tip-section"><div class="tip-title">Legend</div>` +
-        `<div class="tip-row"><svg class="tl-ico" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11" rx="2" stroke="#ef4444" stroke-width="2" fill="none"/></svg><span>Border = Surface temp</span></div>` +
-        `<div class="tip-row"><svg class="tl-ico" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11" rx="2" stroke="#22c55e" stroke-opacity="0.35" stroke-width="1.5" fill="#22c55e"/></svg><span>Fill = Carcass temp</span></div>` +
-        `<div class="tip-row"><svg class="tl-ico" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11" rx="2" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" fill="none"/><rect x="1.5" y="8" width="11" height="5.5" rx="0 0 2 2" fill="#b45309" opacity="0.7"/></svg><span>Level = Wear</span></div></div>` +
-        `<div class="tip-section"><div class="tip-title">Temperature scale</div>` +
-        `<div class="tip-scale">` +
-        `<span class="tip-zone" style="background:#00a6ff">Cold</span>` +
-        `<span class="tip-zone" style="background:#22c55e">Normal</span>` +
-        `<span class="tip-zone" style="background:#b85cff">Perfect</span>` +
-        `<span class="tip-zone" style="background:#eab308">Hot</span>` +
-        `<span class="tip-zone" style="background:#ef4444">Overheat</span>` +
-        `</div>` +
-        `<div class="tip-desc">&lt;99% · ≥99% · 100% grip · ≥99% · &lt;99%</div></div>`;
+
+    if (anchor.dataset.legend === "tyreSets") {
+        panel.innerHTML =
+            `<div class="tip-section"><div class="tip-title">Tyre chip</div>` +
+            `<div class="tip-row"><span class="tl-swatch tl-swatch-circle" style="background:#ff3333"></span><span><b>Wear %</b> · circle colour = compound</span></div>` +
+            `<div class="tip-row"><span class="tl-swatch tl-swatch-bars"></span><span><b>Side bars</b> = freshness (100 − wear) · green→orange→red</span></div>` +
+            `<div class="tip-row"><span class="tl-swatch tl-swatch-ribbon"></span><span><b>Corner ribbon</b> = currently fitted</span></div>` +
+            `<div class="tip-row"><span class="tl-text" style="color:var(--accent-green)">−0.2s</span><span><b>Δ</b> vs fitted lap pace</span></div>` +
+            `<div class="tip-row"><span class="tl-text">8L</span><span><b>Laps</b> remaining at expected wear</span></div>` +
+            `<div class="tip-row"><span class="tl-text" style="color:var(--warning)">87%</span><span><b>Grip</b> estimate · decays with wear</span></div></div>` +
+            `<div class="tip-section"><div class="tip-title">Compounds</div>` +
+            `<div class="tip-compounds">` +
+            `<span class="tip-comp"><span class="tl-swatch tl-swatch-circle" style="background:#9B3CC4"></span>Super Soft</span>` +
+            `<span class="tip-comp"><span class="tl-swatch tl-swatch-circle" style="background:#ff3333"></span>Soft</span>` +
+            `<span class="tip-comp"><span class="tl-swatch tl-swatch-circle" style="background:#ffd700"></span>Medium</span>` +
+            `<span class="tip-comp"><span class="tl-swatch tl-swatch-circle" style="background:#e0e0e0"></span>Hard</span>` +
+            `<span class="tip-comp"><span class="tl-swatch tl-swatch-circle" style="background:#00cc00"></span>Inter</span>` +
+            `<span class="tip-comp"><span class="tl-swatch tl-swatch-circle" style="background:#00a6ff"></span>Wet</span>` +
+            `</div></div>` +
+            `<div class="tip-section"><div class="tip-title">Sections</div>` +
+            `<div class="tip-row"><span class="tl-text">▣</span><span><b>Available</b> — fitted first, then by freshness</span></div>` +
+            `<div class="tip-row"><span class="tl-text" style="opacity:0.45">○</span><span><b>Unavailable</b> — used / damaged</span></div></div>`;
+    } else {
+        panel.innerHTML =
+            `<div class="tip-section"><div class="tip-title">Legend</div>` +
+            `<div class="tip-row"><svg class="tl-ico" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11" rx="2" stroke="#ef4444" stroke-width="2" fill="none"/></svg><span>Border = Surface temp</span></div>` +
+            `<div class="tip-row"><svg class="tl-ico" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11" rx="2" stroke="#22c55e" stroke-opacity="0.35" stroke-width="1.5" fill="#22c55e"/></svg><span>Fill = Carcass temp</span></div>` +
+            `<div class="tip-row"><svg class="tl-ico" viewBox="0 0 14 14"><rect x="1.5" y="1.5" width="11" height="11" rx="2" stroke="rgba(255,255,255,0.2)" stroke-width="1.5" fill="none"/><rect x="1.5" y="8" width="11" height="5.5" rx="0 0 2 2" fill="#b45309" opacity="0.7"/></svg><span>Level = Wear</span></div></div>` +
+            `<div class="tip-section"><div class="tip-title">Temperature scale</div>` +
+            `<div class="tip-scale">` +
+            `<span class="tip-zone" style="background:#00a6ff">Cold</span>` +
+            `<span class="tip-zone" style="background:#22c55e">Normal</span>` +
+            `<span class="tip-zone" style="background:#b85cff">Perfect</span>` +
+            `<span class="tip-zone" style="background:#eab308">Hot</span>` +
+            `<span class="tip-zone" style="background:#ef4444">Overheat</span>` +
+            `</div>` +
+            `<div class="tip-desc">&lt;99% · ≥99% · 100% grip · ≥99% · &lt;99%</div></div>`;
+    }
 
     document.body.appendChild(panel);
     _tyreInfoPanel = panel;
@@ -1285,6 +1305,15 @@ function updateSession(data) {
 
     renderTempWithTrend("trackTemp", trackTemp, getTempTrend(trackTemp, trackTempHistory));
     renderTempWithTrend("airTemp", airTemp, getTempTrend(airTemp, airTempHistory));
+
+    const pitLimit = data.pitSpeedLimit;
+    setText("pitLimit", pitLimit > 0 ? `${pitLimit} km/h` : "--");
+
+    const aiLevel = data.aiDifficulty;
+    setText("aiLevel", aiLevel > 0 ? `${aiLevel}` : "--");
+
+    const eq = data.equalCarPerformance;
+    setText("equalCars", eq === 0 ? "Off" : eq === 1 ? "On" : "--");
 
     updateWeatherForecast(data);
 
@@ -2084,11 +2113,13 @@ function updateCarDamage(data) {
 function updateParticipants(data) {
     participantNames = [];
     participantTeamIds = [];
+    participantLiveryColors = [];
     if (data.participants) {
         for (let i = 0; i < data.participants.length; i++) {
             const p = data.participants[i];
             participantNames[i] = p?.name || `Car ${i}`;
             participantTeamIds[i] = p?.teamId != null ? p.teamId : -1;
+            participantLiveryColors[i] = extractLiveryColor(p);
         }
     }
     updateTopSpeedWidgets();
@@ -2454,7 +2485,7 @@ const _VISUAL_COMPOUND_INFO = {
     9: { name: "Dry", css: "compound-hard", dot: "#c0c0c0" },
     10: { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
     15: { name: "Wet", css: "compound-wet", dot: "#00a6ff" },
-    19: { name: "Super Soft", css: "compound-soft", dot: "#ff6633" },
+    19: { name: "Super Soft", css: "compound-soft", dot: "#9B3CC4" },
     20: { name: "Soft", css: "compound-soft", dot: "#ff3333" },
     21: { name: "Medium", css: "compound-medium", dot: "#ffd700" },
     22: { name: "Hard", css: "compound-hard", dot: "#e0e0e0" },
@@ -2464,7 +2495,7 @@ const _VISUAL_COMPOUND_INFO = {
     13: { name: "Medium", css: "compound-medium", dot: "#ffd700" },
     14: { name: "Hard", css: "compound-hard", dot: "#e0e0e0" },
 };
-const _VISUAL_COMPOUND_FALLBACK = { name: "Unknown", css: "", dot: "#888" };
+const _VISUAL_COMPOUND_FALLBACK = { name: "Unknown", css: "compound-unknown", dot: "#888" };
 
 function getVisualCompoundInfo(visualId) {
     return _VISUAL_COMPOUND_INFO[visualId] || _VISUAL_COMPOUND_FALLBACK;
@@ -2498,96 +2529,98 @@ function updateTyreSets(data) {
         idx: i,
         isFitted: i === fittedIdx,
         compoundInfo: getVisualCompoundInfo(s.visualTyreCompound),
-    }));
+    })).filter(s => s.visualTyreCompound !== 0 || s.actualTyreCompound !== 0);
 
-    // Update fitted banner
-    const fittedSet = annotated[fittedIdx];
-    const fittedEl = el("fittedCompound");
-    if (fittedEl && fittedSet) {
-        const info = fittedSet.compoundInfo;
-        const badgeTxt = getActualCompoundBadgeText(fittedSet.actualTyreCompound, info.name);
-        const badgeTip = getCompoundBadgeTooltip(fittedSet.actualTyreCompound);
-        const wearColor = fittedSet.wear > 60 ? "var(--danger)" : fittedSet.wear > 30 ? "var(--warning)" : "var(--safe)";
-        const wrate = getCompoundWearRate(fittedSet.actualTyreCompound);
-        const wrateText = wrate != null ? `${wrate.toFixed(2)}%/L` : "";
-        const grip = formatTyreSetGrip(fittedSet.actualTyreCompound, fittedSet.wear);
-        const tipAttr = badgeTip ? ` title="${badgeTip.replace(/"/g, "&quot;")}"` : "";
-        fittedEl.innerHTML = `<span class="tyreset-badge ${info.css}"${tipAttr}>${badgeTxt}</span>`
-            + `<span>${info.name}</span>`
-            + `<span style="color:${wearColor}">${fittedSet.wear}% worn</span>`
-            + (grip ? `<span class="tyreset-grip" title="Remaining grip vs peak" style="color:${grip.color}">${grip.text}</span>` : "")
-            + `<span style="color:var(--text-dim)">${fittedSet.lifeSpan}L left</span>`
-            + (wrateText ? `<span class="tyreset-wear-rate" title="Wear per lap">${wrateText}</span>` : "");
+    const available = annotated.filter(s => s.available || s.isFitted);
+    const used = annotated.filter(s => !s.available && !s.isFitted);
+
+    // Group available by compound
+    const availableByCompound = {};
+    for (const s of available) {
+        const name = s.compoundInfo.name;
+        if (!availableByCompound[name]) availableByCompound[name] = [];
+        availableByCompound[name].push(s);
+    }
+
+    // Sort compounds by compoundOrder
+    const sortedCompounds = Object.keys(availableByCompound).sort((a, b) => {
+        const ai = compoundOrder.indexOf(a);
+        const bi = compoundOrder.indexOf(b);
+        return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+    });
+
+    // Sort: fitted first, then by wear ascending (freshest first)
+    for (const comp of sortedCompounds) {
+        availableByCompound[comp].sort((a, b) => (b.isFitted - a.isFitted) || (a.wear - b.wear));
     }
 
     const container = el("tyreSetGroups");
     if (!container) return;
 
-    // Split into available (incl. fitted) and used sets
-    const available = annotated.filter(s => s.available || s.isFitted);
-    const used = annotated.filter(s => !s.available && !s.isFitted);
-
-    // Sort available: by compound order, then by wear ascending (freshest first)
-    available.sort((a, b) => {
-        const ai = compoundOrder.indexOf(a.compoundInfo.name);
-        const bi = compoundOrder.indexOf(b.compoundInfo.name);
-        if (ai !== bi) return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-        return a.wear - b.wear;
-    });
-
     const parts = [];
 
-    // --- Available section ---
-    if (available.length > 0) {
-        parts.push(`<div class="tyreset-section">`);
-        parts.push(`<div class="tyreset-section-header"><span class="tyreset-section-title">Available</span><span class="tyreset-section-count">${available.length} set${available.length !== 1 ? "s" : ""}</span></div>`);
-        for (const s of available) {
+    for (const compound of sortedCompounds) {
+        const setsList = availableByCompound[compound];
+        parts.push(`<div class="deck-row">`);
+        parts.push(`<div class="deck-row-header"><span>${compound}</span><span class="deck-row-count">${setsList.length}</span></div>`);
+        parts.push(`<div class="deck-row-chips">`);
+
+        for (const s of setsList) {
             const wearPct = s.wear;
             const wearColor = wearPct > 60 ? "var(--danger)" : wearPct > 30 ? "var(--warning)" : "var(--safe)";
+            const fillHeight = 100 - wearPct;
+
             const delta = s.lapDeltaTime;
             const deltaSign = delta > 0 ? "+" : "";
-            const deltaCls = delta > 0 ? "positive" : delta < 0 ? "negative" : "zero";
-            const deltaText = delta !== 0 ? `${deltaSign}${(delta / 1000).toFixed(1)}s` : "—";
-            const badgeTxt = getActualCompoundBadgeText(s.actualTyreCompound, s.compoundInfo.name);
-            const badgeTip = getCompoundBadgeTooltip(s.actualTyreCompound);
-            const tipAttr = badgeTip ? ` title="${badgeTip.replace(/"/g, "&quot;")}"` : "";
-            const wrate = getCompoundWearRate(s.actualTyreCompound);
-            const wrateText = wrate != null ? `${wrate.toFixed(2)}%/L` : "—";
-            const grip = formatTyreSetGrip(s.actualTyreCompound, wearPct);
-            const gripHtml = grip
-                ? `<span class="tyreset-grip" title="Remaining grip vs peak" style="color:${grip.color}">${grip.text}</span>`
-                : `<span class="tyreset-grip">—</span>`;
-            const cls = s.isFitted ? "tyreset-item fitted" : "tyreset-item";
-            parts.push(`<div class="${cls}"><span class="tyreset-badge ${s.compoundInfo.css}"${tipAttr}>${badgeTxt}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct" style="color:${wearColor}">${wearPct}%</span>${gripHtml}<span class="tyreset-life">${s.lifeSpan}L</span><span class="tyreset-wear-rate" title="Wear per lap">${wrateText}</span><span class="tyreset-delta ${deltaCls}">${deltaText}</span>${s.isFitted ? '<span class="tyreset-fitted-badge">ON</span>' : ""}</div>`);
-        }
-        parts.push(`</div>`);
-    }
+            const deltaCls = delta > 0 ? "pos" : delta < 0 ? "neg" : "zero";
+            const deltaText = delta !== 0 ? `${deltaSign}${(delta / 1000).toFixed(1)}s` : "+0.0s";
 
-    // --- Used section ---
-    if (used.length > 0) {
-        used.sort((a, b) => {
-            const ai = compoundOrder.indexOf(a.compoundInfo.name);
-            const bi = compoundOrder.indexOf(b.compoundInfo.name);
-            return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-        });
-        parts.push(`<div class="tyreset-section tyreset-section-used">`);
-        parts.push(`<div class="tyreset-section-header"><span class="tyreset-section-title">Used</span><span class="tyreset-section-count">${used.length} set${used.length !== 1 ? "s" : ""}</span></div>`);
-        for (const s of used) {
-            const wearPct = s.wear;
-            const wearColor = wearPct > 60 ? "var(--danger)" : wearPct > 30 ? "var(--warning)" : "var(--safe)";
-            const badgeTxt = getActualCompoundBadgeText(s.actualTyreCompound, s.compoundInfo.name);
-            const badgeTip = getCompoundBadgeTooltip(s.actualTyreCompound);
-            const tipAttr = badgeTip ? ` title="${badgeTip.replace(/"/g, "&quot;")}"` : "";
             const grip = formatTyreSetGrip(s.actualTyreCompound, wearPct);
             const gripHtml = grip
-                ? `<span class="tyreset-grip" title="Remaining grip vs peak" style="color:${grip.color}">${grip.text}</span>`
-                : `<span class="tyreset-grip">—</span>`;
-            parts.push(`<div class="tyreset-item"><span class="tyreset-badge tyreset-badge-sm ${s.compoundInfo.css}"${tipAttr}>${badgeTxt}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct">${wearPct}%</span>${gripHtml}<span class="tyreset-life">${s.lifeSpan}L</span></div>`);
+                ? `<span class="chip-grip-value" style="color:${grip.color}">${grip.text}</span>`
+                : `<span class="chip-grip-value">—</span>`;
+
+            const wrate = getCompoundWearRate(s.actualTyreCompound);
+            const tipTitle = `Wear ${wearPct}%${wrate != null ? ' · Rate ' + wrate.toFixed(2) + '%/L' : ''}${s.isFitted ? ' · Fitted' : ''}`;
+
+            const cls = s.isFitted ? "tyre-chip fitted" : "tyre-chip";
+            const oncar = s.isFitted ? '<span class="chip-oncar" aria-label="On car">ON</span>' : '';
+            const compoundCss = s.compoundInfo.css || '';
+
+            parts.push(`<div class="${cls} ${compoundCss}" title="${tipTitle.replace(/"/g, '&quot;')}">
+                <div class="chip-side-bar chip-side-bar-l"><div class="chip-side-fill" style="height:${fillHeight}%;background:${wearColor}"></div></div>
+                <div class="chip-side-bar chip-side-bar-r"><div class="chip-side-fill" style="height:${fillHeight}%;background:${wearColor}"></div></div>
+                ${oncar}
+                <span class="chip-badge ${compoundCss}">${wearPct}%</span>
+                <span class="chip-delta ${deltaCls}">${deltaText}</span>
+                <span class="chip-laps">${s.lifeSpan}L</span>
+                <span class="chip-grip-label">Grip</span>
+                ${gripHtml}
+            </div>`);
         }
-        parts.push(`</div>`);
+
+        parts.push(`</div></div>`);
     }
 
     container.innerHTML = parts.length > 0 ? parts.join("") : '<div class="tyreset-placeholder">No tyre sets available</div>';
+
+    // Unavailable section
+    const unavailableEl = el("tyreSetUnavailable");
+    if (unavailableEl) {
+        if (used.length > 0) {
+            used.sort((a, b) => {
+                const ai = compoundOrder.indexOf(a.compoundInfo.name);
+                const bi = compoundOrder.indexOf(b.compoundInfo.name);
+                return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
+            });
+            const dots = used.map(s => `<span class="unavailable-dot ${s.compoundInfo.css}">${getActualCompoundBadgeText(s.actualTyreCompound, s.compoundInfo.name)}</span>`).join("");
+            unavailableEl.innerHTML = `<span class="unavailable-summary-label">Unavailable</span>${dots}`;
+            unavailableEl.style.display = "";
+        } else {
+            unavailableEl.innerHTML = "";
+            unavailableEl.style.display = "none";
+        }
+    }
 }
 
 async function loadPitTimes() {
@@ -3080,7 +3113,7 @@ function updateGapRing() {
         const angDraw = angRaw + stack * ANG_STACK_RAD;
         const cos = Math.cos(angDraw);
         const sin = Math.sin(angDraw);
-        const teamColor = teamAccentColor(participantTeamIds[d.idx]);
+        const teamColor = teamAccentColor(participantTeamIds[d.idx], participantLiveryColors[d.idx]);
         placed.push({ d, cos, sin, teamColor });
     }
 
@@ -3155,8 +3188,8 @@ function updateGapRing() {
         ? (items[behind.idx].deltaToCarInFrontMinutesPart * 60000 + items[behind.idx].deltaToCarInFrontMsPart)
         : null;
 
-    const aheadTeamColor = ahead ? teamAccentColor(participantTeamIds[ahead.idx]) : null;
-    const behindTeamColor = behind ? teamAccentColor(participantTeamIds[behind.idx]) : null;
+    const aheadTeamColor = ahead ? teamAccentColor(participantTeamIds[ahead.idx], participantLiveryColors[ahead.idx]) : null;
+    const behindTeamColor = behind ? teamAccentColor(participantTeamIds[behind.idx], participantLiveryColors[behind.idx]) : null;
 
     if (elAheadName) {
         if (ahead) {

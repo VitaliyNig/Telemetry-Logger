@@ -99,6 +99,7 @@ public sealed class DriverSessionData
     public byte TeamId { get; set; }
     public byte DriverId { get; set; }
     public string Name { get; set; } = "";
+    public string? LiveryColorHex { get; set; }
     public List<DriverLap> Laps { get; set; } = new();
     /// <summary>Tyre snapshots keyed by completed lap index (0-based).</summary>
     public Dictionary<int, LapTyreSnapshotV2> TyreByLap { get; set; } = new();
