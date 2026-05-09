@@ -17,6 +17,7 @@ using F1Telemetry.Host.Logging;
 using F1Telemetry.Host.Serialization;
 using F1Telemetry.Ingress;
 using F1Telemetry.State;
+using F1Telemetry.TrackData;
 using F1Telemetry.Tray;
 using F1Telemetry.Udp;
 using Microsoft.AspNetCore.ResponseCompression;
@@ -25,12 +26,6 @@ namespace F1Telemetry;
 
 static class Program
 {
-    // Static DRS geometry cache loaded from wwwroot/data/drs-zones.json.
-    private static readonly object _drsZonesLock = new();
-    private static Dictionary<int, (float Start, float End)[]>? _drsZonesCache;
-    private static readonly string _drsZonesPath =
-        Path.Combine(AppContext.BaseDirectory, "wwwroot", "data", "drs-zones.json");
-
     // /api/sessions cache — invalidated automatically when any Logs/ subdir changes mtime.
     private static readonly object _sessionsCacheLock = new();
     private static long? _sessionsCacheVersion;
@@ -66,112 +61,6 @@ static class Program
         catch { attrs = default; return false; }
     }
 
-    private static Dictionary<int, (float Start, float End)[]> LoadDrsZones(string path)
-    {
-        lock (_drsZonesLock)
-        {
-            if (_drsZonesCache != null) return _drsZonesCache;
-            if (!File.Exists(path))
-            {
-                _drsZonesCache = new Dictionary<int, (float Start, float End)[]>();
-                return _drsZonesCache;
-            }
-
-            try
-            {
-                var json = File.ReadAllText(path);
-                var raw = JsonSerializer.Deserialize<Dictionary<string, List<List<float>>>>(json);
-                if (raw == null)
-                {
-                    _drsZonesCache = new Dictionary<int, (float Start, float End)[]>();
-                    return _drsZonesCache;
-                }
-
-                var parsed = new Dictionary<int, (float Start, float End)[]>();
-                foreach (var (trackKey, zoneLists) in raw)
-                {
-                    if (!int.TryParse(trackKey, out var trackId) || zoneLists == null)
-                        continue;
-
-                    var zones = new List<(float Start, float End)>();
-                    foreach (var z in zoneLists)
-                    {
-                        if (z == null || z.Count < 2) continue;
-                        var start = Math.Clamp(z[0], 0f, 1f);
-                        var end = Math.Clamp(z[1], 0f, 1f);
-                        if (end <= start) continue;
-                        zones.Add((start, end));
-                    }
-                    if (zones.Count > 0) parsed[trackId] = zones.ToArray();
-                }
-
-                _drsZonesCache = parsed;
-                return _drsZonesCache;
-            }
-            catch
-            {
-                _drsZonesCache = new Dictionary<int, (float Start, float End)[]>();
-                return _drsZonesCache;
-            }
-        }
-    }
-
-    private static object SerializeCaptureSnapshot(DrsCaptureSnapshot s) => new
-    {
-        state = s.State.ToString(),
-        trackId = s.TrackId,
-        currentLapNum = s.CurrentLapNum,
-        currentLapFraction = s.CurrentLapFraction,
-        capturedZoneCount = s.CapturedZoneCount,
-        zones = s.Zones.Select(z => new[] { z.Start, z.End }).ToArray(),
-        error = s.Error,
-    };
-
-    /// <summary>
-    /// Sets/replaces the zones for one track in <c>drs-zones.json</c> and invalidates the cache.
-    /// Atomic: writes via a sibling .tmp + rename so a crash never truncates the live file.
-    /// </summary>
-    private static async Task SaveDrsZonesAsync(int trackId, IReadOnlyList<DrsZoneRange> zones)
-    {
-        // Read the existing file (if any) outside the lock — load can take I/O. The lock is
-        // only held for the swap so concurrent ComputeLapPerf calls don't see a torn cache.
-        Dictionary<string, List<List<float>>> raw;
-        if (File.Exists(_drsZonesPath))
-        {
-            try
-            {
-                var text = await File.ReadAllTextAsync(_drsZonesPath);
-                raw = JsonSerializer.Deserialize<Dictionary<string, List<List<float>>>>(text)
-                      ?? new Dictionary<string, List<List<float>>>();
-            }
-            catch
-            {
-                raw = new Dictionary<string, List<List<float>>>();
-            }
-        }
-        else
-        {
-            raw = new Dictionary<string, List<List<float>>>();
-        }
-
-        raw[trackId.ToString(System.Globalization.CultureInfo.InvariantCulture)] =
-            zones.Select(z => new List<float> { z.Start, z.End }).ToList();
-
-        var dir = Path.GetDirectoryName(_drsZonesPath);
-        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-            Directory.CreateDirectory(dir);
-
-        var json = JsonSerializer.Serialize(raw, new JsonSerializerOptions { WriteIndented = true });
-        var tmpPath = _drsZonesPath + ".tmp";
-        await File.WriteAllTextAsync(tmpPath, json);
-        File.Move(tmpPath, _drsZonesPath, overwrite: true);
-
-        lock (_drsZonesLock)
-        {
-            _drsZonesCache = null;
-        }
-    }
-
     /// <summary>
     /// Aggregates a lap's 20 Hz samples into a single normalized resource-usage percentage:
     /// 100% means max allowed ERS deployment for the lap + DRS used across all configured
@@ -179,14 +68,14 @@ static class Program
     /// non-DRS parts of the lap do not dilute the score.
     /// Returns null when samples are unavailable so the client can render an em-dash.
     /// </summary>
-    private static object? ComputeLapPerf(List<LapSample>? samples, int trackId, float trackLengthM, string drsZonesPath)
+    private static object? ComputeLapPerf(List<LapSample>? samples, int trackId, float trackLengthM, DrsZoneStore drsStore)
     {
         if (samples == null || samples.Count == 0) return null;
         const float ErsMaxLapJ = 4_000_000f; // 4 MJ capacity baseline for normalization.
         const float Wers = 0.7f;
         const float Wdrs = 0.3f;
 
-        var drsZonesByTrack = LoadDrsZones(drsZonesPath);
+        var drsZonesByTrack = drsStore.Load();
         (float Start, float End)[]? zones = null;
         var hasZones = trackLengthM > 0 &&
             drsZonesByTrack.TryGetValue(trackId, out zones) &&
@@ -269,8 +158,11 @@ static class Program
         builder.Services.AddSingleton<LapTyreStore>();
         builder.Services.AddSingleton<SessionLogger>();
         builder.Services.AddHostedService<SessionLoggerWriter>();
+        var drsZonesPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "data", "drs-zones.json");
+        builder.Services.AddSingleton(new DrsZoneStore(drsZonesPath));
+        builder.Services.AddSingleton<AutoDrsZoneCaptureService>();
+
         builder.Services.AddSingleton<DebugPacketTracker>();
-        builder.Services.AddSingleton<DrsZoneCaptureService>();
         builder.Services.AddSingleton<ITelemetryIngress, TelemetryPipelineIngress>();
         builder.Services.AddTelemetryUdpListener();
         builder.Services.AddSignalR()
@@ -577,88 +469,52 @@ static class Program
             return Results.Ok(new { reset = true });
         });
 
-        // --- DRS-zone capture (Debug Mode only) ---
-        // Workflow: start -> drive a clean TT lap -> save (or cancel). Status is polled by the
-        // UI at 1 Hz while a capture is active. Start and Save are gated on DebugMode so the
-        // file write isn't reachable from a vanilla deployment.
-
-        app.MapGet("/api/debug/drs-zones/capture/status", (DrsZoneCaptureService capture) =>
-            Results.Ok(SerializeCaptureSnapshot(capture.Snapshot())));
-
-        app.MapPost("/api/debug/drs-zones/capture/start",
-            async (HttpContext ctx, IOptionsMonitor<AppSettings> appSettings,
-                   TelemetryState state, DrsZoneCaptureService capture) =>
+        // --- Debug: DRS zones inspector ---
+        // Lists every known track plus its current state in drs-zones.json. The
+        // current-track block exposes the id of the live session so the UI can offer a
+        // "re-capture" button only when the player is actually on track.
+        app.MapGet("/api/debug/drs-zones", (DrsZoneStore store, AutoDrsZoneCaptureService capture, TelemetryState state) =>
         {
-            if (!appSettings.CurrentValue.DebugMode)
-                return Results.NotFound();
-
+            var zonesByTrack = store.Load();
             var session = state.Get<SessionPacket>((byte)F125PacketId.Session);
-            if (session == null)
-                return Results.BadRequest(new { error = "no Session packet received yet" });
-            if (session.SessionType != 18)
-                return Results.BadRequest(new { error = "current session is not Time Trial", sessionType = session.SessionType });
-            if (session.TrackLength <= 0)
-                return Results.BadRequest(new { error = "track length unknown" });
+            int? currentTrackId = session != null ? session.TrackId : null;
 
-            bool overwriteExisting = false;
-            if (ctx.Request.ContentLength is > 0)
+            var tracks = F125TrackNames.GetAll().Select(kv =>
             {
-                var body = await ctx.Request.ReadFromJsonAsync<DrsCaptureStartRequest>();
-                overwriteExisting = body?.OverwriteExisting ?? false;
-            }
-
-            int trackId = session.TrackId;
-            if (!overwriteExisting)
-            {
-                var existing = LoadDrsZones(_drsZonesPath);
-                if (existing.TryGetValue(trackId, out var zones) && zones.Length > 0)
+                var has = zonesByTrack.TryGetValue(kv.Key, out var zones) && zones.Length > 0;
+                float coverage = 0f;
+                if (has)
+                    foreach (var (s, e) in zones!) coverage += e - s;
+                return new
                 {
-                    return Results.Json(new
-                    {
-                        alreadyExists = true,
-                        trackId,
-                        existingZones = zones.Select(z => new[] { z.Start, z.End }).ToArray(),
-                    }, statusCode: 409);
-                }
-            }
-
-            var snapshot = capture.Arm(trackId, session.TrackLength);
-            return Results.Ok(SerializeCaptureSnapshot(snapshot));
-        });
-
-        app.MapPost("/api/debug/drs-zones/capture/cancel", (DrsZoneCaptureService capture) =>
-        {
-            capture.Cancel();
-            return Results.Ok(SerializeCaptureSnapshot(capture.Snapshot()));
-        });
-
-        app.MapPost("/api/debug/drs-zones/capture/save",
-            async (IOptionsMonitor<AppSettings> appSettings, DrsZoneCaptureService capture) =>
-        {
-            if (!appSettings.CurrentValue.DebugMode)
-                return Results.NotFound();
-
-            if (!capture.TryPeek(out var trackId, out var zones) || zones.Length == 0)
-                return Results.BadRequest(new { error = "no completed capture to save" });
-
-            try
-            {
-                await SaveDrsZonesAsync(trackId, zones);
-            }
-            catch (Exception ex)
-            {
-                // Capture state stays in Completed so the user can retry without re-driving.
-                return Results.Problem($"Failed to write {Path.GetFileName(_drsZonesPath)}: {ex.Message}");
-            }
-
-            capture.CommitSave();
+                    trackId = kv.Key,
+                    trackName = kv.Value,
+                    hasZones = has,
+                    zoneCount = has ? zones!.Length : 0,
+                    coverage = (float)Math.Round(coverage, 4),
+                    zones = has
+                        ? zones!.Select(z => new[] { z.Start, z.End }).ToArray()
+                        : Array.Empty<float[]>(),
+                };
+            }).ToArray();
 
             return Results.Ok(new
             {
-                ok = true,
-                trackId,
-                zones = zones.Select(z => new[] { z.Start, z.End }).ToArray(),
+                currentTrackId,
+                currentTrackName = currentTrackId.HasValue ? F125TrackNames.Get(currentTrackId.Value) : null,
+                captureStatus = capture.GetStatus(),
+                tracks,
             });
+        });
+
+        // Wipes the JSON entry for one track and re-arms auto-capture so the next valid
+        // practice/quali/TT lap on that track triggers a fresh capture.
+        app.MapPost("/api/debug/drs-zones/{trackId:int}/recapture",
+            async (int trackId, DrsZoneStore store, AutoDrsZoneCaptureService capture) =>
+        {
+            await store.DeleteTrackAsync(trackId);
+            capture.Forget(trackId);
+            return Results.Ok(new { trackId, recaptureArmed = true });
         });
 
         // --- Sessions (History) ---
@@ -769,7 +625,7 @@ static class Program
 
         // Session detail: meta + per-driver lap summaries (NO samples/motion). Small enough
         // to hold in the browser for the whole lifetime of the detail view.
-        app.MapGet("/api/sessions/{folder}/{slug}", (string folder, string slug) =>
+        app.MapGet("/api/sessions/{folder}/{slug}", (string folder, string slug, DrsZoneStore store) =>
         {
             var data = HistoryReader.Load(folder, slug);
             if (data == null)
@@ -798,7 +654,7 @@ static class Program
                             l.Samples,
                             data.Meta?.TrackId ?? -1,
                             data.Meta?.TrackLengthM ?? 0f,
-                            _drsZonesPath),
+                            store),
                     }).ToArray(),
                     tyreByLap = kv.Value.TyreByLap,
                 });
@@ -1131,9 +987,6 @@ record SettingsUpdateRequest(
     [property: JsonPropertyName("debugMode")] bool DebugMode,
     [property: JsonPropertyName("enableSessionLogging")] bool EnableSessionLogging,
     [property: JsonPropertyName("historyFolder")] string? HistoryFolder);
-
-record DrsCaptureStartRequest(
-    [property: JsonPropertyName("overwriteExisting")] bool OverwriteExisting);
 
 record OpenFolderRequest(string Folder);
 

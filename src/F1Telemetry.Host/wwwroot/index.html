@@ -81,7 +81,7 @@
                             <span class="history-folder-badge" id="historyFolderBadge" hidden>custom</span>
                         </div>
                         <div class="history-folder-actions">
-                            <button type="button" id="btnHistorySelectFolder" class="btn btn-small btn-secondary">Select Folder</button>
+                            <button type="button" id="btnHistorySelectFolder" class="btn btn-small btn-secondary"><svg class="btn-icon" viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>Select Folder</button>
                             <button type="button" id="btnHistoryResetFolder" class="btn btn-small btn-ghost" hidden title="Restore default Logs/ folder">Reset</button>
                         </div>
                     </div>
@@ -280,28 +280,32 @@
                 </div>
             </div>
 
-            <div class="debug-drs-capture">
-                <h3>Capture DRS Zones (TT)</h3>
-                <p class="muted">Drive a clean Time Trial lap; the app records zones from <code>DrsAllowed</code> transitions and writes them to <code>wwwroot/data/drs-zones.json</code>.</p>
-                <div class="drs-cap-status">
-                    <span class="drs-cap-state" id="drsCapState">Ready</span>
-                    <span class="drs-cap-track muted" id="drsCapTrack"></span>
+            <div class="debug-section drs-zones-section">
+                <div class="drs-zones-header">
+                    <h3>DRS Zones</h3>
+                    <span class="drs-zones-current" id="drsZonesCurrent">No live session.</span>
+                    <button class="btn btn-small btn-secondary" id="btnDrsZonesRefresh" type="button">Refresh</button>
                 </div>
-                <div class="drs-cap-actions">
-                    <button class="btn btn-primary" id="btnDrsCapStart">Start capture</button>
-                    <button class="btn btn-secondary" id="btnDrsCapCancel" disabled>Cancel</button>
-                    <button class="btn btn-success" id="btnDrsCapSave" disabled>Save</button>
-                </div>
-                <div class="drs-cap-error" id="drsCapError" hidden></div>
-
-                <div class="drs-cap-overwrite" id="drsCapOverwrite" hidden>
-                    <p id="drsCapOverwriteMsg"></p>
-                    <div class="drs-cap-actions">
-                        <button class="btn btn-danger" id="btnDrsCapOverwriteConfirm">Overwrite</button>
-                        <button class="btn btn-secondary" id="btnDrsCapOverwriteCancel">Keep existing</button>
-                    </div>
+                <p class="drs-zones-hint">Per-track snapshot of <code>wwwroot/data/drs-zones.json</code>. Auto-capture only runs in practice / qualifying / time trial (race / sprint use a gap-gated DRS flag, so they can't produce reliable zones). Hit Re-capture on the active track to wipe its entry and re-arm capture for the next clean lap.</p>
+                <div class="drs-zones-table-wrap">
+                    <table class="drs-zones-table">
+                        <thead>
+                            <tr>
+                                <th>Track</th>
+                                <th>Status</th>
+                                <th>Zones</th>
+                                <th>Coverage</th>
+                                <th class="drs-zones-zones-col">Ranges</th>
+                                <th></th>
+                            </tr>
+                        </thead>
+                        <tbody id="drsZonesTbody">
+                            <tr><td colspan="6" class="muted">Loading…</td></tr>
+                        </tbody>
+                    </table>
                 </div>
             </div>
+
         </section>
     </main>
 

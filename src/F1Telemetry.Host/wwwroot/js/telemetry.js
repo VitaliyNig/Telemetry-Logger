@@ -119,9 +119,13 @@ const COMPOUND_DOT_COLORS = {
     16: "#ff3333", 17: "#ffd700", 18: "#e0e0e0", 7: "#00cc00", 8: "#00a6ff",
     9: "#e0e0e0", 10: "#00a6ff", 15: "#00a6ff",
     19: "#ff3333", 20: "#ffd700", 21: "#e0e0e0", 22: "#e0e0e0",
+    // F2 2024/2025
+    11: "#9B3CC4", 12: "#ff3333", 13: "#ffd700", 14: "#e0e0e0",
 };
 
-/* Per-lap wear rate (%) per actual compound — from in-game wear rates. */
+/* Per-lap wear rate (%) per actual compound — from in-game wear rates.
+ * IDs 16..22, 7, 8 — F1 25. IDs 11..15 — F2 2024/2025 (identical sets).
+ */
 const COMPOUND_WEAR_RATE_PCT = {
     20: 0.85,  // C1
     19: 1.06,  // C2
@@ -131,6 +135,11 @@ const COMPOUND_WEAR_RATE_PCT = {
     22: 2.90,  // C6
     7:  0.97,  // Inter
     8:  0.97,  // Wet
+    14: 0.85,  // F2 Hard
+    13: 1.06,  // F2 Medium
+    12: 1.31,  // F2 Soft
+    11: 1.64,  // F2 SuperSoft
+    15: 0.97,  // F2 Wet
 };
 
 function getCompoundWearRate(actualCompoundId) {
@@ -138,8 +147,8 @@ function getCompoundWearRate(actualCompoundId) {
     return v != null ? v : null;
 }
 
-/* Per-compound temperature zones (°C), derived from in-game grip curves
- * (docs/F1_tire_grip_interpolated.xlsx):
+/* Per-compound temperature zones (°C), derived from F1 25 vehicle-package
+ * compound physics (TemperatureGrip spline in .vcmpd):
  *   T < cold           → undercool   (blue,   grip < 99%)
  *   cold ≤ T < pLo     → warming up  (green,  grip ≥ 99%)
  *   pLo ≤ T ≤ pHi      → perfect     (purple, grip = 100%)
@@ -147,16 +156,65 @@ function getCompoundWearRate(actualCompoundId) {
  *   T > hot            → critical    (red,    grip < 99%)
  */
 const ACTUAL_COMPOUND_TEMP = {
-    20: { cold: 89, perfectLow: 106, perfectHigh: 110, hot: 130 },  // C1
-    19: { cold: 80, perfectLow: 96,  perfectHigh: 98,  hot: 125 },  // C2
-    18: { cold: 75, perfectLow: 86,  perfectHigh: 96,  hot: 118 },  // C3
-    17: { cold: 68, perfectLow: 81,  perfectHigh: 86,  hot: 110 },  // C4
-    16: { cold: 65, perfectLow: 76,  perfectHigh: 86,  hot: 106 },  // C5
-    22: { cold: 56, perfectLow: 74,  perfectHigh: 76,  hot: 102 },  // C6
-    7:  { cold: 48, perfectLow: 66,  perfectHigh: 70,  hot: 96  },  // Inter
-    8:  { cold: 42, perfectLow: 56,  perfectHigh: 62,  hot: 86  },  // Wet
+    20: { cold: 70, perfectLow: 100, perfectHigh: 110, hot: 130 },  // C1
+    19: { cold: 60, perfectLow: 100, perfectHigh: 100, hot: 130 },  // C2
+    18: { cold: 60, perfectLow: 90,  perfectHigh: 100, hot: 120 },  // C3
+    17: { cold: 50, perfectLow: 80,  perfectHigh: 90,  hot: 120 },  // C4
+    16: { cold: 40, perfectLow: 70,  perfectHigh: 90,  hot: 110 },  // C5
+    22: { cold: 40, perfectLow: 70,  perfectHigh: 80,  hot: 100 },  // C6
+    7:  { cold: 20, perfectLow: 60,  perfectHigh: 70,  hot: 90  },  // Inter
+    8:  { cold: 20, perfectLow: 50,  perfectHigh: 60,  hot: 80  },  // Wet
+    // F2 2024/2025 (identical) — actualTyreCompound 11..15
+    14: { cold: 70, perfectLow: 100, perfectHigh: 110, hot: 130 },  // F2 Hard
+    13: { cold: 60, perfectLow: 90,  perfectHigh: 100, hot: 120 },  // F2 Medium
+    12: { cold: 50, perfectLow: 80,  perfectHigh: 90,  hot: 120 },  // F2 Soft
+    11: { cold: 40, perfectLow: 70,  perfectHigh: 80,  hot: 110 },  // F2 SuperSoft
+    15: { cold: 20, perfectLow: 50,  perfectHigh: 60,  hot: 80  },  // F2 Wet
 };
-const ACTUAL_COMPOUND_TEMP_DEFAULT = { cold: 75, perfectLow: 86, perfectHigh: 96, hot: 118 };
+const ACTUAL_COMPOUND_TEMP_DEFAULT = { cold: 60, perfectLow: 90, perfectHigh: 100, hot: 120 };
+
+/* Surface-temperature thresholds where blistering starts (°C).
+ * From .vcmpd Min/MaxBlisteringTemperature. min = onset, max = severe damage.
+ */
+const COMPOUND_BLISTER_TEMP_C = {
+    20: { min: 115, max: 155 }, 19: { min: 115, max: 155 }, 18: { min: 115, max: 155 },
+    17: { min: 115, max: 155 }, 16: { min: 115, max: 155 }, 22: { min: 115, max: 155 },
+    7:  { min: 100, max: 140 }, 8:  { min: 90,  max: 130 },
+    // F2 2024/2025
+    14: { min: 115, max: 155 }, 13: { min: 115, max: 155 }, 12: { min: 115, max: 155 },
+    11: { min: 115, max: 155 }, 15: { min: 90,  max: 130 },
+};
+
+/* Tyre-temperature considered "released from pits" / fully active (°C).
+ * From .vcmpd PitReleaseTemperature.
+ *   - F1 wets (8): not defined in source.
+ *   - F2 (11..15): tyre warmers banned in F2 since 2020 — cars leave the pits
+ *     on cold tyres, so PitReleaseTemperature is 0 K by design, not missing.
+ *     Intentionally omitted here.
+ */
+const COMPOUND_PIT_RELEASE_TEMP_C = {
+    20: 70, 19: 70, 18: 70, 17: 70, 16: 70, 22: 70, 7: 60,
+};
+
+/* Grip multiplier vs wear% (0..1), sampled at 0/25/50/75/100% from
+ * .vcmpd WearGrip spline. Use to predict pace fall-off with wear.
+ */
+const COMPOUND_WEAR_GRIP = {
+    20: [1.000, 0.980, 0.957, 0.928, 0.876],  // C1
+    19: [1.000, 0.966, 0.938, 0.906, 0.857],  // C2
+    18: [1.000, 0.954, 0.922, 0.887, 0.840],  // C3
+    17: [1.000, 0.942, 0.906, 0.867, 0.821],  // C4
+    16: [1.000, 0.932, 0.891, 0.852, 0.807],  // C5
+    22: [1.000, 0.928, 0.882, 0.842, 0.798],  // C6
+    7:  [1.000, 0.992, 0.968, 0.941, 0.894],  // Inter
+    8:  [1.000, 0.997, 0.983, 0.971, 0.948],  // Wet
+    // F2 2024/2025 (identical)
+    14: [1.000, 0.981, 0.957, 0.929, 0.879],  // F2 Hard
+    13: [1.000, 0.969, 0.939, 0.904, 0.855],  // F2 Medium
+    12: [1.000, 0.955, 0.920, 0.880, 0.832],  // F2 Soft
+    11: [1.000, 0.938, 0.898, 0.855, 0.808],  // F2 SuperSoft
+    15: [1.000, 0.990, 0.973, 0.960, 0.925],  // F2 Wet
+};
 
 const TEMP_COLORS = {
     cold: "#00a6ff",
@@ -168,6 +226,50 @@ const TEMP_COLORS = {
 
 function getCompoundTempRange(actualCompoundId) {
     return ACTUAL_COMPOUND_TEMP[actualCompoundId] || ACTUAL_COMPOUND_TEMP_DEFAULT;
+}
+
+function getCompoundBlisterTemp(actualCompoundId) {
+    return COMPOUND_BLISTER_TEMP_C[actualCompoundId] || null;
+}
+
+function getCompoundPitReleaseTemp(actualCompoundId) {
+    const v = COMPOUND_PIT_RELEASE_TEMP_C[actualCompoundId];
+    return v != null ? v : null;
+}
+
+/** Linear-interpolated grip multiplier (0..1) for given wear% (0..100). */
+function getCompoundExpectedGrip(actualCompoundId, wearPct) {
+    const curve = COMPOUND_WEAR_GRIP[actualCompoundId];
+    if (!curve) return null;
+    const w = Math.max(0, Math.min(100, Number(wearPct)));
+    if (!Number.isFinite(w)) return null;
+    const idx = w / 25;
+    const i0 = Math.floor(idx);
+    if (i0 >= curve.length - 1) return curve[curve.length - 1];
+    const t = idx - i0;
+    return curve[i0] * (1 - t) + curve[i0 + 1] * t;
+}
+
+/** Tooltip line for a compound badge: optimal temp window + blister threshold. */
+function getCompoundBadgeTooltip(actualCompoundId) {
+    const r = ACTUAL_COMPOUND_TEMP[actualCompoundId];
+    const b = getCompoundBlisterTemp(actualCompoundId);
+    const parts = [];
+    if (r) parts.push(`Optimal ${r.perfectLow}–${r.perfectHigh}°C (≥99% from ${r.cold} to ${r.hot})`);
+    if (b) parts.push(`Blister ${b.min}°C / severe ${b.max}°C`);
+    return parts.join("\n");
+}
+
+/** Render remaining-grip indicator for a tyre set: { html, color } or null. */
+function formatTyreSetGrip(actualCompoundId, wearPct) {
+    const grip = getCompoundExpectedGrip(actualCompoundId, wearPct);
+    if (grip == null) return null;
+    const pct = Math.round(grip * 1000) / 10; // one decimal
+    let color;
+    if (grip >= 0.95)      color = "var(--safe)";
+    else if (grip >= 0.90) color = "var(--warning)";
+    else                   color = "var(--danger)";
+    return { text: `${pct.toFixed(1)}%`, color };
 }
 
 function tyreTempColor(temp, range) {
@@ -967,6 +1069,7 @@ function setTyreWidgetTemps(car) {
     if ((!inner || inner.length < 4) && (!surf || surf.length < 4)) return;
 
     const range = getCompoundTempRange(playerActualTyreCompound);
+    const blister = getCompoundBlisterTemp(playerActualTyreCompound);
     for (const [, wc] of getTyreWidgetNodes()) {
         for (let i = 0; i < 4; i++) {
             const c = wc.corners.get(TYRE_CORNERS[i]);
@@ -977,8 +1080,14 @@ function setTyreWidgetTemps(car) {
             const surfCol = tyreTempColor(ts, range);
             const innerCol = tyreTempColor(ti, range);
 
+            const tsNum = Number(ts);
+            const inBlister = blister && Number.isFinite(tsNum) && tsNum >= blister.min;
+            c.card.classList.toggle("tc-blister-risk", !!inBlister);
+
             c.card.style.borderColor = surfCol || "var(--border)";
-            c.card.style.boxShadow = surfCol ? `0 0 8px ${tyreTempColorAlpha(ts, range, 0.3)}` : "";
+            c.card.style.boxShadow = inBlister
+                ? `0 0 12px rgba(239,68,68,0.6)`
+                : (surfCol ? `0 0 8px ${tyreTempColorAlpha(ts, range, 0.3)}` : "");
             if (c.fill) c.fill.style.background = innerCol ? tyreTempColorAlpha(ti, range, 0.12) : "";
             if (c.nodeS) { c.nodeS.textContent = formatDeg(ts); c.nodeS.style.color = surfCol || ""; }
             if (c.nodeI) { c.nodeI.textContent = formatDeg(ti); c.nodeI.style.color = innerCol || ""; }
@@ -1014,9 +1123,12 @@ function setTyreWidgetCompoundAge(car) {
     const actual = ACTUAL_COMPOUNDS[car.actualTyreCompound] || "";
     const dotCol = COMPOUND_DOT_COLORS[car.visualTyreCompound] || "var(--text-dim)";
     const range = getCompoundTempRange(car.actualTyreCompound);
+    const blister = getCompoundBlisterTemp(car.actualTyreCompound);
 
     const nameText = actual ? `${actual}` : visual;
-    const rangeText = `${range.perfectLow}–${range.perfectHigh}°C`;
+    const rangeText = blister
+        ? `${range.perfectLow}–${range.perfectHigh}°C · ⚠ ${blister.min}°C`
+        : `${range.perfectLow}–${range.perfectHigh}°C`;
     const ageText = `${car.tyresAgeLaps} laps`;
 
     for (const [, wc] of getTyreWidgetNodes()) {
@@ -2346,6 +2458,11 @@ const _VISUAL_COMPOUND_INFO = {
     20: { name: "Soft", css: "compound-soft", dot: "#ff3333" },
     21: { name: "Medium", css: "compound-medium", dot: "#ffd700" },
     22: { name: "Hard", css: "compound-hard", dot: "#e0e0e0" },
+    // F2 2024/2025
+    11: { name: "Super Soft", css: "compound-super-soft", dot: "#9B3CC4" },
+    12: { name: "Soft", css: "compound-soft", dot: "#ff3333" },
+    13: { name: "Medium", css: "compound-medium", dot: "#ffd700" },
+    14: { name: "Hard", css: "compound-hard", dot: "#e0e0e0" },
 };
 const _VISUAL_COMPOUND_FALLBACK = { name: "Unknown", css: "", dot: "#888" };
 
@@ -2389,12 +2506,16 @@ function updateTyreSets(data) {
     if (fittedEl && fittedSet) {
         const info = fittedSet.compoundInfo;
         const badgeTxt = getActualCompoundBadgeText(fittedSet.actualTyreCompound, info.name);
+        const badgeTip = getCompoundBadgeTooltip(fittedSet.actualTyreCompound);
         const wearColor = fittedSet.wear > 60 ? "var(--danger)" : fittedSet.wear > 30 ? "var(--warning)" : "var(--safe)";
         const wrate = getCompoundWearRate(fittedSet.actualTyreCompound);
         const wrateText = wrate != null ? `${wrate.toFixed(2)}%/L` : "";
-        fittedEl.innerHTML = `<span class="tyreset-badge ${info.css}">${badgeTxt}</span>`
+        const grip = formatTyreSetGrip(fittedSet.actualTyreCompound, fittedSet.wear);
+        const tipAttr = badgeTip ? ` title="${badgeTip.replace(/"/g, "&quot;")}"` : "";
+        fittedEl.innerHTML = `<span class="tyreset-badge ${info.css}"${tipAttr}>${badgeTxt}</span>`
             + `<span>${info.name}</span>`
             + `<span style="color:${wearColor}">${fittedSet.wear}% worn</span>`
+            + (grip ? `<span class="tyreset-grip" title="Remaining grip vs peak" style="color:${grip.color}">${grip.text}</span>` : "")
             + `<span style="color:var(--text-dim)">${fittedSet.lifeSpan}L left</span>`
             + (wrateText ? `<span class="tyreset-wear-rate" title="Wear per lap">${wrateText}</span>` : "");
     }
@@ -2428,10 +2549,16 @@ function updateTyreSets(data) {
             const deltaCls = delta > 0 ? "positive" : delta < 0 ? "negative" : "zero";
             const deltaText = delta !== 0 ? `${deltaSign}${(delta / 1000).toFixed(1)}s` : "—";
             const badgeTxt = getActualCompoundBadgeText(s.actualTyreCompound, s.compoundInfo.name);
+            const badgeTip = getCompoundBadgeTooltip(s.actualTyreCompound);
+            const tipAttr = badgeTip ? ` title="${badgeTip.replace(/"/g, "&quot;")}"` : "";
             const wrate = getCompoundWearRate(s.actualTyreCompound);
             const wrateText = wrate != null ? `${wrate.toFixed(2)}%/L` : "—";
+            const grip = formatTyreSetGrip(s.actualTyreCompound, wearPct);
+            const gripHtml = grip
+                ? `<span class="tyreset-grip" title="Remaining grip vs peak" style="color:${grip.color}">${grip.text}</span>`
+                : `<span class="tyreset-grip">—</span>`;
             const cls = s.isFitted ? "tyreset-item fitted" : "tyreset-item";
-            parts.push(`<div class="${cls}"><span class="tyreset-badge ${s.compoundInfo.css}">${badgeTxt}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct" style="color:${wearColor}">${wearPct}%</span><span class="tyreset-life">${s.lifeSpan}L</span><span class="tyreset-wear-rate" title="Wear per lap">${wrateText}</span><span class="tyreset-delta ${deltaCls}">${deltaText}</span>${s.isFitted ? '<span class="tyreset-fitted-badge">ON</span>' : ""}</div>`);
+            parts.push(`<div class="${cls}"><span class="tyreset-badge ${s.compoundInfo.css}"${tipAttr}>${badgeTxt}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct" style="color:${wearColor}">${wearPct}%</span>${gripHtml}<span class="tyreset-life">${s.lifeSpan}L</span><span class="tyreset-wear-rate" title="Wear per lap">${wrateText}</span><span class="tyreset-delta ${deltaCls}">${deltaText}</span>${s.isFitted ? '<span class="tyreset-fitted-badge">ON</span>' : ""}</div>`);
         }
         parts.push(`</div>`);
     }
@@ -2449,7 +2576,13 @@ function updateTyreSets(data) {
             const wearPct = s.wear;
             const wearColor = wearPct > 60 ? "var(--danger)" : wearPct > 30 ? "var(--warning)" : "var(--safe)";
             const badgeTxt = getActualCompoundBadgeText(s.actualTyreCompound, s.compoundInfo.name);
-            parts.push(`<div class="tyreset-item"><span class="tyreset-badge tyreset-badge-sm ${s.compoundInfo.css}">${badgeTxt}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct">${wearPct}%</span><span class="tyreset-life">${s.lifeSpan}L</span></div>`);
+            const badgeTip = getCompoundBadgeTooltip(s.actualTyreCompound);
+            const tipAttr = badgeTip ? ` title="${badgeTip.replace(/"/g, "&quot;")}"` : "";
+            const grip = formatTyreSetGrip(s.actualTyreCompound, wearPct);
+            const gripHtml = grip
+                ? `<span class="tyreset-grip" title="Remaining grip vs peak" style="color:${grip.color}">${grip.text}</span>`
+                : `<span class="tyreset-grip">—</span>`;
+            parts.push(`<div class="tyreset-item"><span class="tyreset-badge tyreset-badge-sm ${s.compoundInfo.css}"${tipAttr}>${badgeTxt}</span><div class="tyreset-wear-bar"><div class="tyreset-wear-fill" style="width:${100 - wearPct}%;background:${wearColor}"></div></div><span class="tyreset-wear-pct">${wearPct}%</span>${gripHtml}<span class="tyreset-life">${s.lifeSpan}L</span></div>`);
         }
         parts.push(`</div>`);
     }

@@ -245,6 +245,9 @@ public sealed class SessionLogger
             // Track the highest race-control flag the car saw during this lap.
             if (entry.CurrentRaceFlag > entry.LapMaxFlag[idx])
                 entry.LapMaxFlag[idx] = entry.CurrentRaceFlag;
+            // Latch formation-lap presence for this car — driven by SessionPacket's m_safetyCarStatus == 3.
+            if (entry.IsFormationLap)
+                entry.WasFormationLap[idx] = true;
 
             var currentNum = lap.CurrentLapNum;
             var prevNum = entry.CurrentLapNum[idx];
@@ -263,16 +266,42 @@ public sealed class SessionLogger
                 entry.CurrentLapNum[idx] = currentNum;
                 entry.CurrentLapStartSessionTimeS[idx] = header.SessionTime;
                 entry.LapMaxFlag[idx] = entry.CurrentRaceFlag;
+                entry.WasFormationLap[idx] = false;
             }
         }
     }
 
     private void CompleteLap(SessionEntry entry, byte idx, byte completedLapNum, LapData latest, ulong sessionUid)
     {
+        // Formation-lap drop: when this car was on a formation lap (m_safetyCarStatus == 3 saw
+        // any frame), discard the buffer and bump LapNumOffset so the next call's race lap 1
+        // surfaces as our lap 1. Without this, formation laps were saved as "lap 1" with all-zero
+        // ERS/DRS/Mode samples and inflated time, distorting the perf metric for the real race start.
+        if (entry.WasFormationLap[idx])
+        {
+            entry.LapNumOffset[idx] = completedLapNum;
+            entry.CurrentLapSamples[idx] = null;
+            entry.CurrentLapMotion[idx] = null;
+            entry.LapBlueFlag[idx] = false;
+            return;
+        }
+
+        var savedLapNum = (byte)(completedLapNum - entry.LapNumOffset[idx]);
+        if (savedLapNum < 1)
+        {
+            // Defensive: covers the case where the offset was bumped past completedLapNum mid-flush.
+            entry.CurrentLapSamples[idx] = null;
+            entry.CurrentLapMotion[idx] = null;
+            entry.LapBlueFlag[idx] = false;
+            return;
+        }
+
         var driver = GetOrCreateDriver(entry, idx);
 
         // Authoritative times come from SessionHistoryPacket (server emits validity bits here).
         // LapDataPacket gives us LastLapTimeInMs which was freshly set when the lap completed.
+        // History is indexed by the GAME's lap number (m_currentLapNum), so we keep using
+        // completedLapNum here even after offsetting our public lap number.
         uint lapTimeMs = latest.LastLapTimeInMs;
         uint s1Ms = 0, s2Ms = 0, s3Ms = 0;
         bool lapValid = latest.CurrentLapInvalid == 0;
@@ -300,11 +329,11 @@ public sealed class SessionLogger
         // Capture tyre state at lap completion.
         var tyre = CaptureTyreSnapshot(entry, idx);
         if (tyre != null)
-            driver.TyreByLap[completedLapNum - 1] = tyre;
+            driver.TyreByLap[savedLapNum - 1] = tyre;
 
         var lap = new DriverLap
         {
-            LapNum = completedLapNum,
+            LapNum = savedLapNum,
             LapTimeMs = lapTimeMs,
             S1Ms = s1Ms,
             S2Ms = s2Ms,
@@ -322,11 +351,11 @@ public sealed class SessionLogger
             Samples = entry.CurrentLapSamples[idx],
             Motion = entry.CurrentLapMotion[idx],
         };
-        var existingIdx = driver.Laps.FindIndex(l => l.LapNum == completedLapNum);
+        var existingIdx = driver.Laps.FindIndex(l => l.LapNum == savedLapNum);
         if (existingIdx >= 0)
         {
             driver.Laps[existingIdx] = lap;
-            _logger.LogInformation("Replaced lap {LapNum} for car {CarIdx} after timeline rewind/flashback.", completedLapNum, idx);
+            _logger.LogInformation("Replaced lap {LapNum} for car {CarIdx} after timeline rewind/flashback.", savedLapNum, idx);
         }
         else
         {
@@ -342,7 +371,7 @@ public sealed class SessionLogger
         // We deliberately do NOT null out samples of prior laps afterwards: WriteSession serializes
         // the whole in-memory state each time, and nullified samples would overwrite what was
         // previously persisted. Accept ~100 MB peak RAM for a 60-lap race.
-        if (idx == entry.PlayerCarIndex && completedLapNum > 0 && completedLapNum % FlushEveryNPlayerLaps == 0)
+        if (idx == entry.PlayerCarIndex && savedLapNum > 0 && savedLapNum % FlushEveryNPlayerLaps == 0)
         {
             WriteSession(sessionUid, entry);
         }
@@ -408,6 +437,7 @@ public sealed class SessionLogger
     private void UpdateRaceFlag(SessionEntry entry, SessionPacket session)
     {
         // SessionPacket.SafetyCarStatus: 0 = No, 1 = Full SC, 2 = Virtual SC, 3 = Formation lap.
+        entry.IsFormationLap = session.SafetyCarStatus == 3;
         entry.CurrentRaceFlag = session.SafetyCarStatus switch
         {
             1 => RaceFlag.Sc,
@@ -439,12 +469,22 @@ public sealed class SessionLogger
         if (carIdx is byte ci && ci < MaxCars && entry.CurrentLapNum[ci] != 0)
             lapAtEvent = entry.CurrentLapNum[ci];
 
-        RaceFlag? flag = evt.EventCode switch
+        // SCAR.safetyCarType: 0=None, 1=Full, 2=Virtual, 3=Formation Lap.
+        // SCAR.eventType:     0=Deployed, 1=Returning, 2=Returned, 3=Resume Race.
+        // Only "Deployed" (0) of a Full/Virtual SC sets the per-lap race-flag — Formation Lap
+        // is not a real SC and Returning/Returned/Resume just announce the SC leaving (the
+        // SessionPacket's m_safetyCarStatus already reflects the current state and clears
+        // CurrentRaceFlag on the next tick). The event itself is still recorded below.
+        RaceFlag? flag = null;
+        if (evt.EventCode == "RDFL")
         {
-            "RDFL" => RaceFlag.Red,
-            "SCAR" => evt.Details is SafetyCarEvent sce && sce.SafetyCarType == 2 ? RaceFlag.Vsc : RaceFlag.Sc,
-            _ => null,
-        };
+            flag = RaceFlag.Red;
+        }
+        else if (evt.EventCode == "SCAR" && evt.Details is SafetyCarEvent sce && sce.EventType == 0)
+        {
+            if (sce.SafetyCarType == 1) flag = RaceFlag.Sc;
+            else if (sce.SafetyCarType == 2) flag = RaceFlag.Vsc;
+        }
         if (flag.HasValue)
             entry.CurrentRaceFlag = flag.Value;
 
@@ -546,22 +586,44 @@ public sealed class SessionLogger
                 continue;
 
             var driver = GetOrCreateDriver(entry, carIdx);
-            // The most recently completed lap is currentNum - 1.
+            var offset = entry.LapNumOffset[carIdx];
+            // The most recently completed game-lap is currentNum - 1; in our published numbering
+            // it surfaces as gameLap - offset (offset is 1 once the formation lap was dropped).
             var completedLapNum = (byte)(currentNum - 1);
-            if (completedLapNum == 0)
-                continue;
 
-            if (driver.Laps.Any(l => l.LapNum == completedLapNum))
-                continue;
+            if (completedLapNum >= 1)
+            {
+                var savedLapNum = completedLapNum > offset ? (byte)(completedLapNum - offset) : (byte)0;
+                if (savedLapNum >= 1 && !driver.Laps.Any(l => l.LapNum == savedLapNum))
+                {
+                    var lapCompleted =
+                        (entry.LapHistories.TryGetValue(carIdx, out var histA) && histA.NumLaps >= currentNum) ||
+                        lapData.LapDataItems[carIdx].LastLapTimeInMs > 0;
 
-            var lapCompleted =
-                (entry.LapHistories.TryGetValue(carIdx, out var hist) && hist.NumLaps >= currentNum) ||
-                lapData.LapDataItems[carIdx].LastLapTimeInMs > 0;
+                    if (lapCompleted)
+                        CompleteLap(entry, carIdx, completedLapNum, lapData.LapDataItems[carIdx], sessionUid);
+                }
+            }
 
-            if (!lapCompleted)
-                continue;
-
-            CompleteLap(entry, carIdx, completedLapNum, lapData.LapDataItems[carIdx], sessionUid);
+            // Final-lap rescue: when the race finishes at the chequered flag, m_currentLapNum
+            // does not advance past the last lap (no "boundary crossing" to trigger CompleteLap),
+            // and the SEND-time finaliser above only ever looks at currentNum-1 — so the final
+            // lap was getting silently dropped. SessionHistory keeps the authoritative time for
+            // every lap once the game records it, so any history entry whose lap-time is set but
+            // does not yet have a DriverLap is finalised here.
+            if (entry.LapHistories.TryGetValue(carIdx, out var histB))
+            {
+                var items = histB.LapHistoryDataItems;
+                var maxLap = (byte)Math.Min(items.Length, histB.NumLaps);
+                for (byte n = 1; n <= maxLap; n++)
+                {
+                    if (items[n - 1].LapTimeInMs == 0) continue;
+                    if (n <= offset) continue; // formation slot — never published
+                    var savedNum = (byte)(n - offset);
+                    if (driver.Laps.Any(l => l.LapNum == savedNum)) continue;
+                    CompleteLap(entry, carIdx, n, lapData.LapDataItems[carIdx], sessionUid);
+                }
+            }
         }
     }
 
@@ -728,6 +790,16 @@ public sealed class SessionLogger
         /// <summary>Per-car latch: set true when CarStatusPacket.VehicleFiaFlags == 2 (blue) is
         /// seen at any frame during the current lap. Cleared at lap completion.</summary>
         public readonly bool[] LapBlueFlag = new bool[MaxCars];
+
+        /// <summary>True while the current SessionPacket reports a formation lap (m_safetyCarStatus == 3).</summary>
+        public bool IsFormationLap;
+        /// <summary>Per-car latch: any frame during the current lap saw IsFormationLap == true.
+        /// On lap completion this drives the formation-lap skip in CompleteLap and bumps LapNumOffset.</summary>
+        public readonly bool[] WasFormationLap = new bool[MaxCars];
+        /// <summary>Per-car shift between game's m_currentLapNum and the lap number we publish
+        /// (DriverLap.LapNum = gameLapNum - LapNumOffset). Stays 0 in standing-start races / sprints
+        /// and becomes 1 after the formation lap is detected and dropped, so race lap 1 surfaces as lap 1.</summary>
+        public readonly byte[] LapNumOffset = new byte[MaxCars];
 
         public float LastKnownSessionTimeS { get; set; }
         public uint LastOverallFrameIdentifierProcessed { get; set; }

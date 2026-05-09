@@ -293,23 +293,15 @@
         return keys;
     }
 
-    // Race: final position from FinalClassification packet; fallback to best lap.
-    // Quali/practice: best lap (virtual sum in virtualMode).
+    // Sort by session result. Race uses sortDriversByFinalPosition (handles DNF/DSQ/Retired
+    // by separating finishers from non-finishers). Quali/practice/TT have no final-classification
+    // packet, so the session result is best lap (virtual sum in virtualMode).
     function orderDriversForTable(cat, sess, useVirtual) {
         var drivers = sess.drivers || {};
         if (cat === 'race') {
-            var fc = sess.finalClassification;
-            var cd = fc && fc.classificationData;
-            if (cd && cd.length) {
-                var keys = Object.keys(drivers);
-                var withPos = keys.map(function (k) {
-                    var idx = Number(k);
-                    var pos = (cd[idx] && cd[idx].position) ? cd[idx].position : 999;
-                    return { key: k, pos: pos };
-                });
-                withPos.sort(function (a, b) { return a.pos - b.pos; });
-                return withPos.map(function (r) { return r.key; });
-            }
+            return Object.keys(drivers).sort(function (a, b) {
+                return sortDriversByFinalPosition(sess, Number(a), Number(b));
+            });
         }
         return orderDriversByBest(drivers, useVirtual);
     }
@@ -410,6 +402,20 @@
         return null;
     }
 
+    // Accept both numeric and string enum values from history payloads.
+    function normalizeRaceFlag(flag) {
+        if (flag == null) return 0;
+        if (typeof flag === 'number') return flag;
+        var text = String(flag).trim().toLowerCase();
+        if (!text) return 0;
+        if (text === '0' || text === 'green') return 0;
+        if (text === '1' || text === 'yellow') return 1;
+        if (text === '2' || text === 'sc' || text === 'safetycar' || text === 'safety_car' || text === 'safety car') return 2;
+        if (text === '3' || text === 'vsc' || text === 'virtualsafetycar' || text === 'virtual_safety_car' || text === 'virtual safety car') return 3;
+        if (text === '4' || text === 'red' || text === 'redflag' || text === 'red_flag' || text === 'red flag') return 4;
+        return 0;
+    }
+
     // Row background when SC / VSC / Red Flag was active for most drivers on this lap.
     function rowFlagClass(lapNum, drivers, driverOrder) {
         var counts = { 1: 0, 2: 0, 3: 0, 4: 0, total: 0 };
@@ -417,7 +423,8 @@
             var lap = lapByNum(drivers[carIdx].laps, lapNum);
             if (!lap) return;
             counts.total++;
-            if (lap.raceFlag && counts[lap.raceFlag] != null) counts[lap.raceFlag]++;
+            var raceFlag = normalizeRaceFlag(lap.raceFlag);
+            if (raceFlag && counts[raceFlag] != null) counts[raceFlag]++;
         });
         if (counts.total === 0) return '';
         var half = counts.total / 2;
@@ -503,16 +510,17 @@
 
     function lapTagsHtml(l, cat) {
         var out = '';
+        var raceFlag = normalizeRaceFlag(l.raceFlag);
         if (cat !== 'qualifying' && l.pit) {
             out += '<span class="lap-tag lap-tag--pit" title="Pit Stop">PIT</span>';
         }
         if (cat === 'race' && l.blueFlag) {
             out += '<span class="lap-tag lap-tag--blue" title="Blue Flag">B</span>';
         }
-        if (l.raceFlag === 2) out += '<span class="lap-tag lap-tag--sc" title="Safety Car">SC</span>';
-        else if (l.raceFlag === 3) out += '<span class="lap-tag lap-tag--vsc" title="Virtual Safety Car">VSC</span>';
-        else if (l.raceFlag === 4) out += '<span class="lap-tag lap-tag--rf" title="Red Flag">RF</span>';
-        else if (l.raceFlag === 1) out += '<span class="lap-tag lap-tag--yellow" title="Yellow">Y</span>';
+        if (raceFlag === 2) out += '<span class="lap-tag lap-tag--sc" title="Safety Car">SC</span>';
+        else if (raceFlag === 3) out += '<span class="lap-tag lap-tag--vsc" title="Virtual Safety Car">VSC</span>';
+        else if (raceFlag === 4) out += '<span class="lap-tag lap-tag--rf" title="Red Flag">RF</span>';
+        else if (raceFlag === 1) out += '<span class="lap-tag lap-tag--yellow" title="Yellow">Y</span>';
         return out;
     }
 
@@ -651,6 +659,27 @@
         return '<td class="' + cellCls + '"><span class="' + deltaCls + '">' + text + '</span></td>';
     }
 
+    // Drives the perf badge fill — light grey-blue (low) → brand purple (high).
+    // Mirrors wearColorFor: 10 hand-picked stops at 10..100 % with linear interpolation
+    // between adjacent stops; values below 10 % clamp to the lightest stop.
+    function perfColorFor(pct) {
+        var stops = [
+            [10, '#B8C4D6'], [20, '#B5B5D9'], [30, '#B1A7DD'], [40, '#AE98E0'],
+            [50, '#AB89E4'], [60, '#A87AE7'], [70, '#A56CEB'], [80, '#A15DEE'],
+            [90, '#9E4EF2'], [100, '#9B3FF5']
+        ];
+        if (pct <= 10) return stops[0][1];
+        if (pct >= 100) return stops[stops.length - 1][1];
+        for (var i = 0; i < stops.length - 1; i++) {
+            var t1 = stops[i][0], c1 = stops[i][1];
+            var t2 = stops[i + 1][0], c2 = stops[i + 1][1];
+            if (pct >= t1 && pct <= t2) {
+                return interpolateColor(c1, c2, (pct - t1) / (t2 - t1));
+            }
+        }
+        return stops[stops.length - 1][1];
+    }
+
     function perfCellHtml(l) {
         var p = l.perf;
         if (!p) return '<td class="lap-cell lap-sub--perf">—</td>';
@@ -670,12 +699,13 @@
             + ' · ERS usage ' + ersPct + '%'
             + ' · DRS usage ' + drsPct + '%'
             + (p.drsZoneBased ? ' (track zones)' : ' (whole-lap fallback)');
-        var tone = perfPct >= 75 ? 'push' : (perfPct >= 40 ? 'cruise' : 'save');
+        var bg = perfColorFor(perfPct);
 
         var cellCls = 'lap-cell lap-sub--perf';
-        if (l.pit || l.raceFlag === 2 || l.raceFlag === 3) cellCls += ' lap-cell--muted';
+        var raceFlag = normalizeRaceFlag(l.raceFlag);
+        if (l.pit || raceFlag === 2 || raceFlag === 3) cellCls += ' lap-cell--muted';
         return '<td class="' + cellCls + '" title="' + title + '">'
-            + '<span class="lap-perf-badge lap-perf--' + tone + '">' + perfPct + '%</span>'
+            + '<span class="lap-perf-badge" style="background:' + bg + '">' + perfPct + '%</span>'
             + '</td>';
     }
 
@@ -717,7 +747,10 @@
     //  - finally fall back to the out-lap itself
     function pickRefLap(stintLaps) {
         if (!stintLaps || stintLaps.length === 0) return null;
-        function isClean(l) { return l.valid && l.raceFlag !== 2 && l.raceFlag !== 3; }
+        function isClean(l) {
+            var raceFlag = normalizeRaceFlag(l.raceFlag);
+            return l.valid && raceFlag !== 2 && raceFlag !== 3;
+        }
         function argminBy(list, sel) {
             var best = null;
             for (var i = 0; i < list.length; i++) {
@@ -834,11 +867,12 @@
     }
 
     function raceFlagIcon(flag) {
-        if (flag == null || flag === 0) return '';
-        if (flag === 2) return '<span class="flag-icon flag-sc" title="Safety Car">SC</span>';
-        if (flag === 3) return '<span class="flag-icon flag-vsc" title="Virtual Safety Car">VSC</span>';
-        if (flag === 4) return '<span class="flag-icon flag-red" title="Red Flag">RED</span>';
-        if (flag === 1) return '<span class="flag-icon flag-yellow" title="Yellow">Y</span>';
+        var raceFlag = normalizeRaceFlag(flag);
+        if (raceFlag === 0) return '';
+        if (raceFlag === 2) return '<span class="flag-icon flag-sc" title="Safety Car">SC</span>';
+        if (raceFlag === 3) return '<span class="flag-icon flag-vsc" title="Virtual Safety Car">VSC</span>';
+        if (raceFlag === 4) return '<span class="flag-icon flag-red" title="Red Flag">RED</span>';
+        if (raceFlag === 1) return '<span class="flag-icon flag-yellow" title="Yellow">Y</span>';
         return '';
     }
 
@@ -1026,6 +1060,30 @@
         return max;
     }
 
+    // Position chart should use configured race distance when available.
+    // If meta is missing/zero, fallback to the max completed lap number and
+    // ignore trailing synthetic/incomplete lap snapshots after finish.
+    function positionChartTotalLaps(sess) {
+        var metaLaps = Number(sess && sess.meta ? sess.meta.totalLaps : 0) || 0;
+        if (metaLaps > 0) return metaLaps;
+
+        var completedMax = 0;
+        var drivers = sess && sess.drivers ? sess.drivers : null;
+        Object.keys(drivers || {}).forEach(function (k) {
+            (drivers[k].laps || []).forEach(function (l) {
+                if (!l || !l.lapNum) return;
+                var hasTime = Number(l.lapTimeMs || 0) > 0
+                    || Number(l.s1Ms || 0) > 0
+                    || Number(l.s2Ms || 0) > 0
+                    || Number(l.s3Ms || 0) > 0;
+                if (hasTime && l.lapNum > completedMax) completedMax = l.lapNum;
+            });
+        });
+        if (completedMax > 0) return completedMax;
+
+        return computeMaxLap(drivers);
+    }
+
     function renderPosSidebar() {
         var sidebar = document.getElementById('posSidebar');
         if (!sidebar) return;
@@ -1075,7 +1133,7 @@
             return;
         }
 
-        var totalLaps = (sess.meta && sess.meta.totalLaps) || computeMaxLap(sess.drivers);
+        var totalLaps = positionChartTotalLaps(sess);
         if (!totalLaps) totalLaps = 1;
         var totalDrivers = Math.max(20, Object.keys(sess.drivers || {}).length);
 
@@ -1123,7 +1181,7 @@
         // Race-flag bands: Yellow=1, SC=2, VSC=3, Red=4
         var flagByLap = {};
         (sess.events || []).forEach(function (e) {
-            if (e.flag != null && e.lap != null && (e.flag === 2 || e.flag === 3 || e.flag === 4)) {
+            if (e.flag != null && e.lap != null && (e.flag === 2 || e.flag === 3 || e.flag === 4) && Number(e.lap) <= totalLaps) {
                 flagByLap[e.lap] = Math.max(flagByLap[e.lap] || 0, e.flag);
             }
         });
@@ -1184,7 +1242,7 @@
             var d = sess.drivers[carIdx];
             var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
             var code = driverCode(d.name);
-            var validLaps = (d.laps || []).filter(function (l) { return l.position > 0; });
+            var validLaps = (d.laps || []).filter(function (l) { return l.position > 0 && l.lapNum <= totalLaps; });
             if (validLaps.length === 0) return;
 
             var hidden = positionsLineHidden(carIdx);
@@ -1197,7 +1255,7 @@
 
             var pits = '';
             (d.laps || []).forEach(function (l) {
-                if (isPitLap(l) && l.position > 0) {
+                if (isPitLap(l) && l.position > 0 && l.lapNum <= totalLaps) {
                     var lapPits = pitByLap[l.lapNum] || [];
                     var idx = lapPits.indexOf(carIdx);
                     var offset = (idx - (lapPits.length - 1) / 2) * 14;
@@ -1205,7 +1263,7 @@
                     var cy = y(l.position);
                     pits += '<g class="pos-pit-badge">'
                         + '<rect x="' + (cx - 5.5) + '" y="' + (cy - 5.5) + '" width="11" height="11" rx="2.5" ry="2.5" fill="' + color + '" stroke="#fff" stroke-width="1"/>'
-                        + '<text class="pos-pit-letter" font-size="' + fPitLt + '" x="' + cx + '" y="' + (cy + 2.4) + '" text-anchor="middle">P</text>'
+                        + '<text class="pos-pit-letter" font-size="' + fPitLt + '" x="' + cx + '" y="' + cy + '" text-anchor="middle" dominant-baseline="middle">P</text>'
                         + '</g>';
                 }
             });
@@ -1286,7 +1344,7 @@
 
                 var sess = state.session;
                 if (!sess) return;
-                var totalLapsMv = (sess.meta && sess.meta.totalLaps) || computeMaxLap(sess.drivers);
+                var totalLapsMv = positionChartTotalLaps(sess);
                 if (!totalLapsMv) totalLapsMv = 1;
 
                 var rect = svg.getBoundingClientRect();

@@ -5,6 +5,7 @@ using F1Telemetry.F125.Protocol;
 using F1Telemetry.Ingress;
 using F1Telemetry.State;
 using F1Telemetry.Telemetry;
+using F1Telemetry.TrackData;
 using F1Telemetry.Host.Hubs;
 using F1Telemetry.Host.Logging;
 using Microsoft.AspNetCore.SignalR;
@@ -26,7 +27,8 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
     private readonly LapTyreStore _lapTyreStore;
     private readonly SessionLogger _sessionLogger;
     private readonly DebugPacketTracker _tracker;
-    private readonly DrsZoneCaptureService _drsZoneCapture;
+    private readonly AutoDrsZoneCaptureService _autoDrsCapture;
+    private readonly DrsZoneStore _drsZoneStore;
     private readonly IHubContext<TelemetryHub, ITelemetryClient> _hubContext;
     private readonly IOptionsMonitor<AppSettings> _appSettings;
     private readonly ILogger<TelemetryPipelineIngress> _logger;
@@ -39,7 +41,8 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         LapTyreStore lapTyreStore,
         SessionLogger sessionLogger,
         DebugPacketTracker tracker,
-        DrsZoneCaptureService drsZoneCapture,
+        AutoDrsZoneCaptureService autoDrsCapture,
+        DrsZoneStore drsZoneStore,
         IHubContext<TelemetryHub, ITelemetryClient> hubContext,
         IOptionsMonitor<AppSettings> appSettings,
         ILogger<TelemetryPipelineIngress> logger)
@@ -51,7 +54,8 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         _lapTyreStore = lapTyreStore;
         _sessionLogger = sessionLogger;
         _tracker = tracker;
-        _drsZoneCapture = drsZoneCapture;
+        _autoDrsCapture = autoDrsCapture;
+        _drsZoneStore = drsZoneStore;
         _hubContext = hubContext;
         _appSettings = appSettings;
         _logger = logger;
@@ -140,19 +144,44 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
                 var session = _state.Get<SessionPacket>((byte)F125PacketId.Session);
                 var sessionType = session?.SessionType ?? 0;
 
-                // Feed the DRS-zone capture state machine. No-op when capture is Idle, so the
-                // hot path cost outside Debug Mode is one method call + one volatile read.
-                var carStatus = _state.Get<CarStatusPacket>((byte)F125PacketId.CarStatus);
-                if (session != null && carStatus != null && carIdx < carStatus.CarStatusDataItems.Length)
+                // Auto-capture DRS zones when no data exists for the current track.
+                // We use m_drs (CarTelemetry) instead of m_drsAllowed (CarStatus) because
+                // m_drs reflects the actual DRS zone boundaries, whereas m_drsAllowed only
+                // turns on after the detection line (so captured zones would be truncated).
+                var carTelemetry = _state.Get<CarTelemetryPacket>((byte)F125PacketId.CarTelemetry);
+                if (session != null && carTelemetry != null && carIdx < carTelemetry.CarTelemetryData.Length)
                 {
-                    _drsZoneCapture.OnPlayerLapData(
+                    var drs = carTelemetry.CarTelemetryData[carIdx].Drs;
+                    if (_autoDrsCapture.OnPlayerLapData(
                         sessionType,
                         session.TrackId,
                         session.TrackLength,
                         currentLapNum,
                         playerLap.CurrentLapInvalid,
                         playerLap.LapDistance,
-                        carStatus.CarStatusDataItems[carIdx].DrsAllowed);
+                        drs))
+                    {
+                        if (_autoDrsCapture.TryTakeCompleted(out var capturedTrackId, out var zones))
+                        {
+                            _ = Task.Run(async () =>
+                            {
+                                try
+                                {
+                                    await _drsZoneStore.SaveAsync(capturedTrackId, zones);
+                                    _autoDrsCapture.MarkSaved(capturedTrackId);
+                                    _logger.LogInformation(
+                                        "Auto-saved DRS zones for track {TrackId}: {Zones}",
+                                        capturedTrackId,
+                                        string.Join(", ", zones.Select(z => $"[{z.Start:F3},{z.End:F3}]")));
+                                }
+                                catch (Exception ex)
+                                {
+                                    _logger.LogError(ex, "Auto DRS zone save failed for track {TrackId}", capturedTrackId);
+                                    _autoDrsCapture.MarkResolved(capturedTrackId);
+                                }
+                            });
+                        }
+                    }
                 }
 
                 if (IsSetupSnapshotSession(sessionType))

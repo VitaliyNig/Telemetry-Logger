@@ -41,17 +41,6 @@
     var btnDownloadLog = document.getElementById('btnDownloadLog');
     var btnResetStats = document.getElementById('btnResetStats');
 
-    var drsCapState = document.getElementById('drsCapState');
-    var drsCapTrack = document.getElementById('drsCapTrack');
-    var drsCapError = document.getElementById('drsCapError');
-    var drsCapOverwrite = document.getElementById('drsCapOverwrite');
-    var drsCapOverwriteMsg = document.getElementById('drsCapOverwriteMsg');
-    var btnDrsCapStart = document.getElementById('btnDrsCapStart');
-    var btnDrsCapCancel = document.getElementById('btnDrsCapCancel');
-    var btnDrsCapSave = document.getElementById('btnDrsCapSave');
-    var btnDrsCapOverwriteConfirm = document.getElementById('btnDrsCapOverwriteConfirm');
-    var btnDrsCapOverwriteCancel = document.getElementById('btnDrsCapOverwriteCancel');
-
     function updateWebPortRestartBadge() {
         if (!webPortRestartBadge || !webPort) return;
         var current = parseInt(webPort.value, 10);
@@ -864,164 +853,114 @@
             });
     });
 
-    // --- DRS-zone capture ---
-    var drsCapPollHandle = null;
+    // --- Debug: DRS zones inspector ---
+    var drsZonesTbody = document.getElementById('drsZonesTbody');
+    var drsZonesCurrent = document.getElementById('drsZonesCurrent');
+    var btnDrsZonesRefresh = document.getElementById('btnDrsZonesRefresh');
+    var drsZonesPollTimer = null;
+    var DRS_ZONES_POLL_MS = 5000;
 
-    function drsCapShowError(msg) {
-        if (!drsCapError) return;
-        if (msg) {
-            drsCapError.textContent = msg;
-            drsCapError.hidden = false;
-        } else {
-            drsCapError.textContent = '';
-            drsCapError.hidden = true;
-        }
-    }
-
-    function drsCapRender(snapshot) {
-        if (!snapshot) return;
-        var stateText;
-        switch (snapshot.state) {
-            case 'Armed':
-                stateText = 'Waiting for next lap to start…';
-                break;
-            case 'Recording':
-                stateText = 'Recording lap ' + (snapshot.currentLapNum || '?') +
-                    ' · ' + (snapshot.capturedZoneCount || 0) + ' zones';
-                break;
-            case 'Completed':
-                stateText = 'Captured ' + snapshot.capturedZoneCount + ' zones — review and save';
-                break;
-            default:
-                stateText = 'Ready';
-        }
-        drsCapState.textContent = stateText;
-        drsCapTrack.textContent = snapshot.trackId != null
-            ? 'Track id ' + snapshot.trackId
-            : '';
-
-        btnDrsCapStart.disabled = snapshot.state !== 'Idle';
-        btnDrsCapCancel.disabled = snapshot.state === 'Idle';
-        btnDrsCapSave.disabled = snapshot.state !== 'Completed';
-
-        if (snapshot.error) {
-            drsCapShowError(snapshot.error);
-        } else if (snapshot.state !== 'Idle') {
-            drsCapShowError(null);
-        }
-
-        if (snapshot.state === 'Idle') {
-            drsCapStopPolling();
-        } else {
-            drsCapStartPolling();
-        }
+    function drsCapFetchStatus() {
+        if (!drsZonesTbody) return;
+        return fetch('/api/debug/drs-zones')
+            .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('http ' + r.status)); })
+            .then(renderDrsZonesView)
+            .catch(function (err) {
+                drsZonesTbody.innerHTML = '<tr><td colspan="6" class="muted">Failed to load: ' + escapeHtml(String(err && err.message ? err.message : err)) + '</td></tr>';
+            })
+            .finally(function () {
+                if (debugMode) drsCapStartPolling();
+            });
     }
 
     function drsCapStartPolling() {
-        if (drsCapPollHandle != null) return;
-        drsCapPollHandle = setInterval(drsCapFetchStatus, 1000);
+        if (drsZonesPollTimer != null) return;
+        drsZonesPollTimer = window.setInterval(drsCapFetchStatus, DRS_ZONES_POLL_MS);
     }
 
     function drsCapStopPolling() {
-        if (drsCapPollHandle == null) return;
-        clearInterval(drsCapPollHandle);
-        drsCapPollHandle = null;
+        if (drsZonesPollTimer == null) return;
+        window.clearInterval(drsZonesPollTimer);
+        drsZonesPollTimer = null;
     }
 
-    function drsCapFetchStatus() {
-        fetch('/api/debug/drs-zones/capture/status')
-            .then(function (r) { return r.json(); })
-            .then(drsCapRender)
-            .catch(function (err) { console.error('DRS capture status failed:', err); });
-    }
+    function renderDrsZonesView(data) {
+        if (!drsZonesTbody) return;
+        var currentId = data && data.currentTrackId != null ? Number(data.currentTrackId) : null;
+        var currentName = data && data.currentTrackName ? String(data.currentTrackName) : null;
 
-    function drsCapStart(overwriteExisting) {
-        drsCapShowError(null);
-        return fetch('/api/debug/drs-zones/capture/start', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ overwriteExisting: !!overwriteExisting })
-        }).then(function (r) {
-            if (r.status === 409) {
-                return r.json().then(function (data) {
-                    drsCapOverwriteMsg.textContent =
-                        'Track ' + data.trackId + ' already has ' +
-                        (data.existingZones ? data.existingZones.length : 0) +
-                        ' zones — overwrite?';
-                    drsCapOverwrite.hidden = false;
-                });
+        if (drsZonesCurrent) {
+            if (currentId == null) {
+                drsZonesCurrent.textContent = 'No live session.';
+                drsZonesCurrent.classList.remove('drs-zones-current--live');
+            } else {
+                drsZonesCurrent.textContent = 'Live: ' + currentName + ' (track ' + currentId + ')';
+                drsZonesCurrent.classList.add('drs-zones-current--live');
             }
-            return r.json().then(function (data) {
-                if (!r.ok) {
-                    drsCapShowError(data.error || ('HTTP ' + r.status));
-                    return;
-                }
-                drsCapOverwrite.hidden = true;
-                drsCapRender(data);
-            });
-        }).catch(function (err) {
-            drsCapShowError('Network error: ' + err.message);
-        });
+        }
+
+        var tracks = (data && Array.isArray(data.tracks)) ? data.tracks : [];
+        if (tracks.length === 0) {
+            drsZonesTbody.innerHTML = '<tr><td colspan="6" class="muted">No track data.</td></tr>';
+            return;
+        }
+
+        var rows = tracks.map(function (t) {
+            var isCurrent = currentId != null && Number(t.trackId) === currentId;
+            var rowCls = 'drs-zone-row' + (isCurrent ? ' drs-zone-row--current' : '');
+            var statusCls = t.hasZones ? 'drs-zones-status drs-zones-status--has' : 'drs-zones-status drs-zones-status--missing';
+            var statusText = t.hasZones ? 'has zones' : '—';
+            var coverageText = t.hasZones ? Math.round((t.coverage || 0) * 100) + '%' : '—';
+            var rangesText = t.hasZones ? formatDrsRanges(t.zones) : '—';
+            // Re-capture button is enabled only when this row matches the live session, so a
+            // user can't accidentally wipe a track they're not currently driving.
+            var btn = '<button type="button" class="btn btn-small btn-danger drs-zone-recapture"'
+                + ' data-track-id="' + Number(t.trackId) + '"'
+                + (isCurrent ? '' : ' disabled')
+                + (isCurrent ? ' title="Wipe entry and re-arm capture for the next clean lap"' : ' title="Drive this track in P/Q/TT first"')
+                + '>Re-capture</button>';
+            return '<tr class="' + rowCls + '">'
+                + '<td>' + escapeHtml(String(t.trackName || '')) + ' <span class="drs-zone-id">' + Number(t.trackId) + '</span></td>'
+                + '<td><span class="' + statusCls + '">' + statusText + '</span></td>'
+                + '<td>' + (t.hasZones ? Number(t.zoneCount) : '—') + '</td>'
+                + '<td>' + coverageText + '</td>'
+                + '<td class="drs-zone-ranges">' + rangesText + '</td>'
+                + '<td>' + btn + '</td>'
+                + '</tr>';
+        }).join('');
+        drsZonesTbody.innerHTML = rows;
     }
 
-    if (btnDrsCapStart) {
-        btnDrsCapStart.addEventListener('click', function () { drsCapStart(false); });
+    function formatDrsRanges(zones) {
+        if (!zones || !zones.length) return '—';
+        return zones.map(function (z) {
+            var s = Number(z[0]);
+            var e = Number(z[1]);
+            return '[' + s.toFixed(3) + '–' + e.toFixed(3) + ']';
+        }).join(' ');
     }
 
-    if (btnDrsCapCancel) {
-        btnDrsCapCancel.addEventListener('click', function () {
-            fetch('/api/debug/drs-zones/capture/cancel', { method: 'POST' })
-                .then(function (r) { return r.json(); })
-                .then(drsCapRender)
-                .catch(function (err) { console.error('DRS capture cancel failed:', err); });
-        });
-    }
-
-    if (btnDrsCapSave) {
-        btnDrsCapSave.addEventListener('click', function () {
-            btnDrsCapSave.disabled = true;
-            fetch('/api/debug/drs-zones/capture/save', { method: 'POST' })
-                .then(function (r) {
-                    return r.json().then(function (data) { return { ok: r.ok, data: data }; });
-                })
-                .then(function (res) {
-                    if (!res.ok) {
-                        drsCapShowError((res.data && (res.data.detail || res.data.error)) || 'Save failed');
-                        btnDrsCapSave.disabled = false;
-                        return;
-                    }
-                    drsCapShowError(null);
-                    drsCapFetchStatus();
-                    alert('Saved ' + (res.data.zones ? res.data.zones.length : 0) +
-                        ' zones for track ' + res.data.trackId + '.');
-                })
+    if (drsZonesTbody) {
+        drsZonesTbody.addEventListener('click', function (e) {
+            var btn = e.target.closest('.drs-zone-recapture');
+            if (!btn || btn.disabled) return;
+            var trackId = Number(btn.dataset.trackId);
+            if (!Number.isFinite(trackId)) return;
+            if (!confirm('Wipe DRS zones for track ' + trackId + ' and re-arm capture?')) return;
+            btn.disabled = true;
+            fetch('/api/debug/drs-zones/' + trackId + '/recapture', { method: 'POST' })
+                .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('http ' + r.status)); })
+                .then(function () { return drsCapFetchStatus(); })
                 .catch(function (err) {
-                    drsCapShowError('Network error: ' + err.message);
-                    btnDrsCapSave.disabled = false;
+                    console.error('Re-capture failed:', err);
+                    btn.disabled = false;
+                    alert('Re-capture failed: ' + (err && err.message ? err.message : err));
                 });
         });
     }
 
-    if (btnDrsCapOverwriteConfirm) {
-        btnDrsCapOverwriteConfirm.addEventListener('click', function () {
-            drsCapOverwrite.hidden = true;
-            drsCapStart(true);
-        });
-    }
-
-    if (btnDrsCapOverwriteCancel) {
-        btnDrsCapOverwriteCancel.addEventListener('click', function () {
-            drsCapOverwrite.hidden = true;
-        });
-    }
-
-    // Refresh status whenever the user opens the Debug tab so stale UI from a previous
-    // session doesn't linger after navigation.
-    if (tabNav) {
-        tabNav.addEventListener('click', function (e) {
-            var btn = e.target.closest && e.target.closest('.tab-btn[data-tab="debug"]');
-            if (btn) drsCapFetchStatus();
-        });
+    if (btnDrsZonesRefresh) {
+        btnDrsZonesRefresh.addEventListener('click', function () { drsCapFetchStatus(); });
     }
 
     // --- Helpers ---

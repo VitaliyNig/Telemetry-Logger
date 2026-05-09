@@ -38,4 +38,8 @@ public static class F125TrackNames
 
     public static string Get(int trackId) =>
         Names.TryGetValue(trackId, out var name) ? name : $"Track{trackId}";
+
+    /// <summary>All known track id → name pairs, in id order. Used by the debug DRS-zone view.</summary>
+    public static IEnumerable<KeyValuePair<int, string>> GetAll() =>
+        Names.OrderBy(kv => kv.Key);
 }
