@@ -23,8 +23,11 @@
         deltaSeriesCache: new Map(),
         hoverPerf: { enabled: false, lastLogTs: 0, samples: 0, hoverMs: 0, interpCount: 0 },
         chipMode: 'pair', // 'pair' | 'diff'
-        mapLayers: { line: true, deltaHeat: true, events: true },
-
+        mapLayers: { line: true, deltaHeat: true, events: true, dominance: false },
+        mapZoom: 1,                 // 1 = full track in viewport, max 8x
+        mapPanX: 0,                 // pixels offset of camera in viewBox units
+        mapPanY: 0,
+        mapFollow: true,            // auto-recenter on hovered point when zoomed in
     };
     var shortcutsBound = false;
     /** Updated on every redraw so the global R shortcut does not keep stale lap data. */
@@ -49,8 +52,15 @@
                     line: p.mapLayers.line !== false,
                     deltaHeat: p.mapLayers.deltaHeat !== false,
                     events: p.mapLayers.events !== false,
+                    dominance: p.mapLayers.dominance === true,
                 };
             }
+            if (typeof p.mapZoom === 'number' && isFinite(p.mapZoom)) {
+                compareState.mapZoom = Math.max(1, Math.min(8, p.mapZoom));
+            }
+            if (typeof p.mapPanX === 'number' && isFinite(p.mapPanX)) compareState.mapPanX = p.mapPanX;
+            if (typeof p.mapPanY === 'number' && isFinite(p.mapPanY)) compareState.mapPanY = p.mapPanY;
+            if (typeof p.mapFollow === 'boolean') compareState.mapFollow = p.mapFollow;
         } catch (e) { /* ignore corrupt storage */ }
     }
 
@@ -65,6 +75,10 @@
                 insightsEnabled: compareState.insightsEnabled,
                 chipMode: compareState.chipMode,
                 mapLayers: compareState.mapLayers,
+                mapZoom: compareState.mapZoom,
+                mapPanX: compareState.mapPanX,
+                mapPanY: compareState.mapPanY,
+                mapFollow: compareState.mapFollow,
             }));
         } catch (e) { /* storage may be disabled */ }
     }
@@ -1004,7 +1018,7 @@
             var d = lapData && lapData.get(carIdx);
             if (!d || !d.samples) return;
             var driver = resolveCompareDriver(sess, carIdx, kv[1]);
-            var color = (driver && typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
+            var color = (driver && typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId, driver.liveryColorHex) : '#9aa0a6';
 
             var values;
             if (metric.key === 'delta') {
@@ -1150,7 +1164,7 @@
             if (!firstCmp && resolvedRef && Number(carIdx) !== resolvedRef.carIdx) firstCmp = d;
             var sourceCarIdx = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : carIdx);
             var driver = sess.drivers[sourceCarIdx];
-            var color = (driver && typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
+            var color = (driver && typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId, driver.liveryColorHex) : '#9aa0a6';
             var pts = d.motion.map(function (m) {
                 var p = project(m.x, m.z);
                 return p[0] + ',' + p[1];
@@ -1161,6 +1175,9 @@
                 + '" cy="' + first[1] + '" r="5" fill="' + color + '"/>';
         });
         if (compareState.mapLayers.deltaHeat && refData && firstCmp && refData.motion && firstCmp.motion) {
+            // Heat colour: green = compare faster than reference at this point,
+            // red = compare slower. Saturation scales with |delta| up to ±1.5 s.
+            // Near-zero delta fades to dark grey so neutral zones don't shout.
             for (var i = 1; i < firstCmp.motion.length; i++) {
                 var a = firstCmp.motion[i - 1], b = firstCmp.motion[i];
                 var refA = interpAtDistance(refData.samples || [], a.d);
@@ -1168,12 +1185,85 @@
                 if (!refA || !cmpA) continue;
                 var delta = cmpA.t - refA.t;
                 var t = Math.min(1, Math.abs(delta) / 1.5);
-                var colorHeat = delta >= 0
-                    ? ('rgb(255,' + Math.round(170 * (1 - t)) + ',' + Math.round(40 * (1 - t)) + ')')
-                    : ('rgb(' + Math.round(30 * (1 - t)) + ',' + Math.round(180 + 70 * t) + ',255)');
+                var rH, gH, bH;
+                if (delta >= 0) { // slower → red
+                    rH = Math.round(80 + 175 * t);
+                    gH = Math.round(80 - 30 * t);
+                    bH = Math.round(80 - 30 * t);
+                } else {           // faster → green
+                    rH = Math.round(80 - 30 * t);
+                    gH = Math.round(80 + 130 * t);
+                    bH = Math.round(80 - 30 * t);
+                }
                 var p1 = project(a.x, a.z), p2 = project(b.x, b.z);
                 heatSegments += '<line class="tc-map-heat" x1="' + p1[0] + '" y1="' + p1[1]
-                    + '" x2="' + p2[0] + '" y2="' + p2[1] + '" stroke="' + colorHeat + '"/>';
+                    + '" x2="' + p2[0] + '" y2="' + p2[1] + '" stroke="rgb(' + rH + ',' + gH + ',' + bH + ')"/>';
+            }
+        }
+
+        // Track Dominance: divides the lap into ~20 m segments and colours each
+        // segment by the driver who covered it the fastest. Works for any number
+        // of visible laps (≥2). Uses one driver's motion as the geometry source —
+        // they all share the same circuit shape, only colour changes per segment.
+        var dominanceSegments = '';
+        var dominanceLegendDrivers = [];
+        if (compareState.mapLayers.dominance) {
+            var visibleLaps = [];
+            window.HistoryDetail.state.driverSelection.forEach(function (sel, carIdx) {
+                if (!sel || sel.hidden) return;
+                var dd = lapData && lapData.get(carIdx);
+                if (!dd || !dd.samples || dd.samples.length === 0 || !dd.motion || dd.motion.length === 0) return;
+                var sourceCarIdx = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : carIdx);
+                var driver = sess.drivers[sourceCarIdx];
+                var color = (driver && typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId, driver.liveryColorHex) : '#9aa0a6';
+                var label = (driver && (driver.shortName || driver.code || driver.name)) || ('Car ' + sourceCarIdx);
+                visibleLaps.push({ carIdx: carIdx, samples: dd.samples, motion: dd.motion, color: color, label: String(label).toUpperCase() });
+            });
+            if (visibleLaps.length >= 2) {
+                var trackLenD = (sess.meta && sess.meta.trackLengthM) || 0;
+                if (trackLenD > 0) {
+                    var SEG = Math.min(300, Math.max(50, Math.floor(trackLenD / 25))); // ~25 m sectors
+                    var segLen = trackLenD / SEG;
+                    var segWinnerColor = new Array(SEG);
+                    var segWinnerCar = new Array(SEG);
+                    for (var k = 0; k < SEG; k++) {
+                        var ds = k * segLen, de = (k + 1) * segLen;
+                        var bestTime = Infinity, bestColor = null, bestCar = null;
+                        for (var v = 0; v < visibleLaps.length; v++) {
+                            var sStart = interpAtDistance(visibleLaps[v].samples, ds);
+                            var sEnd = interpAtDistance(visibleLaps[v].samples, de);
+                            if (!sStart || !sEnd) continue;
+                            var st = sEnd.t - sStart.t;
+                            if (st > 0 && st < bestTime) { bestTime = st; bestColor = visibleLaps[v].color; bestCar = visibleLaps[v].carIdx; }
+                        }
+                        segWinnerColor[k] = bestColor;
+                        segWinnerCar[k] = bestCar;
+                    }
+                    var baseMotion = visibleLaps[0].motion;
+                    for (var i2 = 1; i2 < baseMotion.length; i2++) {
+                        var aD = baseMotion[i2 - 1], bD = baseMotion[i2];
+                        var midD = (aD.d + bD.d) / 2;
+                        if (midD < 0 || midD > trackLenD) continue;
+                        var segIdx = Math.min(SEG - 1, Math.max(0, Math.floor(midD / segLen)));
+                        var col2 = segWinnerColor[segIdx];
+                        if (!col2) continue;
+                        var p1d = project(aD.x, aD.z), p2d = project(bD.x, bD.z);
+                        dominanceSegments += '<line class="tc-map-dominance" x1="' + p1d[0] + '" y1="' + p1d[1]
+                            + '" x2="' + p2d[0] + '" y2="' + p2d[1] + '" stroke="' + col2 + '"/>';
+                    }
+                    // Legend: drivers + count of segments they win.
+                    var winsByCar = new Map();
+                    segWinnerCar.forEach(function (cid) {
+                        if (cid == null) return;
+                        winsByCar.set(cid, (winsByCar.get(cid) || 0) + 1);
+                    });
+                    visibleLaps.forEach(function (lap) {
+                        var wins = winsByCar.get(lap.carIdx) || 0;
+                        var pct = SEG > 0 ? Math.round(100 * wins / SEG) : 0;
+                        dominanceLegendDrivers.push({ color: lap.color, label: lap.label, pct: pct });
+                    });
+                    dominanceLegendDrivers.sort(function (a, b) { return b.pct - a.pct; });
+                }
             }
         }
 
@@ -1201,17 +1291,29 @@
 
         host.innerHTML = ''
             + '<div class="tc-map-stage">'
-            +   '<object class="tc-map-outline" type="image/svg+xml" data="' + svgUrl + '"></object>'
-            +   '<svg viewBox="0 0 ' + W + ' ' + H + '" class="tc-map-svg" preserveAspectRatio="xMidYMid meet">'
-            +     heatSegments + (compareState.mapLayers.line ? lines : '') + markers + eventMarkers
-            +   '</svg>'
+            +   '<div class="tc-map-camera" id="tcMapCamera">'
+            +     '<object class="tc-map-outline" type="image/svg+xml" data="' + svgUrl + '"></object>'
+            +     '<svg viewBox="0 0 ' + W + ' ' + H + '" class="tc-map-svg" preserveAspectRatio="xMidYMid meet">'
+            +       heatSegments + (compareState.mapLayers.line ? lines : '') + dominanceSegments + markers + eventMarkers
+            +     '</svg>'
+            +   '</div>'
+            +   '<div class="tc-map-controls">'
+            +     '<button class="tc-map-zoom-btn" data-action="zoom-in" title="Zoom in (wheel up)" aria-label="Zoom in">+</button>'
+            +     '<button class="tc-map-zoom-btn" data-action="zoom-out" title="Zoom out (wheel down)" aria-label="Zoom out">−</button>'
+            +     '<button class="tc-map-zoom-btn ' + (compareState.mapFollow ? 'active' : '') + '" data-action="follow" title="Follow cursor when zoomed" aria-label="Toggle follow">⊕</button>'
+            +     '<button class="tc-map-zoom-btn" data-action="reset" title="Reset view" aria-label="Reset view">⌖</button>'
+            +   '</div>'
             + '</div>'
             + '<div class="tc-map-caption">Track map'
             +   '<span class="tc-map-filters">'
             +     '<button class="tc-map-filter ' + (compareState.mapLayers.line ? 'active' : '') + '" data-layer="line">Line</button>'
-            +     '<button class="tc-map-filter ' + (compareState.mapLayers.deltaHeat ? 'active' : '') + '" data-layer="deltaHeat">Delta Heat</button>'
+            +     '<button class="tc-map-filter ' + (compareState.mapLayers.deltaHeat ? 'active' : '') + '" data-layer="deltaHeat" title="Colour the racing line by time delta vs the reference lap">Δ Heat</button>'
+            +     '<button class="tc-map-filter ' + (compareState.mapLayers.dominance ? 'active' : '') + '" data-layer="dominance" title="Each ~25 m segment is coloured by the driver who covered it the fastest">Dominance</button>'
             +     '<button class="tc-map-filter ' + (compareState.mapLayers.events ? 'active' : '') + '" data-layer="events">Events</button>'
-            +   '</span></div>';
+            +   '</span>'
+            +   (compareState.mapLayers.deltaHeat && !compareState.mapLayers.dominance && refData && firstCmp ? buildHeatLegend(sess, resolvedRef, lapData) : '')
+            +   (compareState.mapLayers.dominance && dominanceLegendDrivers.length > 0 ? buildDominanceLegend(dominanceLegendDrivers) : '')
+            + '</div>';
         host.querySelectorAll('.tc-map-filter').forEach(function (btn) {
             btn.addEventListener('click', function () {
                 var layer = btn.dataset.layer;
@@ -1234,6 +1336,205 @@
             compareState.zoomEnd = seg.end;
             redraw(lapData);
         });
+
+        // ---------- camera (pan / zoom / follow) ----------
+        var camera = host.querySelector('#tcMapCamera');
+        var stageEl = host.querySelector('.tc-map-stage');
+        var svgForCamera = host.querySelector('.tc-map-svg');
+
+        function clampPan(tx, ty, Z) {
+            var lim = W * (Z - 1);
+            return [
+                Math.max(-lim, Math.min(0, tx)),
+                Math.max(-lim, Math.min(0, ty)),
+            ];
+        }
+        function applyMapTransform(opts) {
+            if (!camera) return;
+            // smooth=true → CSS transition ON (discrete actions: buttons, wheel, reset).
+            // Default = instant: follow updates fire ~60×/sec and any transition lag
+            // produces a visible delay where the camera trails the cursor at high zoom.
+            var smooth = !!(opts && opts.smooth);
+            camera.classList.toggle('tc-map-camera--smooth', smooth);
+            var Z = compareState.mapZoom || 1;
+            var c = clampPan(compareState.mapPanX || 0, compareState.mapPanY || 0, Z);
+            compareState.mapPanX = c[0];
+            compareState.mapPanY = c[1];
+            camera.style.transform = 'translate(' + c[0].toFixed(2) + 'px, ' + c[1].toFixed(2) + 'px) scale(' + Z.toFixed(3) + ')';
+            stageEl.classList.toggle('tc-map-stage--zoomed', Z > 1.001);
+            // Inverse-shrink the marker / event dots so they don't balloon at high zoom.
+            // Pure 1/Z would be too aggressive (invisible at 8×); soft exponential keeps
+            // them readable while the on-track scale still feels right.
+            if (svgForCamera) {
+                var carR = Math.max(1.8, 5 * Math.pow(0.82, Z - 1));
+                var evR = Math.max(1.5, 4 * Math.pow(0.82, Z - 1));
+                svgForCamera.querySelectorAll('.tc-map-marker').forEach(function (el) { el.setAttribute('r', carR.toFixed(2)); });
+                svgForCamera.querySelectorAll('.tc-map-event circle').forEach(function (el) { el.setAttribute('r', evR.toFixed(2)); });
+            }
+        }
+        function setMapZoom(newZoom, anchorViewBoxX, anchorViewBoxY) {
+            newZoom = Math.max(1, Math.min(8, newZoom));
+            var oldZoom = compareState.mapZoom || 1;
+            if (Math.abs(newZoom - oldZoom) < 0.001) return;
+            // Keep the viewBox point under the anchor cursor stationary on screen.
+            // Derivation: for camera transform translate(tx,ty) scale(Z) with origin 0,0,
+            //   stage_pixel = tx + viewBox_point * Z
+            // Solve newTx so the same viewBox point lands on the same stage pixel:
+            //   newTx = oldTx + anchor * (oldZoom - newZoom)
+            var ax = (anchorViewBoxX != null) ? anchorViewBoxX : W / 2;
+            var ay = (anchorViewBoxY != null) ? anchorViewBoxY : H / 2;
+            compareState.mapPanX = (compareState.mapPanX || 0) + ax * (oldZoom - newZoom);
+            compareState.mapPanY = (compareState.mapPanY || 0) + ay * (oldZoom - newZoom);
+            compareState.mapZoom = newZoom;
+            if (newZoom <= 1.001) { compareState.mapPanX = 0; compareState.mapPanY = 0; }
+            applyMapTransform({ smooth: true });
+            persistState();
+        }
+        function resetMapView() {
+            compareState.mapZoom = 1;
+            compareState.mapPanX = 0;
+            compareState.mapPanY = 0;
+            applyMapTransform({ smooth: true });
+            persistState();
+        }
+        // Recenter the camera so a viewBox point sits in the middle of the stage.
+        // Used by the chart-driven hover sync to follow the cursor along the racing line.
+        function panToFollow(sx, sy) {
+            if (!compareState.mapFollow) return;
+            var Z = compareState.mapZoom || 1;
+            if (Z <= 1.001) return;
+            compareState.mapPanX = W / 2 - sx * Z;
+            compareState.mapPanY = H / 2 - sy * Z;
+            applyMapTransform();
+        }
+        // Expose follow helper so updateMapMarkers can invoke it.
+        compareState.__mapFollow = panToFollow;
+        compareState.__mapProject = project;
+        applyMapTransform();
+
+        // Wheel zoom anchored at cursor.
+        stageEl.addEventListener('wheel', function (e) {
+            e.preventDefault();
+            var ctm = svgForCamera.getScreenCTM();
+            if (!ctm) return;
+            var pt = svgForCamera.createSVGPoint();
+            pt.x = e.clientX; pt.y = e.clientY;
+            var local = pt.matrixTransform(ctm.inverse());
+            var factor = e.deltaY > 0 ? 0.85 : 1.18;
+            setMapZoom((compareState.mapZoom || 1) * factor, local.x, local.y);
+        }, { passive: false });
+
+        // Toolbar buttons.
+        host.querySelectorAll('.tc-map-zoom-btn').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var action = btn.dataset.action;
+                if (action === 'zoom-in') setMapZoom((compareState.mapZoom || 1) * 1.4);
+                else if (action === 'zoom-out') setMapZoom((compareState.mapZoom || 1) / 1.4);
+                else if (action === 'reset') resetMapView();
+                else if (action === 'follow') {
+                    compareState.mapFollow = !compareState.mapFollow;
+                    btn.classList.toggle('active', compareState.mapFollow);
+                    persistState();
+                }
+            });
+        });
+
+        // ---------- map → charts hover bridge ----------
+        // Drag the cursor along the racing line on the map and the chart crosshair,
+        // value chips and focus panel snap to the same lap distance.
+        var stage = host.querySelector('.tc-map-stage');
+        var svgEl = host.querySelector('.tc-map-svg');
+        var hoverSource = refData || firstCmp;
+        if (stage && svgEl && hoverSource && hoverSource.motion && hoverSource.motion.length > 1) {
+            var hitPoints = hoverSource.motion.map(function (m) {
+                var p = project(m.x, m.z);
+                return { sx: p[0], sy: p[1], d: m.d };
+            });
+            var lastDispatchedD = -Infinity;
+            var hoverActive = false;
+
+            function findNearestPoint(localX, localY) {
+                var bestIdx = -1, bestD2 = Infinity;
+                for (var i = 0; i < hitPoints.length; i++) {
+                    var dx = hitPoints[i].sx - localX;
+                    var dy = hitPoints[i].sy - localY;
+                    var d2 = dx * dx + dy * dy;
+                    if (d2 < bestD2) { bestD2 = d2; bestIdx = i; }
+                }
+                return bestIdx >= 0 ? hitPoints[bestIdx] : null;
+            }
+
+            stage.addEventListener('mousemove', function (e) {
+                // Don't intercept when hovering an event marker — they have their own click semantics.
+                if (e.target && e.target.closest && e.target.closest('.tc-map-event')) return;
+                var ctm = svgEl.getScreenCTM();
+                if (!ctm) return;
+                var pt = svgEl.createSVGPoint();
+                pt.x = e.clientX; pt.y = e.clientY;
+                var local = pt.matrixTransform(ctm.inverse());
+                // Snap to the nearest point on the racing line regardless of distance —
+                // any cursor position inside the map activates hover (no dead zone).
+                var nearest = findNearestPoint(local.x, local.y);
+                if (!nearest) return;
+                if (!hoverActive) {
+                    stage.classList.add('tc-map-stage--hover');
+                    hoverActive = true;
+                }
+                if (Math.abs(nearest.d - lastDispatchedD) > 0.5) {
+                    lastDispatchedD = nearest.d;
+                    if (compareState.__hoverBridge) compareState.__hoverBridge.setDistance(nearest.d, 'map');
+                }
+            });
+
+            stage.addEventListener('mouseleave', function () {
+                if (hoverActive) {
+                    stage.classList.remove('tc-map-stage--hover');
+                    hoverActive = false;
+                    if (compareState.__hoverBridge) compareState.__hoverBridge.clear();
+                    lastDispatchedD = -Infinity;
+                }
+            });
+        }
+    }
+
+    function buildDominanceLegend(drivers) {
+        var pills = drivers.map(function (d) {
+            return '<span class="tc-dom-pill" title="' + d.label + ' fastest in ' + d.pct + '% of lap segments">'
+                + '<span class="tc-dom-swatch" style="background:' + d.color + '"></span>'
+                + '<span class="tc-dom-label">' + d.label + '</span>'
+                + '<span class="tc-dom-pct">' + d.pct + '%</span>'
+                + '</span>';
+        }).join('');
+        return '<div class="tc-map-dom-legend" title="Track dominance — fastest driver per ~25 m segment">' + pills + '</div>';
+    }
+
+    function buildHeatLegend(sess, resolvedRef, lapData) {
+        // Resolve which compare lap is driving the heat colours (it's the first
+        // visible non-reference lap — same logic as drawTrackMap's firstCmp).
+        var cmpLabel = '';
+        if (window.HistoryDetail && window.HistoryDetail.state && window.HistoryDetail.state.driverSelection) {
+            window.HistoryDetail.state.driverSelection.forEach(function (sel, carIdx) {
+                if (cmpLabel || !sel || sel.hidden) return;
+                if (resolvedRef && Number(carIdx) === resolvedRef.carIdx) return;
+                if (!lapData || !lapData.has(carIdx)) return;
+                var driver = resolveCompareDriver(sess, carIdx, sel);
+                var name = (driver && (driver.shortName || driver.name || driver.code)) || ('Car ' + carIdx);
+                cmpLabel = escapeHtml(String(name)) + (sel.lap != null ? (' L' + sel.lap) : '');
+            });
+        }
+        var refLabel = '';
+        if (resolvedRef) {
+            var refDriver = sess.drivers ? sess.drivers[resolvedRef.carIdx] : null;
+            var rname = (refDriver && (refDriver.shortName || refDriver.name || refDriver.code)) || ('Car ' + resolvedRef.carIdx);
+            refLabel = escapeHtml(String(rname)) + ' L' + resolvedRef.lap;
+        }
+        var ctx = (cmpLabel && refLabel) ? (cmpLabel + ' vs REF ' + refLabel) : 'compare vs REF';
+        return '<div class="tc-map-heat-legend" title="Each segment of the racing line is coloured by how much time the compare lap gains or loses against the reference at that point.">'
+            + '<span class="tc-heat-swatch tc-heat-swatch--fast"></span><span class="tc-heat-label">faster</span>'
+            + '<span class="tc-heat-swatch tc-heat-swatch--slow"></span><span class="tc-heat-label">slower</span>'
+            + '<span class="tc-heat-ctx">' + ctx + ' · max ±1.5 s</span>'
+            + '</div>';
     }
 
     function findClosestMotion(motion, d) {
@@ -1286,6 +1587,9 @@
         var hoverCacheByDriver = new Map();
         var lastHoverSignature = null;
         var lastHoverDistance = 0;
+        // 'chart' (default) or 'map' — when 'map', skip auto-follow so the camera
+        // doesn't slide around under the user's cursor while they're on the map.
+        var lastHoverSource = 'chart';
         var brushStartPx = null;
         var brushEl = overlay.querySelector('.tc-brush');
         var overviewWin = host.querySelector('#tcOverviewWin');
@@ -1299,7 +1603,7 @@
                 var data = lapData && lapData.get(carIdx);
                 if (!data || !data.samples) return null;
                 var driver = resolveCompareDriver(sess, carIdx, kv[1]);
-                var color = (driver && typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId) : '#9aa0a6';
+                var color = (driver && typeof teamAccentColor === 'function') ? teamAccentColor(driver.teamId, driver.liveryColorHex) : '#9aa0a6';
                 var sample = null;
                 var idxKey = String(carIdx);
                 var nearestIdx = findNearestSampleIndex(data.samples, d);
@@ -1426,6 +1730,22 @@
             });
 
             updateMapMarkers(d, lapData, sess);
+            // Auto-follow: pan the map camera so the primary marker stays centred for
+            // every hover source (charts AND the map itself — moving the cursor along
+            // the racing line drags the camera with it). Computed directly from motion
+            // + the shared project() — no DOM read, no layout thrashing at 60×/sec.
+            if (compareState.__mapFollow && compareState.__mapProject) {
+                var followIdx = (refCarIdx != null) ? refCarIdx
+                    : (perDriver && perDriver[0] ? perDriver[0].carIdx : null);
+                var followData = followIdx != null ? lapData.get(followIdx) : null;
+                if (followData && followData.motion && followData.motion.length > 0) {
+                    var fm = findClosestMotion(followData.motion, d);
+                    if (fm) {
+                        var fp = compareState.__mapProject(fm.x, fm.z);
+                        compareState.__mapFollow(fp[0], fp[1]);
+                    }
+                }
+            }
             renderFocusPanel(perDriver, d);
             var elapsed = ((window.performance && performance.now) ? performance.now() : Date.now()) - perfStart;
             recordHoverPerf(elapsed, interpCtx.interpCount || 0);
@@ -1497,6 +1817,7 @@
             }
             var rect = overlay.getBoundingClientRect();
             lastX = e.clientX - rect.left;
+            lastHoverSource = 'chart';
             if (!scheduled) {
                 scheduled = true;
                 rafToken = requestAnimationFrame(update);
@@ -1506,6 +1827,7 @@
             if (panStart) return;
             var rect = overlay.getBoundingClientRect();
             lastX = e.clientX - rect.left;
+            lastHoverSource = 'chart';
             if (!scheduled) {
                 scheduled = true;
                 rafToken = requestAnimationFrame(update);
@@ -1667,6 +1989,71 @@
         }
         updateOverviewWindow();
         renderFocusPanel([], null);
+
+        // Bridge: lets the track map (or any future external source) drive the hover
+        // state by lap distance. Re-uses the same RAF-batched update path as the
+        // chart-overlay pointer so chips, crosshair and map markers stay in sync.
+        compareState.__hoverBridge = {
+            setDistance: function (d, source) {
+                if (d == null || !isFinite(d)) return;
+                lastHoverSource = source === 'map' ? 'map' : 'chart';
+                // Auto-pan the chart zoom window when the cursor on the map points
+                // outside the currently visible distance range. Sliding pan (just
+                // enough to bring d into view + 10% padding) instead of recentre,
+                // so the window doesn't jerk on every mousemove.
+                if (source === 'map' && (d < xMin || d > xMax)) {
+                    var span = xMax - xMin;
+                    if (span > 0 && span < trackLenAll - 1) {
+                        var pad = span * 0.1;
+                        var newZ0;
+                        if (d < xMin) {
+                            newZ0 = Math.max(0, d - pad);
+                        } else {
+                            newZ0 = Math.min(trackLenAll - span, d - span + pad);
+                        }
+                        var newZ1 = newZ0 + span;
+                        compareState.zoomStart = newZ0;
+                        compareState.zoomEnd = newZ1;
+                        var oldBridge = compareState.__hoverBridge;
+                        redraw(lapData);
+                        // After redraw a fresh __hoverBridge is registered. Forward this
+                        // hover to it so the crosshair lands on the same frame instead
+                        // of waiting for the next mousemove.
+                        if (compareState.__hoverBridge && compareState.__hoverBridge !== oldBridge) {
+                            compareState.__hoverBridge.setDistance(d, 'map');
+                        }
+                        return;
+                    }
+                    crosshair.style.left = '-9999px';
+                    chips.forEach(function (chip) { chip.hidden = true; });
+                    updateMapMarkers(d, lapData, sess);
+                    return;
+                }
+                if (d < xMin || d > xMax) {
+                    crosshair.style.left = '-9999px';
+                    chips.forEach(function (chip) { chip.hidden = true; });
+                    updateMapMarkers(d, lapData, sess);
+                    return;
+                }
+                var rect = overlay.getBoundingClientRect();
+                if (rect.width < 2) return;
+                var pct = (d - xMin) / Math.max(1, xMax - xMin);
+                lastX = pct * rect.width;
+                if (!scheduled) {
+                    scheduled = true;
+                    rafToken = requestAnimationFrame(update);
+                }
+            },
+            clear: function () {
+                if (rafToken) cancelAnimationFrame(rafToken);
+                rafToken = 0;
+                scheduled = false;
+                lastHoverSource = 'chart';
+                crosshair.style.left = '-9999px';
+                chips.forEach(function (chip) { chip.hidden = true; });
+                if (!compareState.focusPinned) renderFocusPanel([], null);
+            },
+        };
     }
 
     function findNearestSampleIndex(samples, targetD) {
