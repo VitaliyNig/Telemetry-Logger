@@ -293,14 +293,32 @@
         return keys;
     }
 
-    // Sort by session result. Race uses sortDriversByFinalPosition (handles DNF/DSQ/Retired
-    // by separating finishers from non-finishers). Quali/practice/TT have no final-classification
-    // packet, so the session result is best lap (virtual sum in virtualMode).
+    // Sort by session result for every category: 1st place left, last right.
+    // Race uses sortDriversByFinalPosition (handles DNF/DSQ/Retired). For
+    // practice/quali we prefer the final-classification position if the game
+    // emitted one; otherwise we fall back to best-lap order. TT is single-car
+    // so best-lap order is already a faithful "session result".
     function orderDriversForTable(cat, sess, useVirtual) {
         var drivers = sess.drivers || {};
+        var keys = Object.keys(drivers);
         if (cat === 'race') {
-            return Object.keys(drivers).sort(function (a, b) {
+            return keys.sort(function (a, b) {
                 return sortDriversByFinalPosition(sess, Number(a), Number(b));
+            });
+        }
+        if (cat === 'practice' || cat === 'qualifying') {
+            var byBest = orderDriversByBest(drivers, useVirtual);
+            var bestRank = {};
+            byBest.forEach(function (k, i) { bestRank[k] = i; });
+            return keys.slice().sort(function (a, b) {
+                var ca = getClassificationEntry(sess, Number(a));
+                var cb = getClassificationEntry(sess, Number(b));
+                var pa = ca && ca.position > 0 ? Number(ca.position) : 0;
+                var pb = cb && cb.position > 0 ? Number(cb.position) : 0;
+                if (pa && pb) return pa - pb;
+                if (pa) return -1;
+                if (pb) return 1;
+                return bestRank[a] - bestRank[b];
             });
         }
         return orderDriversByBest(drivers, useVirtual);
@@ -337,7 +355,7 @@
         var topCells = driverOrder.map(function (carIdx) {
             var d = drivers[carIdx];
             var teamColor = (typeof teamAccentColor === 'function')
-                ? teamAccentColor(d.teamId) : '#9aa0a6';
+                ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6';
             var pb = pbByDriver[carIdx];
             var pbText = pb && pb.lap !== Infinity ? formatLapTime(pb.lap) : '—';
             return '<th class="lap-grid__driver-th" colspan="' + colCount + '" style="border-top-color:' + teamColor + '">'
@@ -900,6 +918,7 @@
                 carIdx: Number(carIdx),
                 name: d.name,
                 teamId: d.teamId,
+                liveryColorHex: d.liveryColorHex,
                 actual: pb.lap,
                 virtual: virtualBestMs(d.laps),
             };
@@ -927,7 +946,7 @@
             + '</tr></thead><tbody>';
         virtualSorted.forEach(function (r, idx) {
             var teamColor = (typeof teamAccentColor === 'function')
-                ? teamAccentColor(r.teamId) : '#9aa0a6';
+                ? teamAccentColor(r.teamId, r.liveryColorHex) : '#9aa0a6';
             var aPos = actualPos[r.carIdx];
             var vPos = virtualPos[r.carIdx];
             var deltaPos = aPos - vPos;
@@ -1097,7 +1116,7 @@
         var html = '<div class="pos-sidebar-header">Drivers</div>';
         roster.forEach(function (carIdx) {
             var d = sess.drivers[carIdx];
-            var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
+            var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6';
             var hidden = positionsLineHidden(carIdx);
             var code = driverCode(d.name);
             var name = shortDriverName(d.name) || 'Unknown';
@@ -1240,7 +1259,7 @@
         var driverGroups = '';
         roster.forEach(function (carIdx) {
             var d = sess.drivers[carIdx];
-            var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
+            var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6';
             var code = driverCode(d.name);
             var validLaps = (d.laps || []).filter(function (l) { return l.position > 0 && l.lapNum <= totalLaps; });
             if (validLaps.length === 0) return;
@@ -1384,7 +1403,7 @@
                     var sel = state.driverSelection.get(carIdx);
                     if (sel && sel.posHidden) return;
                     var d = sess.drivers[carIdx];
-                    var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
+                    var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6';
                     var lapData = (d.laps || []).find(function (l) { return l.lapNum === lap && l.position > 0; });
                     if (!lapData) return;
                     rows.push({ pos: lapData.position, name: driverCode(d.name), color: color });
@@ -1853,7 +1872,7 @@
         }).map(function (e) {
             var driver = e.carIdx != null && sess.drivers ? sess.drivers[e.carIdx] : null;
             var dot = driver
-                ? '<span class="driver-dot" style="background:' + (typeof teamAccentColor === 'function' ? teamAccentColor(driver.teamId) : '#9aa0a6') + '"></span> '
+                ? '<span class="driver-dot" style="background:' + (typeof teamAccentColor === 'function' ? teamAccentColor(driver.teamId, driver.liveryColorHex) : '#9aa0a6') + '"></span> '
                 : '';
             var codeColor = EVENT_CODE_COLORS[e.code] || 'var(--text-dim)';
             var codeChip = '<span class="ev-code-chip" style="color:' + codeColor
@@ -1994,7 +2013,7 @@
         if (!drivers) return;
         var rows = Object.keys(drivers).map(function (k) {
             var d = drivers[k];
-            var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
+            var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6';
             return '<label class="export-row">'
                 + '<input type="radio" name="exportDriver" value="' + k + '"/>'
                 + '<span class="driver-dot" style="background:' + color + '"></span>'
@@ -2071,12 +2090,12 @@
             if (!rows.length) return;
             var parts = [
                 '<div class="tc-lap-modal">',
-                '<p class="tc-lap-modal-title">Tap a driver to expand their laps. Laps already in the compare list are omitted.</p>',
+                '<p class="tc-lap-modal-title">Click a driver to expand laps. Already-added laps are hidden.</p>',
                 '<div class="tc-lap-accordion" id="tcLapAccordion" role="list">',
             ];
             rows.forEach(function (carIdx) {
                 var d = opts.drivers[carIdx];
-                var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
+                var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6';
                 var racePos = getDriverRacePosition(state.session, Number(carIdx));
                 var name = escapeHtml(shortDriverName(d.name || ('Car ' + carIdx)));
                 parts.push(
@@ -2189,20 +2208,25 @@
                 var cards = '<div class="driver-picker-header">Compare laps</div><div class="tc-lap-card-list">';
                 selected.forEach(function (item) {
                     var d = opts.drivers[item.sourceCarIdx];
-                    var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
+                    var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6';
                     var isRef = state.compareState && Number(state.compareState.referenceCarIdx) === item.key && Number(state.compareState.referenceLap) === Number(item.sel.lap);
                     var isHidden = !!item.sel.hidden;
-                    cards += '<div class="tc-lap-card ' + (isHidden ? 'is-muted' : '') + '" data-car="' + item.key + '"><div class="tc-lap-card-top">'
-                        + '<span class="driver-dot" style="background:' + teamColor + '"></span>'
-                        + '<span>' + escapeHtml(shortDriverName(d.name || ('Car ' + item.sourceCarIdx))) + '</span>'
-                        + (isRef ? '<span class="driver-ref-badge">REF</span>' : '')
-                        + '<span class="tc-lap-card-actions">'
-                        + '<button type="button" class="tc-lap-card-ref" data-act="set-ref" data-car="' + item.key + '" title="Set as reference lap">Set REF</button>'
-                        + '<button type="button" class="tc-lap-card-vis" data-act="vis" data-car="' + item.key + '" title="Show/hide lap">👁</button>'
-                        + '<button type="button" class="tc-lap-card-remove" data-act="remove" data-car="' + item.key + '" title="Remove lap">×</button>'
-                        + '</span></div><div class="tc-lap-card-lap">Lap ' + item.sel.lap + '</div></div>';
+                    cards += '<div class="tc-lap-card ' + (isHidden ? 'is-muted' : '') + '" data-car="' + item.key + '" style="--tc-card-color:' + teamColor + '">'
+                        + '<div class="tc-lap-card-info">'
+                        +   '<div class="tc-lap-card-name-row">'
+                        +     '<span class="tc-lap-card-name" title="' + escapeHtml(d.name || ('Car ' + item.sourceCarIdx)) + '">' + escapeHtml(shortDriverName(d.name || ('Car ' + item.sourceCarIdx))) + '</span>'
+                        +     (isRef ? '<span class="driver-ref-badge">REF</span>' : '')
+                        +   '</div>'
+                        +   '<span class="tc-lap-card-lap">Lap ' + item.sel.lap + '</span>'
+                        + '</div>'
+                        + '<div class="tc-lap-card-actions">'
+                        +   (isRef ? '' : '<button type="button" class="tc-lap-card-ref" data-act="set-ref" data-car="' + item.key + '" title="Set as reference lap">REF</button>')
+                        +   '<button type="button" class="tc-lap-card-vis" data-act="vis" data-car="' + item.key + '" title="Show/hide lap">👁</button>'
+                        +   '<button type="button" class="tc-lap-card-remove" data-act="remove" data-car="' + item.key + '" title="Remove lap">×</button>'
+                        + '</div>'
+                        + '</div>';
                 });
-                cards += '<button type="button" class="tc-lap-card tc-lap-card-add" id="tcAddLapCard"><span>+</span></button></div>';
+                cards += '<button type="button" class="tc-lap-card tc-lap-card-add" id="tcAddLapCard">+ Add lap</button></div>';
                 container.innerHTML = cards;
                 container.querySelector('#tcAddLapCard').addEventListener('click', openCompareLapModal);
                 container.querySelectorAll('.tc-lap-card[data-car]').forEach(function (card) {
@@ -2263,7 +2287,7 @@
             var skipRefRadios = !!opts.skipReferenceRadios;
             rows.forEach(function (carIdx) { /* unchanged */
                 var d = opts.drivers[carIdx];
-                var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId) : '#9aa0a6';
+                var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6';
                 var racePos = getDriverRacePosition(state.session, Number(carIdx));
                 var sel = state.driverSelection.get(Number(carIdx));
                 var isSelected = !!sel && (!opts.supportLapSelector || sel.lap != null);
@@ -2370,7 +2394,7 @@
                 }
                 sidebarToggle.classList.toggle('is-hidden', sel2.posHidden);
                 var eye2 = sidebarToggle.querySelector('.pos-sidebar-eye');
-                if (eye2) eye2.innerHTML = svgPositionEyeMarkup(sel2.posHidden, teamAccentColor(drv2.teamId));
+                if (eye2) eye2.innerHTML = svgPositionEyeMarkup(sel2.posHidden, teamAccentColor(drv2.teamId, drv2.liveryColorHex));
                 return;
             }
         }
@@ -2393,7 +2417,7 @@
                     if (sidebarRow) {
                         sidebarRow.classList.toggle('is-hidden', sel.posHidden);
                         var eye = sidebarRow.querySelector('.pos-sidebar-eye');
-                        if (eye) eye.innerHTML = svgPositionEyeMarkup(sel.posHidden, teamAccentColor(drv.teamId));
+                        if (eye) eye.innerHTML = svgPositionEyeMarkup(sel.posHidden, teamAccentColor(drv.teamId, drv.liveryColorHex));
                     }
                     return;
                 }

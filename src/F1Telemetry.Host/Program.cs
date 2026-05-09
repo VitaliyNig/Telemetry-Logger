@@ -639,6 +639,7 @@ static class Program
                     teamId = kv.Value.TeamId,
                     driverId = kv.Value.DriverId,
                     name = kv.Value.Name,
+                    liveryColorHex = kv.Value.LiveryColorHex,
                     lapCount = kv.Value.Laps.Count,
                     laps = kv.Value.Laps.Select(l => new
                     {
@@ -704,12 +705,26 @@ static class Program
             if (match == null)
                 return Results.NotFound(new { error = "lap not found" });
 
+            // Trim pit-lane samples: F1 telemetry reports negative lapDistance while a car
+            // is in the pit lane. Quali outlaps land in lap 1's buffer with the pit-exit
+            // trail attached, and inlaps land with the pit-entry trail — both pollute the
+            // racing-line visualisation. Clip to [0, trackLen + small overshoot] so only
+            // on-track points reach the chart/map.
+            var trackLen = data.Meta?.TrackLengthM ?? 0f;
+            var maxD = trackLen > 0f ? trackLen + 50f : float.MaxValue;
+            var samples = (match.Samples ?? new List<LapSample>())
+                .Where(s => s.D >= 0f && s.D <= maxD)
+                .ToList();
+            var motion = (match.Motion ?? new List<MotionSample>())
+                .Where(m => m.D >= 0f && m.D <= maxD)
+                .ToList();
+
             return Results.Ok(new
             {
                 carIdx,
                 lap = match.LapNum,
-                samples = match.Samples ?? new List<LapSample>(),
-                motion = match.Motion ?? new List<MotionSample>(),
+                samples,
+                motion,
             });
         });
 

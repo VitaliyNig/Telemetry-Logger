@@ -687,6 +687,14 @@
 .flag-rect[data-flag="red"]    { background: var(--semantic-red);  color: #fff;    border-color: var(--semantic-red); }
 .flag-rect[data-flag="green"]  { background: var(--accent-green);  color: #0f1117; border-color: var(--accent-green); }
 
+.stat-box[data-session-field="flags"] {
+    justify-content: center;
+}
+.stat-box[data-session-field="flags"] .flag-rect {
+    padding: 2px 8px;
+    font-size: 13px;
+}
+
 .stat-value.big {
     font-size: 32px;
     color: var(--accent-brand);
@@ -1194,7 +1202,6 @@
     font-family: var(--font-mono);
     font-weight: 700;
     font-size: clamp(11px, 1.6vw, 16px);
-    text-shadow: 0 1px 3px rgba(0,0,0,0.7);
 }
 
 .tc-wear {
@@ -1202,7 +1209,6 @@
     font-weight: 800;
     font-size: clamp(18px, 3.5vw, 32px);
     color: #fff;
-    text-shadow: 0 2px 6px rgba(0,0,0,0.7);
     line-height: 1.1;
 }
 
@@ -1298,6 +1304,45 @@
 }
 
 .tl-ico { width: 14px; height: 14px; flex-shrink: 0; }
+
+.tl-swatch {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    border-radius: 3px;
+    display: inline-block;
+}
+.tl-swatch-circle { border-radius: 50%; }
+.tl-swatch-bars {
+    width: 14px;
+    height: 14px;
+    background:
+        linear-gradient(to top, #00d700 0%, #00d700 65%, rgba(255,255,255,0.08) 65%) left/3px 100% no-repeat,
+        linear-gradient(to top, #00d700 0%, #00d700 65%, rgba(255,255,255,0.08) 65%) right/3px 100% no-repeat,
+        rgba(255,255,255,0.04);
+    border-radius: 3px;
+}
+.tl-swatch-ribbon {
+    background: var(--accent-blue);
+    clip-path: polygon(100% 0, 100% 100%, 0 0);
+}
+.tl-text {
+    width: 28px;
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    color: var(--color-text-primary);
+}
+.tip-compounds {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 4px 10px;
+    font-size: 11px;
+    color: var(--color-text-secondary);
+}
+.tip-comp { display: flex; align-items: center; gap: 6px; }
 
 .tip-scale {
     display: flex;
@@ -1958,97 +2003,211 @@
 }
 
 /* Available Tyre Sets */
-.tyreset-fitted {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    margin-bottom: 12px;
-    padding: 8px;
-    background: rgba(0, 166, 255, 0.12);
-    border-left: 3px solid var(--accent-blue);
-    border-radius: 4px;
-}
-
-.fitted-label {
-    font-size: 10px;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--text-dim);
-    flex-shrink: 0;
-}
-
-.fitted-value {
-    font-weight: 700;
-    font-family: var(--font-mono);
+.tyreset-placeholder {
+    color: var(--color-text-secondary);
     font-size: 13px;
-    display: flex;
-    align-items: center;
-    gap: 8px;
+    padding: 8px 0;
 }
-
-.tyreset-groups {
+.compound-deck {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 14px;
     overflow-y: auto;
 }
-
-.tyreset-placeholder {
-    color: var(--text-dim);
-    font-style: italic;
-    font-size: 13px;
+.deck-row {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
 }
-
-.tyreset-section {}
-
-.tyreset-section-header {
+.deck-row-header {
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    margin-bottom: 4px;
-    padding-bottom: -1px;
-    border-bottom: 1px solid var(--border);
-}
-
-.tyreset-section-title {
+    gap: 8px;
     font-size: 10px;
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 1px;
-    color: var(--color-text-secondary);
+    color: var(--color-text-muted);
 }
-
-.tyreset-section-count {
-    font-size: 10px;
-    color: var(--text-dim);
+.deck-row-count {
     font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--color-text-dim);
+    background: var(--color-bg-elevated);
+    padding: 1px 6px;
+    border-radius: 999px;
 }
-
-.tyreset-item {
+.deck-row-chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+.tyre-chip {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1px;
+    width: 78px;
+    padding: 8px 10px 10px;
+    border-radius: var(--radius-md);
+    background: var(--color-bg-elevated);
+    border: 1px solid var(--color-border-muted);
+    transition: transform var(--motion-fast), box-shadow var(--motion-fast);
+    cursor: default;
+    overflow: hidden;
+}
+/* Hover effect removed for cleaner look */
+/*.tyre-chip:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 4px 12px rgba(0,0,0,0.35);
+}*/
+.tyre-chip.fitted {
+    border: 2px solid var(--accent-blue);
+    box-shadow:
+        0 0 0 2px rgba(0,166,255,0.15),
+        0 0 16px rgba(0,166,255,0.12),
+        inset 0 0 20px rgba(0,166,255,0.06);
+}
+.chip-side-bar {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 4px;
+    background: rgba(255,255,255,0.05);
+    pointer-events: none;
+    z-index: 0;
+    overflow: hidden;
+}
+.chip-side-bar-l {
+    left: 0;
+    border-radius: var(--radius-md) 0 0 var(--radius-md);
+}
+.chip-side-bar-r {
+    right: 0;
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+}
+.chip-side-fill {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    transition: height 0.4s ease, background 0.3s;
+}
+.chip-badge, .chip-delta, .chip-laps, .chip-grip-label, .chip-grip-value {
+    position: relative;
+    z-index: 1;
+}
+.chip-badge {
+    width: 34px;
+    height: 34px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    margin-bottom: 2px;
+}
+.chip-badge.compound-soft      { background: #ff3333; color: #fff; }
+.chip-badge.compound-super-soft { background: #9B3CC4; color: #fff; }
+.chip-badge.compound-medium    { background: #ffd700; color: #111; }
+.chip-badge.compound-hard      { background: #e0e0e0; color: #111; }
+.chip-badge.compound-inter     { background: #00cc00; color: #111; }
+.chip-badge.compound-wet       { background: #00a6ff; color: #111; }
+.chip-badge.compound-unknown   { background: #444; color: #aaa; }
+.chip-oncar {
+    position: absolute;
+    top: 0;
+    right: 0;
+    z-index: 2;
+    width: 26px;
+    height: 26px;
+    background: var(--accent-blue);
+    color: #fff;
+    font-size: 8px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    line-height: 1;
+    font-family: var(--font-mono);
+    clip-path: polygon(100% 0, 100% 100%, 0 0);
+    display: flex;
+    align-items: flex-start;
+    justify-content: flex-end;
+    padding: 2px 3px 0 0;
+    pointer-events: none;
+}
+.chip-delta {
+    font-size: 17px;
+    font-weight: 800;
+    font-family: var(--font-mono);
+    line-height: 1.1;
+    margin-top: 2px;
+}
+.chip-delta.pos { color: var(--semantic-red); }
+.chip-delta.neg { color: var(--accent-green); }
+.chip-delta.zero { color: var(--color-text-muted); }
+.chip-laps {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    line-height: 1.1;
+    margin-top: 1px;
+}
+.chip-grip-label {
+    font-size: 8px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-dim);
+    line-height: 1;
+    margin-top: 3px;
+}
+.chip-grip-value {
+    font-size: 12px;
+    font-weight: 700;
+    font-family: var(--font-mono);
+    line-height: 1.1;
+    font-variant-numeric: tabular-nums;
+}
+.tyre-unavailable {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid var(--color-border-default);
     display: flex;
     align-items: center;
     gap: 8px;
-    padding: 8px;
-    border-radius: 4px;
-    background: rgba(255,255,255,0.04);
-    margin-bottom: -1px;
-    font-size: 13px;
+    flex-wrap: wrap;
+}
+.unavailable-summary-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--color-text-muted);
+}
+.unavailable-dot {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 9px;
+    font-weight: 800;
     font-family: var(--font-mono);
+    opacity: 0.35;
 }
+.unavailable-dot.compound-soft      { background: #ff3333; color: #fff; }
+.unavailable-dot.compound-super-soft { background: #9B3CC4; color: #fff; }
+.unavailable-dot.compound-medium    { background: #ffd700; color: #111; }
+.unavailable-dot.compound-hard      { background: #e0e0e0; color: #111; }
+.unavailable-dot.compound-inter     { background: #00cc00; color: #111; }
+.unavailable-dot.compound-wet       { background: #00a6ff; color: #111; }
+.unavailable-dot.compound-unknown   { background: #444; color: #aaa; }
 
-.tyreset-item.fitted {
-    background: rgba(0, 166, 255, 0.12);
-    border-left: 3px solid var(--accent-blue);
-}
-
-.tyreset-section-used .tyreset-item {
-    opacity: 0.45;
-    padding: 4px 8px;
-    font-size: 12px;
-    background: transparent;
-}
-
-/* Circular compound badge with compound initial letter */
+/* Circular compound badge (shared with standings) */
 .tyreset-badge {
     width: 24px;
     height: 24px;
@@ -2061,85 +2220,17 @@
     flex-shrink: 0;
     font-family: var(--font-mono);
 }
-
 .tyreset-badge.compound-soft      { background: #ff3333; color: #fff; }
 .tyreset-badge.compound-super-soft { background: #9B3CC4; color: #fff; }
 .tyreset-badge.compound-medium    { background: #ffd700; color: #111; }
 .tyreset-badge.compound-hard      { background: #e0e0e0; color: #111; }
 .tyreset-badge.compound-inter     { background: #00cc00; color: #111; }
 .tyreset-badge.compound-wet       { background: #00a6ff; color: #111; }
-
+.tyreset-badge.compound-unknown   { background: #444; color: #aaa; }
 .tyreset-badge-sm {
     width: 18px;
     height: 18px;
     font-size: 9px;
-}
-
-.tyreset-wear-bar {
-    flex: 1;
-    height: 10px;
-    background: rgba(255,255,255,0.08);
-    border-radius: 4px;
-    overflow: hidden;
-    min-width: 40px;
-}
-
-.tyreset-wear-fill {
-    height: 100%;
-    border-radius: 4px;
-    transition: width 0.3s;
-}
-
-.tyreset-wear-pct {
-    color: var(--color-text-secondary);
-    font-size: 12px;
-    min-width: 38px;
-    text-align: right;
-}
-
-.tyreset-life {
-    color: var(--text-dim);
-    font-size: 12px;
-    min-width: 38px;
-    text-align: right;
-}
-
-.tyreset-grip {
-    color: var(--text-dim);
-    font-size: 12px;
-    min-width: 46px;
-    text-align: right;
-    font-variant-numeric: tabular-nums;
-}
-
-.tyreset-wear-rate {
-    color: var(--text-dim);
-    font-size: 12px;
-    min-width: 54px;
-    text-align: right;
-}
-
-.tyreset-delta {
-    font-size: 15px;
-    font-weight: 700;
-    min-width: 56px;
-    text-align: right;
-}
-
-.tyreset-delta.positive { color: var(--semantic-red); }
-.tyreset-delta.negative { color: var(--accent-green); }
-.tyreset-delta.zero { color: var(--text-dim); }
-
-.tyreset-fitted-badge {
-    font-size: 9px;
-    font-weight: 800;
-    color: var(--accent-blue);
-    background: rgba(0, 166, 255, 0.12);
-    border: 1px solid rgba(0, 166, 255, 0.3);
-    border-radius: 3px;
-    padding: 1px 4px;
-    letter-spacing: 0.5px;
-    flex-shrink: 0;
 }
 
 /* Pit Stop Predictor */
@@ -4160,7 +4251,6 @@ input.history-folder-path:focus {
     letter-spacing: 0.4px;
     border-radius: 3px;
     color: #fff;
-    text-shadow: 0 1px 1px rgba(0, 0, 0, 0.25);
 }
 
 .lap-perf-ers {
@@ -5005,7 +5095,7 @@ td.lap-cell__tyre { cursor: default; }
 
 .tc-layout {
     display: grid;
-    grid-template-columns: minmax(200px, 240px) minmax(0, 1fr) minmax(280px, 340px);
+    grid-template-columns: minmax(140px, 170px) minmax(0, 1fr) minmax(380px, 480px);
     grid-template-areas:
         "side main map"
         "side main focus";
@@ -5520,7 +5610,14 @@ td.lap-cell__tyre { cursor: default; }
     opacity: 0.75;
 }
 
-.tc-map-stage { position: relative; width: 100%; aspect-ratio: 1; }
+.tc-map-stage { position: relative; width: 100%; aspect-ratio: 1; overflow: hidden; }
+.tc-map-camera {
+    position: absolute;
+    inset: 0;
+    transform-origin: 0 0;
+    will-change: transform;
+}
+.tc-map-camera--smooth { transition: transform 140ms ease-out; }
 .tc-map-outline {
     position: absolute;
     inset: 0;
@@ -5531,8 +5628,44 @@ td.lap-cell__tyre { cursor: default; }
     z-index: 0;
 }
 .tc-map-svg { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 1; }
-.tc-map-line { fill: none; stroke-width: 1.5; stroke-opacity: 0.8; }
-.tc-map-marker { stroke: #fff; stroke-width: 1; }
+.tc-map-line { fill: none; stroke-width: 1.5; stroke-opacity: 0.8; vector-effect: non-scaling-stroke; }
+.tc-map-heat { vector-effect: non-scaling-stroke; stroke-linecap: round; }
+.tc-map-dominance { stroke-width: 4; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.tc-map-marker { stroke: #fff; stroke-width: 1; transition: r 120ms ease, stroke-width 120ms ease; vector-effect: non-scaling-stroke; }
+.tc-map-stage--hover { cursor: crosshair; }
+.tc-map-stage--hover .tc-map-line { stroke-opacity: 1; stroke-width: 2; }
+.tc-map-stage--hover .tc-map-marker { stroke-width: 2; }
+.tc-map-stage--zoomed { cursor: grab; }
+.tc-map-stage--zoomed.tc-map-stage--hover { cursor: crosshair; }
+
+.tc-map-controls {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    z-index: 5;
+    display: inline-flex;
+    flex-direction: column;
+    gap: 3px;
+    pointer-events: none;
+}
+.tc-map-zoom-btn {
+    pointer-events: auto;
+    width: 26px;
+    height: 26px;
+    padding: 0;
+    border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.15));
+    border-radius: 6px;
+    background: rgba(15, 17, 22, 0.78);
+    color: var(--text-main, #e6e8eb);
+    font-size: 14px;
+    font-weight: 600;
+    line-height: 1;
+    cursor: pointer;
+    backdrop-filter: blur(6px);
+    transition: background 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+.tc-map-zoom-btn:hover { background: rgba(35, 38, 46, 0.9); border-color: var(--accent-brand, #4ea1ff); }
+.tc-map-zoom-btn.active { color: var(--accent-brand, #4ea1ff); border-color: var(--accent-brand, #4ea1ff); }
 .tc-map-heat { stroke-width: 3; stroke-linecap: round; opacity: 0.8; }
 .tc-map-event circle { fill: #fff; stroke: #111; stroke-width: 1; cursor: pointer; }
 .tc-map-event-brk circle { fill: #ef4444; }
@@ -5542,9 +5675,10 @@ td.lap-cell__tyre { cursor: default; }
 
 .tc-map-caption {
     display: flex;
+    flex-wrap: wrap;
     align-items: center;
     justify-content: space-between;
-    gap: 8px;
+    gap: 6px 8px;
     font-size: 10px;
     color: var(--text-dim);
     text-transform: uppercase;
@@ -5561,6 +5695,60 @@ td.lap-cell__tyre { cursor: default; }
     padding: 2px 8px;
 }
 .tc-map-filter.active { color: var(--text-main); border-color: var(--accent-brand); }
+.tc-map-heat-legend {
+    flex: 1 1 100%;
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 4px 6px;
+    margin-top: 2px;
+    text-transform: none;
+    letter-spacing: 0;
+    color: var(--text-dim);
+    font-size: 10px;
+}
+.tc-heat-swatch {
+    width: 18px;
+    height: 4px;
+    border-radius: 2px;
+    flex-shrink: 0;
+}
+.tc-heat-swatch--fast { background: linear-gradient(to right, rgb(80, 80, 80), rgb(50, 210, 50)); }
+.tc-heat-swatch--slow { background: linear-gradient(to right, rgb(80, 80, 80), rgb(255, 50, 50)); }
+.tc-heat-label { margin-right: 4px; }
+.tc-heat-ctx {
+    margin-left: auto;
+    color: var(--text-soft, var(--text-dim));
+    font-style: italic;
+}
+
+.tc-map-dom-legend {
+    flex: 1 1 100%;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    margin-top: 2px;
+    text-transform: none;
+    letter-spacing: 0;
+}
+.tc-dom-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 2px 6px 2px 4px;
+    border: 1px solid var(--border-color, rgba(255, 255, 255, 0.1));
+    border-radius: 999px;
+    font-size: 10px;
+    background: rgba(15, 17, 22, 0.6);
+}
+.tc-dom-swatch {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.tc-dom-label { font-weight: 700; color: var(--text-main); letter-spacing: 0.3px; }
+.tc-dom-pct { color: var(--text-dim); font-variant-numeric: tabular-nums; }
 
 .tc-map-empty {
     text-align: center;
@@ -5685,7 +5873,7 @@ td.lap-cell__tyre { cursor: default; }
 
 @media (max-width: 1200px) {
     .tc-layout {
-        grid-template-columns: minmax(200px, 240px) minmax(0, 1fr);
+        grid-template-columns: minmax(140px, 170px) minmax(0, 1fr);
         grid-template-areas:
             "side main"
             "map map"
@@ -5693,7 +5881,7 @@ td.lap-cell__tyre { cursor: default; }
     }
     .tc-map {
         position: static;
-        max-width: 420px;
+        max-width: 560px;
         width: 100%;
         margin: 0 auto;
     }
@@ -5948,11 +6136,11 @@ td.lap-cell__tyre { cursor: default; }
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
 }
 
-/* Compare-lap picker: wider shell, column flex so inner scroll regions get a real max-height */
+/* Compare-lap picker: wider shell (two-column grid inside), column flex so inner scroll regions get a real max-height */
 .history-modal-overlay--compare-laps .history-modal {
-    width: min(520px, 94vw);
+    width: min(640px, 94vw);
     max-width: 94vw;
-    max-height: min(88vh, 900px);
+    max-height: min(78vh, 760px);
     display: flex;
     flex-direction: column;
 }
@@ -6077,35 +6265,77 @@ td.lap-cell__tyre { cursor: default; }
 .export-row:hover { background: rgba(255, 255, 255, 0.03); }
 
 /* Telemetry Compare lap picker cards */
-.tc-lap-card-list { display: flex; flex-direction: column; gap: 8px; }
+.tc-lap-card-list { display: flex; flex-direction: column; gap: 4px; }
 .tc-lap-card {
+    position: relative;
     width: 100%;
     border: 1px solid var(--color-border-default);
-    border-radius: 10px;
+    border-radius: 6px;
     background: color-mix(in srgb, var(--color-bg-card) 92%, #fff 8%);
-    padding: 14px;
+    padding: 5px 6px 5px 10px;
     color: var(--text-primary);
     cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 12px;
+    line-height: 1.2;
+    overflow: hidden;
 }
-.tc-lap-card-top { display: flex; align-items: center; gap: 8px; font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+.tc-lap-card::before {
+    content: '';
+    position: absolute;
+    left: 0; top: 0; bottom: 0;
+    width: 3px;
+    background: var(--tc-card-color, #9aa0a6);
+}
 .tc-lap-card.is-muted { opacity: 0.45; }
+.tc-lap-card-info {
+    flex: 1 1 auto;
+    min-width: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    overflow: hidden;
+}
+.tc-lap-card-name-row {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    overflow: hidden;
+}
+.tc-lap-card-name {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    min-width: 0;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text-primary);
+}
+.tc-lap-card-lap {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-dim);
+    letter-spacing: 0.2px;
+}
 .tc-lap-card-actions {
-    margin-left: auto;
     display: inline-flex;
     align-items: center;
-    gap: 6px;
-    flex-shrink: 0;
+    gap: 1px;
+    flex: 0 0 auto;
 }
 .tc-lap-card-ref {
     border: 1px solid var(--color-border-default);
-    border-radius: 6px;
+    border-radius: 3px;
     background: transparent;
     color: var(--text-dim);
     cursor: pointer;
-    font-size: 11px;
-    font-weight: 600;
-    line-height: 1.2;
-    padding: 4px 8px;
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    padding: 2px 4px;
+    letter-spacing: 0.3px;
 }
 .tc-lap-card-ref:hover { color: var(--text-primary); border-color: var(--accent-brand); }
 .tc-lap-card-vis, .tc-lap-card-remove {
@@ -6113,50 +6343,66 @@ td.lap-cell__tyre { cursor: default; }
     background: transparent;
     color: var(--text-dim);
     cursor: pointer;
-    font-size: 14px;
+    font-size: 11px;
     line-height: 1;
+    padding: 2px 3px;
 }
-.tc-lap-card-remove { font-size: 18px; }
+.tc-lap-card-remove { font-size: 13px; }
 .tc-lap-card-vis:hover, .tc-lap-card-remove:hover { color: var(--text-primary); }
-.tc-lap-card-lap { font-size: 28px; font-weight: 700; letter-spacing: 0.2px; }
-.tc-lap-card-add { min-height: 130px; display: grid; place-items: center; cursor: pointer; background: transparent; }
-.tc-lap-card-add span { font-size: 64px; line-height: 1; color: var(--text-dim); font-weight: 300; }
+.tc-lap-card-add {
+    min-height: 26px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+    background: transparent;
+    color: var(--text-dim);
+    font-size: 11px;
+    font-weight: 500;
+    border-style: dashed;
+    padding: 4px 8px;
+}
+.tc-lap-card-add::before { display: none; }
+.tc-lap-card-add:hover { color: var(--accent-brand); border-color: var(--accent-brand); }
 /* Telemetry Compare — add lap modal (accordion) */
 .tc-lap-modal {
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 8px;
     min-height: 0;
     width: 100%;
     box-sizing: border-box;
 }
 .tc-lap-modal-title {
     margin: 0;
-    font-size: 12px;
-    line-height: 1.45;
+    font-size: 11px;
+    line-height: 1.4;
     color: var(--text-dim);
 }
 .tc-lap-accordion {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 4px;
     min-height: 0;
+    align-content: start;
 }
 .tc-lap-acc-item {
-    border: 1px solid var(--color-border-default);
-    border-radius: 10px;
-    background: var(--bg-dark);
+    border: 1px solid color-mix(in srgb, var(--color-border-default) 70%, #fff 30%);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--bg-dark) 80%, #fff 5%);
     overflow: hidden;
+    min-width: 0;
 }
 .tc-lap-acc-item.is-open {
     border-color: var(--accent-brand);
+    grid-column: 1 / -1;
 }
 .tc-lap-acc-trigger {
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 10px;
-    padding: 10px 12px;
+    gap: 8px;
+    padding: 6px 8px;
     border: 0;
     background: transparent;
     color: var(--text-primary);
@@ -6164,24 +6410,28 @@ td.lap-cell__tyre { cursor: default; }
     text-align: left;
     font: inherit;
     box-sizing: border-box;
+    min-width: 0;
 }
 .tc-lap-acc-trigger:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.05);
 }
 .tc-lap-acc-name {
     flex: 1 1 auto;
     min-width: 0;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
 }
 .tc-lap-acc-chevron {
     flex-shrink: 0;
     width: 0;
     height: 0;
-    border-top: 5px solid transparent;
-    border-bottom: 5px solid transparent;
-    border-left: 7px solid var(--text-dim);
-    margin-left: 4px;
+    border-top: 4px solid transparent;
+    border-bottom: 4px solid transparent;
+    border-left: 6px solid var(--text-dim);
+    margin-left: 2px;
     transition: transform 0.15s ease;
 }
 .tc-lap-acc-item.is-open .tc-lap-acc-chevron {
@@ -6189,33 +6439,33 @@ td.lap-cell__tyre { cursor: default; }
 }
 .tc-lap-acc-panel {
     border-top: 1px solid var(--border);
-    padding: 8px 10px 10px;
-    max-height: min(280px, 42vh);
+    padding: 6px 8px 8px;
+    max-height: min(260px, 40vh);
     overflow-y: auto;
     box-sizing: border-box;
 }
 .tc-lap-acc-laps {
-    display: flex;
-    flex-direction: column;
-    gap: 6px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(130px, 1fr));
+    gap: 4px;
 }
 .tc-lap-option {
     display: grid;
-    gap: 4px;
+    gap: 2px;
     width: 100%;
     box-sizing: border-box;
     border: 1px solid var(--color-border-default);
-    border-radius: 8px;
+    border-radius: 6px;
     background: color-mix(in srgb, var(--color-bg-card) 88%, transparent);
     color: var(--text-primary);
     text-align: left;
-    padding: 8px 10px;
+    padding: 5px 8px;
     cursor: pointer;
     font: inherit;
 }
 .tc-lap-option:hover {
     border-color: var(--accent-brand);
 }
-.tc-lap-option-main { font-weight: 700; font-size: 13px; }
-.tc-lap-option-meta { font-size: 11px; color: var(--text-dim); }
-.tc-lap-empty { font-size: 12px; color: var(--text-dim); padding: 6px 4px; line-height: 1.4; }
+.tc-lap-option-main { font-weight: 700; font-size: 12px; }
+.tc-lap-option-meta { font-size: 10px; color: var(--text-dim); }
+.tc-lap-empty { font-size: 11px; color: var(--text-dim); padding: 4px; line-height: 1.4; }
