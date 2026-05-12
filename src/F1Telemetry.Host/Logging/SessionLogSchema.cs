@@ -115,6 +115,10 @@ public sealed class SessionLogMetaV2
     public byte SessionType { get; set; }
     public string SessionTypeName { get; set; } = "";
     public byte GameYear { get; set; }
+    /// <summary>m_formula from PacketSessionData: 0=F1 Modern, 1=F1 Classic, 2=F2, 3=F1 Generic,
+    /// 4=Beta, 6=Esports, 8=F1 World, 9=F1 Elimination.</summary>
+    public byte Formula { get; set; }
+    public string FormulaName { get; set; } = "";
     public uint WeekendLinkId { get; set; }
     public uint SessionLinkId { get; set; }
     public byte PlayerCarIndex { get; set; }
@@ -165,4 +169,29 @@ public sealed class SessionLogDataV2
 
     /// <summary>Pulled from the final snapshot of the FinalClassification packet on SEND.</summary>
     public object? FinalClassification { get; set; }
+
+    /// <summary>One-shot diagnostics for the "missing samples on first laps" investigation.
+    /// Will be removed once the root cause is identified.</summary>
+    public IngressDiagnosticsV2? IngressDiagnostics { get; set; }
+}
+
+/// <summary>Per-session sampling diagnostics: where SampleTelemetry / SampleMotion stopped
+/// short. Helps decide whether early-lap sample loss is OFI-ratchet, missing LapData cache,
+/// queue overflow, or something else.</summary>
+public sealed class IngressDiagnosticsV2
+{
+    public long TelemetryAccepted { get; set; }
+    public long TelemetryRejectedOfi { get; set; }
+    public long TelemetryRejectedNoLapData { get; set; }
+    public long TelemetryGated20Hz { get; set; }
+    public long MotionAccepted { get; set; }
+    public long MotionRejectedOfi { get; set; }
+    public long MotionRejectedNoLapData { get; set; }
+    public long MotionGated10Hz { get; set; }
+    /// <summary>Session-time (s) when the very first CarTelemetry sample was actually persisted.</summary>
+    public float FirstTelemetryAcceptedAtS { get; set; }
+    /// <summary>Session-time (s) when the very first Motion sample was actually persisted.</summary>
+    public float FirstMotionAcceptedAtS { get; set; }
+    /// <summary>Process-wide count of packets dropped by the bounded channel (DropOldest).</summary>
+    public int QueueDroppedTotal { get; set; }
 }

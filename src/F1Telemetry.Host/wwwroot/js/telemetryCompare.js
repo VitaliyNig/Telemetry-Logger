@@ -13,7 +13,7 @@
         zoomEnd: null,
         deltaMode: 'cumulative', // or 'sector'
         hiddenMetrics: new Set(),
-        heightScale: 1.0,           // 0.75 | 1.0 | 1.4
+        heightScale: 1.5,           // 1.1 | 1.5 | 2.0
         heightOverride: {},         // { metricKey: pixelsAtScale1 } from drag
         miniPerSector: 3,
         focusPinMode: false,
@@ -24,9 +24,11 @@
         hoverPerf: { enabled: false, lastLogTs: 0, samples: 0, hoverMs: 0, interpCount: 0 },
         chipMode: 'pair', // 'pair' | 'diff'
         mapLayers: { line: true, deltaHeat: true, events: true, dominance: false },
-        mapZoom: 1,                 // 1 = full track in viewport, max 8x
-        mapPanX: 0,                 // pixels offset of camera in viewBox units
-        mapPanY: 0,
+        // Default to a moderate zoom so the map opens as a trajectory-analysis surface,
+        // not a thumbnail. Reset button (⌖) returns to Z=1 for the full-lap overview.
+        mapZoom: 1.8,               // 1 = full track in viewport, max 8x
+        mapPanX: null,              // null = "auto-center on first draw"; numbers are pixel offsets
+        mapPanY: null,
         mapFollow: true,            // auto-recenter on hovered point when zoomed in
     };
     var shortcutsBound = false;
@@ -58,6 +60,9 @@
             if (typeof p.mapZoom === 'number' && isFinite(p.mapZoom)) {
                 compareState.mapZoom = Math.max(1, Math.min(8, p.mapZoom));
             }
+            // null pan = "use default centered pan for current zoom". Only honour
+            // persisted values that are actual finite numbers; anything else leaves
+            // the defaults intact so drawTrackMap centers automatically.
             if (typeof p.mapPanX === 'number' && isFinite(p.mapPanX)) compareState.mapPanX = p.mapPanX;
             if (typeof p.mapPanY === 'number' && isFinite(p.mapPanY)) compareState.mapPanY = p.mapPanY;
             if (typeof p.mapFollow === 'boolean') compareState.mapFollow = p.mapFollow;
@@ -154,20 +159,22 @@
         var sess = window.HistoryDetail.state.session;
         body.innerHTML = ''
             + '<div class="tc-layout">'
-            +   '<div class="tc-side" id="tcSide" data-priority="secondary"></div>'
+            +   '<div class="tc-side" id="tcSide" data-priority="secondary">'
+            +     '<div class="tc-side-picker-host" id="tcSidePickerHost"></div>'
+            +     '<div class="tc-side-toolbar tc-sector-badges" id="tcBadges"></div>'
+            +   '</div>'
             +   '<div class="tc-main">'
-            +     '<div class="tc-layer tc-layer-a tc-kpi-sticky" data-priority="primary">'
-            +       '<div class="tc-sector-badges" id="tcBadges"></div>'
-            +     '</div>'
             +     '<div class="tc-layer tc-layer-b" data-priority="primary">'
             +       '<div class="tc-charts" id="tcCharts"></div>'
             +     '</div>'
             +   '</div>'
-            +   '<div class="tc-map tc-layer tc-layer-c" id="tcMap" data-priority="secondary"></div>'
-            +   '<aside class="tc-focus" id="tcFocusPanel" data-priority="secondary"></aside>'
+            +   '<div class="tc-rail" data-priority="secondary">'
+            +     '<div class="tc-map tc-layer tc-layer-c" id="tcMap"></div>'
+            +     '<aside class="tc-focus" id="tcFocusPanel"></aside>'
+            +   '</div>'
             + '</div>';
 
-        var side = body.querySelector('#tcSide');
+        var side = body.querySelector('#tcSidePickerHost');
         var picker = window.HistoryDetail.DriverPicker({
             drivers: sess.drivers,
             supportLapSelector: true,
@@ -294,38 +301,37 @@
             refLap = (refDriverLap.laps || []).find(function (l) { return l.lapNum === sel.lap; });
         }
 
-        // ---------- Toolbar ----------
-        var html = '<div class="tc-toolbar">'
-            // Delta mode
-            + '<div class="tc-toolbar-group">'
-            + '<span class="tc-toolbar-label">Delta</span>'
-            + '<div class="tc-segmented">'
-            + '<button class="tc-seg-btn ' + (compareState.deltaMode === 'cumulative' ? 'active' : '') + '" data-mode="cumulative">Cumulative</button>'
-            + '<button class="tc-seg-btn ' + (compareState.deltaMode === 'sector' ? 'active' : '') + '" data-mode="sector">Per Sector</button>'
-            + '</div></div>'
-            // Segment split
-            + '<div class="tc-toolbar-group">'
-            + '<span class="tc-toolbar-label">Split</span>'
-            + '<div class="tc-segmented">'
-            + '<button class="tc-seg-btn ' + (compareState.miniPerSector === 1 ? 'active' : '') + '" data-mini="1">3</button>'
-            + '<button class="tc-seg-btn ' + (compareState.miniPerSector === 3 ? 'active' : '') + '" data-mini="3">9</button>'
-            + '<button class="tc-seg-btn ' + (compareState.miniPerSector === 4 ? 'active' : '') + '" data-mini="4">12</button>'
-            + '</div></div>'
-            // Zoom actions
-            + '<div class="tc-toolbar-group">'
-            + '<span class="tc-toolbar-label">Zoom</span>'
-            + '<div class="tc-zoom-actions">'
-            + '<button class="tc-zoom-btn" data-start="0" data-end="' + trackLen + '">Full Lap</button>'
-            + '<button class="tc-zoom-btn" data-action="reset-zoom">Reset</button>'
-            + '<button class="tc-zoom-btn" data-action="zoom-out-2x">Zoom Out</button>'
-            + '</div></div>'
+        // ---------- Compact side toolbar ----------
+        // View section: delta mode + split + zoom shortcuts.
+        var html = '<div class="tc-stb">'
+            + '<div class="tc-stb-section">'
+            +   '<div class="tc-stb-label">View</div>'
+            +   '<div class="tc-segmented tc-segmented--full">'
+            +     '<button class="tc-seg-btn ' + (compareState.deltaMode === 'cumulative' ? 'active' : '') + '" data-mode="cumulative" title="Cumulative delta">Cumul.</button>'
+            +     '<button class="tc-seg-btn ' + (compareState.deltaMode === 'sector' ? 'active' : '') + '" data-mode="sector" title="Per-sector delta">Per Sec.</button>'
+            +   '</div>'
+            +   '<div class="tc-stb-row">'
+            +     '<span class="tc-stb-mini">Split</span>'
+            +     '<div class="tc-segmented">'
+            +       '<button class="tc-seg-btn ' + (compareState.miniPerSector === 1 ? 'active' : '') + '" data-mini="1">3</button>'
+            +       '<button class="tc-seg-btn ' + (compareState.miniPerSector === 3 ? 'active' : '') + '" data-mini="3">9</button>'
+            +       '<button class="tc-seg-btn ' + (compareState.miniPerSector === 4 ? 'active' : '') + '" data-mini="4">12</button>'
+            +     '</div>'
+            +   '</div>'
+            +   '<div class="tc-stb-row">'
+            +     '<span class="tc-stb-mini">Zoom</span>'
+            +     '<div class="tc-zoom-actions">'
+            +       '<button class="tc-zoom-btn" data-action="reset-zoom" title="Reset to full lap">Reset</button>'
+            +       '<button class="tc-zoom-btn" data-action="zoom-in-2x" title="Zoom in 2×" aria-label="Zoom in 2×">+2×</button>'
+            +       '<button class="tc-zoom-btn" data-action="zoom-out-2x" title="Zoom out 2×" aria-label="Zoom out 2×">−2×</button>'
+            +     '</div>'
+            +   '</div>'
             + '</div>';
 
-        // ---------- Sector badges ----------
-        html += '<div class="tc-toolbar">'
-            + '<div class="tc-toolbar-group tc-toolbar-group--sectors">'
-            + '<span class="tc-toolbar-label">Sectors</span>'
-            + '<div class="tc-sector-groups">';
+        // Sectors — clickable zoom shortcuts (horizontal scroll if many).
+        html += '<div class="tc-stb-section">'
+            +   '<div class="tc-stb-label">Sectors</div>'
+            +   '<div class="tc-sector-groups">';
         var miniCount = Math.max(1, Number(compareState.miniPerSector) || 1);
         var currentSector = null;
         segments.forEach(function (seg, idx) {
@@ -349,46 +355,60 @@
             }
         });
         if (currentSector !== null) html += '</div>';
-        html += '</div></div></div>';
+        html += '</div></div>';
 
-        // ---------- Channels + Display ----------
-        html += '<div class="tc-toolbar">'
-            + '<div class="tc-toolbar-group tc-toolbar-group--channels">'
-            + '<span class="tc-toolbar-label">Channels</span>'
-            + '<div class="tc-channel-list">';
+        // Channels — visible-metric chips, wrapping.
+        html += '<div class="tc-stb-section">'
+            +   '<div class="tc-stb-label">Channels</div>'
+            +   '<div class="tc-channel-list">';
         METRICS.forEach(function (m) {
             var pressed = !compareState.hiddenMetrics.has(m.key);
             html += '<button class="tc-channel ' + (pressed ? 'active' : '') + '" data-key="' + m.key + '"'
                 + ' aria-pressed="' + (pressed ? 'true' : 'false') + '">'
                 + escapeHtml(m.label) + '</button>';
         });
-        html += '</div></div>'
-            // Display options
-            + '<div class="tc-toolbar-group">'
-            + '<span class="tc-toolbar-label">Display</span>'
-            + '<div class="tc-display-row">'
-            + '<div class="tc-segmented">'
-            + '<button class="tc-seg-btn tc-chip-mode ' + (compareState.chipMode === 'pair' ? 'active' : '') + '" data-chip-mode="pair">Values</button>'
-            + '<button class="tc-seg-btn tc-chip-mode ' + (compareState.chipMode === 'diff' ? 'active' : '') + '" data-chip-mode="diff">Delta</button>'
-            + '</div>'
-            + '<div class="tc-segmented">';
-        [[0.75, 'Compact'], [1.0, 'Normal'], [1.4, 'Tall']].forEach(function (pair) {
-            var active = Math.abs(compareState.heightScale - pair[0]) < 0.01;
-            html += '<button class="tc-seg-btn ' + (active ? 'active' : '') + '"'
-                + ' data-scale="' + pair[0] + '">' + pair[1] + '</button>';
+        html += '</div></div>';
+
+        // Display section: chip mode + height preset + reset + insights.
+        html += '<div class="tc-stb-section">'
+            +   '<div class="tc-stb-label">Display</div>'
+            +   '<div class="tc-stb-row">'
+            +     '<div class="tc-segmented tc-segmented--grow">'
+            +       '<button class="tc-seg-btn tc-chip-mode ' + (compareState.chipMode === 'pair' ? 'active' : '') + '" data-chip-mode="pair">Values</button>'
+            +       '<button class="tc-seg-btn tc-chip-mode ' + (compareState.chipMode === 'diff' ? 'active' : '') + '" data-chip-mode="diff">Delta</button>'
+            +     '</div>'
+            +     '<button class="tc-icon-btn tc-reset-heights" title="Reset row heights">↺</button>'
+            +   '</div>'
+            +   '<div class="tc-stb-row">'
+            +     '<span class="tc-stb-mini">Size</span>'
+            +     '<div class="tc-segmented tc-segmented--grow">';
+        // Size presets: SVG icon visualises a chart-row of growing height.
+        [
+            { scale: 1.1, title: 'Compact', barY: 9, barH: 4 },
+            { scale: 1.5, title: 'Normal',  barY: 6, barH: 7 },
+            { scale: 2.0, title: 'Tall',    barY: 2, barH: 11 },
+        ].forEach(function (pair) {
+            var active = Math.abs(compareState.heightScale - pair.scale) < 0.01;
+            var icon = '<svg class="tc-size-icon" viewBox="0 0 16 14" aria-hidden="true" focusable="false">'
+                + '<rect x="1" y="' + pair.barY + '" width="14" height="' + pair.barH + '" rx="1.5"/>'
+                + '</svg>';
+            html += '<button class="tc-seg-btn tc-seg-btn--icon ' + (active ? 'active' : '') + '"'
+                + ' data-scale="' + pair.scale + '" title="' + pair.title + '" aria-label="' + pair.title + '">'
+                + icon + '</button>';
         });
         html += '</div>'
-            + '<button class="tc-icon-btn tc-reset-heights" title="Reset heights">↺</button>'
-            + '</div></div>'
-            // Insights toggle
-            + '<div class="tc-toolbar-group">'
-            + '<span class="tc-toolbar-label">Insights</span>'
-            + '<button class="tc-seg-btn tc-insights-toggle ' + (compareState.insightsEnabled ? 'active' : '') + '" data-action="insights">'
-            + (compareState.insightsEnabled ? 'On' : 'Off') + '</button>'
-            + '</div></div>';
+            +   '</div>'
+            +   '<div class="tc-stb-row">'
+            +     '<span class="tc-stb-mini">Insights</span>'
+            +     '<button class="tc-seg-btn tc-insights-toggle tc-stb-toggle ' + (compareState.insightsEnabled ? 'active' : '') + '" data-action="insights">'
+            +       (compareState.insightsEnabled ? 'On' : 'Off') + '</button>'
+            +   '</div>'
+            + '</div>';
+
         if (compareState.insightsEnabled) {
             html += renderTopLossZones(lapData, sess);
         }
+        html += '</div>';
         host.innerHTML = html;
 
         host.querySelectorAll('.tc-badge').forEach(function (b) {
@@ -466,6 +486,11 @@
                 if (action === 'reset-zoom') {
                     compareState.zoomStart = null;
                     compareState.zoomEnd = null;
+                    redraw(lapData);
+                    return;
+                }
+                if (action === 'zoom-in-2x') {
+                    zoomIn2x();
                     redraw(lapData);
                     return;
                 }
@@ -639,6 +664,55 @@
         return getMetricPriority(m.key) === 'secondary' ? Math.max(18, Math.round(scaled * 0.75)) : scaled;
     }
 
+    // Sector dividers painted inside the overview rail — major ticks at S2/S3 starts,
+    // minor ticks at mini-segment splits. Non-interactive — overview drag/click is preserved.
+    function renderOverviewPins(trackLen) {
+        if (!trackLen || trackLen <= 0) return '';
+        var pin = compareState.focusPinned;
+        if (!pin) return '';
+        var html = '';
+        if (pin.distance != null) {
+            html += '<div class="tc-overview-pin" style="left:' + Math.max(0, Math.min(100, (pin.distance / trackLen) * 100)).toFixed(3) + '%"></div>';
+        }
+        return html;
+    }
+
+    function renderOverviewSegments(meta, miniPerSector, trackLen) {
+        if (!trackLen || trackLen <= 0) return '';
+        var s2 = (meta && meta.sector2StartM) || 0;
+        var s3 = (meta && meta.sector3StartM) || 0;
+        var html = '';
+        [s2, s3].forEach(function (x) {
+            if (x > 0 && x < trackLen) {
+                html += '<div class="tc-overview-tick tc-overview-tick--major"'
+                    + ' style="left:' + ((x / trackLen) * 100).toFixed(3) + '%"'
+                    + ' aria-hidden="true"></div>';
+            }
+        });
+        if (Number(miniPerSector) > 1) {
+            buildSegmentBoundaries(meta, miniPerSector).forEach(function (seg) {
+                if (seg.part === 1) return; // first slice has no leading divider
+                html += '<div class="tc-overview-tick tc-overview-tick--minor"'
+                    + ' style="left:' + ((seg.start / trackLen) * 100).toFixed(3) + '%"'
+                    + ' aria-hidden="true"></div>';
+            });
+        }
+        // S1/S2/S3 labels centred over each sector.
+        var bands = [
+            { sector: 1, start: 0,  end: s2 || trackLen },
+            { sector: 2, start: s2, end: s3 || trackLen },
+            { sector: 3, start: s3, end: trackLen },
+        ];
+        bands.forEach(function (b) {
+            if (b.end <= b.start) return;
+            var midPct = ((b.start + (b.end - b.start) / 2) / trackLen) * 100;
+            html += '<div class="tc-overview-label"'
+                + ' style="left:' + midPct.toFixed(3) + '%"'
+                + ' aria-hidden="true">S' + b.sector + '</div>';
+        });
+        return html;
+    }
+
     function drawChartStack(lapData) {
         var host = document.getElementById('tcCharts');
         if (!host) return;
@@ -657,6 +731,11 @@
         var visibleMetrics = METRICS.filter(function (m) { return !compareState.hiddenMetrics.has(m.key); });
 
         var html = '';
+        html += '<div class="tc-overview" id="tcOverview" title="Drag window to pan · click empty track to center">'
+             +   renderOverviewSegments(sess.meta, compareState.miniPerSector, trackLen)
+             +   renderOverviewPins(trackLen)
+             +   '<div class="tc-overview-window" id="tcOverviewWin" title="Drag to move zoom window"></div>'
+             + '</div>';
         visibleMetrics.forEach(function (m) {
             var h = effectiveHeight(m);
             var priority = getMetricPriority(m.key);
@@ -671,8 +750,7 @@
              + '<div class="tc-crosshair" id="tcCrosshair"></div>'
              + '<div class="tc-brush" id="tcBrush"></div>'
              + '</div>';
-        html += '<div class="tc-overview" id="tcOverview" title="Drag window to pan · click empty track to center"><div class="tc-overview-window" id="tcOverviewWin" title="Drag to move zoom window"></div></div>'
-            + '<div class="tc-interact-hint" aria-hidden="true">Wheel zoom · Shift+drag pan · drag select zoom · dbl-click reset · Esc reset · [← →] pan · [+ −] zoom</div>';
+        html += '<div class="tc-interact-hint" aria-hidden="true">Wheel zoom · Shift+drag pan · drag select zoom · dbl-click reset · Esc reset · [← →] pan · [+ −] zoom</div>';
         host.innerHTML = html;
 
         var selections = Array.from(window.HistoryDetail.state.driverSelection.entries()).filter(function (kv) {
@@ -780,6 +858,21 @@
             compareState.zoomStart = null;
             compareState.zoomEnd = null;
         }
+    }
+
+    function zoomIn2x() {
+        var sess = window.HistoryDetail.state.session;
+        var trackLen = sess.meta.trackLengthM || 5000;
+        var min = compareState.zoomStart != null ? compareState.zoomStart : 0;
+        var max = compareState.zoomEnd != null ? compareState.zoomEnd : trackLen;
+        var span = Math.max(1, max - min);
+        // Don't zoom in tighter than ~50m of track — keeps the chart readable.
+        var minSpan = Math.min(50, trackLen);
+        if (span <= minSpan + 1e-6) return;
+        var center = min + span / 2;
+        var nextSpan = Math.max(minSpan, span / 2);
+        compareState.zoomStart = Math.max(0, center - nextSpan / 2);
+        compareState.zoomEnd = Math.min(trackLen, center + nextSpan / 2);
     }
 
     // Mouse-drag on the bottom edge of a row changes compareState.heightOverride[key].
@@ -1057,13 +1150,22 @@
             }
         });
 
+        // Pin lines.
+        var pinLines = '';
+        var pin = compareState.focusPinned;
+        if (pin && pin.distance >= xMin - 1e-9 && pin.distance <= xMax + 1e-9) {
+            var xp = Math.max(0, Math.min(W, x(pin.distance)));
+            pinLines += '<line class="tc-pin-line" x1="' + xp + '" x2="' + xp + '" y1="' + PAD_T + '" y2="' + (PAD_T + plotH) + '"/>';
+            pinLines += '<text class="tc-pin-label" x="' + (xp + 3) + '" y="' + (PAD_T + 10) + '">' + Math.round(pin.distance) + 'm</text>';
+        }
+
         var defs = '<defs>'
             + '<pattern id="tcPatternRef' + idSuffix + '" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 6 L6 0" class="tc-line-pattern-ref"/></pattern>'
             + '<pattern id="tcPatternCurrent' + idSuffix + '" width="4" height="4" patternUnits="userSpaceOnUse"><circle cx="2" cy="2" r="0.7" class="tc-line-pattern-current"/></pattern>'
             + '<pattern id="tcPatternExtra' + idSuffix + '" width="6" height="6" patternUnits="userSpaceOnUse"><path d="M0 0 L6 6" class="tc-line-pattern-extra"/></pattern>'
             + '</defs>';
         return '<svg class="tc-chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
-            + defs + gridPack.grid + ersBg + speedDrsOverlay + sectorMarkers + lines + gridPack.yLabels + insetTitle + '</svg>';
+            + defs + gridPack.grid + ersBg + speedDrsOverlay + sectorMarkers + pinLines + lines + gridPack.yLabels + insetTitle + '</svg>';
     }
 
     // Resamples driverSamples onto reference sample distances and returns per-distance Δtime (seconds).
@@ -1294,14 +1396,17 @@
             +   '<div class="tc-map-camera" id="tcMapCamera">'
             +     '<object class="tc-map-outline" type="image/svg+xml" data="' + svgUrl + '"></object>'
             +     '<svg viewBox="0 0 ' + W + ' ' + H + '" class="tc-map-svg" preserveAspectRatio="xMidYMid meet">'
-            +       heatSegments + (compareState.mapLayers.line ? lines : '') + dominanceSegments + markers + eventMarkers
+            // Render order matters: dominance is a ribbon-thick fill that would hide
+            // the per-driver racing lines if drawn on top. Layering it underneath lets
+            // the user compare actual trajectories against the dominance backdrop.
+            +       dominanceSegments + heatSegments + (compareState.mapLayers.line ? lines : '') + markers + eventMarkers
             +     '</svg>'
             +   '</div>'
             +   '<div class="tc-map-controls">'
             +     '<button class="tc-map-zoom-btn" data-action="zoom-in" title="Zoom in (wheel up)" aria-label="Zoom in">+</button>'
             +     '<button class="tc-map-zoom-btn" data-action="zoom-out" title="Zoom out (wheel down)" aria-label="Zoom out">−</button>'
-            +     '<button class="tc-map-zoom-btn ' + (compareState.mapFollow ? 'active' : '') + '" data-action="follow" title="Follow cursor when zoomed" aria-label="Toggle follow">⊕</button>'
-            +     '<button class="tc-map-zoom-btn" data-action="reset" title="Reset view" aria-label="Reset view">⌖</button>'
+            +     '<button class="tc-map-zoom-btn ' + (compareState.mapFollow ? 'active' : '') + '" data-action="follow" title="Follow cursor when zoomed" aria-label="Toggle follow">𖦏</button>'
+            +     '<button class="tc-map-zoom-btn" data-action="reset" title="Reset view" aria-label="Reset view">⛶</button>'
             +   '</div>'
             + '</div>'
             + '<div class="tc-map-caption">Track map'
@@ -1342,6 +1447,12 @@
         var stageEl = host.querySelector('.tc-map-stage');
         var svgForCamera = host.querySelector('.tc-map-svg');
 
+        // Default pan that keeps the track centered for a given zoom level.
+        // Used both for first draw (when persisted pan is null) and as the
+        // fallback when something asks for pan before the user has touched it.
+        function defaultPan(Z) {
+            return -W * (Z - 1) / 2;
+        }
         function clampPan(tx, ty, Z) {
             var lim = W * (Z - 1);
             return [
@@ -1357,17 +1468,35 @@
             var smooth = !!(opts && opts.smooth);
             camera.classList.toggle('tc-map-camera--smooth', smooth);
             var Z = compareState.mapZoom || 1;
-            var c = clampPan(compareState.mapPanX || 0, compareState.mapPanY || 0, Z);
+            // null pan → "auto-center for this zoom" (first draw, or reset).
+            var px = (compareState.mapPanX == null) ? defaultPan(Z) : compareState.mapPanX;
+            var py = (compareState.mapPanY == null) ? defaultPan(Z) : compareState.mapPanY;
+            var c = clampPan(px, py, Z);
             compareState.mapPanX = c[0];
             compareState.mapPanY = c[1];
             camera.style.transform = 'translate(' + c[0].toFixed(2) + 'px, ' + c[1].toFixed(2) + 'px) scale(' + Z.toFixed(3) + ')';
             stageEl.classList.toggle('tc-map-stage--zoomed', Z > 1.001);
-            // Inverse-shrink the marker / event dots so they don't balloon at high zoom.
-            // Pure 1/Z would be too aggressive (invisible at 8×); soft exponential keeps
-            // them readable while the on-track scale still feels right.
+
+            // Inverse-shrink everything that has a "size in screen pixels" so it
+            // doesn't balloon at high zoom and hide the trajectory differences the
+            // user is trying to compare. Lines/heat/dominance ride on CSS vars so
+            // we update once on the stage instead of touching every SVG node.
+            //   base · ratio^(Z-1), floored to keep things still visible at Z=8
+            // The ratios for lines (0.70) are tighter than for filled segments
+            // (0.72) because thin polylines hide overlap better than thick ribbons.
+            var lineW = Math.max(0.35, 1.5 * Math.pow(0.70, Z - 1));
+            var heatW = Math.max(0.70, 3.0 * Math.pow(0.72, Z - 1));
+            var domW = Math.max(1.00, 4.0 * Math.pow(0.72, Z - 1));
+            stageEl.style.setProperty('--tc-map-line-w', lineW.toFixed(2));
+            stageEl.style.setProperty('--tc-map-heat-w', heatW.toFixed(2));
+            stageEl.style.setProperty('--tc-map-dominance-w', domW.toFixed(2));
+
             if (svgForCamera) {
-                var carR = Math.max(1.8, 5 * Math.pow(0.82, Z - 1));
-                var evR = Math.max(1.5, 4 * Math.pow(0.82, Z - 1));
+                // Marker / event dots shrink more aggressively than before (0.70 vs
+                // 0.82) — at the default Z=1.8 they should already be noticeably
+                // smaller so they stop hiding the racing lines underneath.
+                var carR = Math.max(1.2, 5 * Math.pow(0.70, Z - 1));
+                var evR = Math.max(1.0, 4 * Math.pow(0.70, Z - 1));
                 svgForCamera.querySelectorAll('.tc-map-marker').forEach(function (el) { el.setAttribute('r', carR.toFixed(2)); });
                 svgForCamera.querySelectorAll('.tc-map-event circle').forEach(function (el) { el.setAttribute('r', evR.toFixed(2)); });
             }
@@ -1383,14 +1512,20 @@
             //   newTx = oldTx + anchor * (oldZoom - newZoom)
             var ax = (anchorViewBoxX != null) ? anchorViewBoxX : W / 2;
             var ay = (anchorViewBoxY != null) ? anchorViewBoxY : H / 2;
-            compareState.mapPanX = (compareState.mapPanX || 0) + ax * (oldZoom - newZoom);
-            compareState.mapPanY = (compareState.mapPanY || 0) + ay * (oldZoom - newZoom);
+            // Pan can still be null here (user hits +/− before having moved): treat
+            // null as "centered for the old zoom" so the anchor math stays valid.
+            var basePanX = (compareState.mapPanX == null) ? defaultPan(oldZoom) : compareState.mapPanX;
+            var basePanY = (compareState.mapPanY == null) ? defaultPan(oldZoom) : compareState.mapPanY;
+            compareState.mapPanX = basePanX + ax * (oldZoom - newZoom);
+            compareState.mapPanY = basePanY + ay * (oldZoom - newZoom);
             compareState.mapZoom = newZoom;
             if (newZoom <= 1.001) { compareState.mapPanX = 0; compareState.mapPanY = 0; }
             applyMapTransform({ smooth: true });
             persistState();
         }
         function resetMapView() {
+            // Reset always means "show the whole lap" — the analysis-friendly Z=1.8
+            // is only the *initial* default, not where the reset button lands.
             compareState.mapZoom = 1;
             compareState.mapPanX = 0;
             compareState.mapPanY = 0;
@@ -1633,7 +1768,10 @@
                 var chipLabel = (driver && (driver.shortName || driver.name || driver.code))
                     ? (nameLabel + (lapNo != null ? (' · L' + lapNo) : ''))
                     : roleLabel;
-                return { carIdx: carIdx, color: color, sample: sample, delta: deltaVal, isReference: carIdx === refCarIdx, chipLabel: chipLabel };
+                var chipShort = (driver && (driver.shortName || driver.name || driver.code))
+                    ? (nameLabel + (lapNo != null ? (' L' + lapNo) : ''))
+                    : roleLabel;
+                return { carIdx: carIdx, color: color, sample: sample, delta: deltaVal, isReference: carIdx === refCarIdx, chipLabel: chipLabel, chipShort: chipShort };
             }).filter(Boolean).sort(function (a, b) {
                 return (b.isReference === true) - (a.isReference === true);
             });
@@ -1711,13 +1849,16 @@
                         : formatMetricDiff(metricKey, pair.current && pair.current.sample, pair.ref && pair.ref.sample);
                     rows = '<span class="tc-chip-ref">Δ</span><span class="tc-chip-val">' + escapeHtml(String(diff)) + '</span>';
                 } else {
-                    var cText = formatChipValue(metricKey, pair.current && pair.current.sample, metricKey === 'delta' ? (pair.current && pair.current.delta) : null);
-                    var rText = formatChipValue(metricKey, pair.ref && pair.ref.sample, metricKey === 'delta' ? (pair.ref && pair.ref.delta) : null);
-                    rows = '<span class="tc-chip-dot" style="background:' + (pair.current ? pair.current.color : '#bbb') + '"></span>'
-                        + '<span class="tc-chip-ref">C</span><span class="tc-chip-val">' + escapeHtml(cText) + '</span>'
-                        + '<span class="tc-chip-sep"></span>'
-                        + '<span class="tc-chip-dot" style="background:' + (pair.ref ? pair.ref.color : '#bbb') + '"></span>'
-                        + '<span class="tc-chip-ref">R</span><span class="tc-chip-val">' + escapeHtml(rText) + '</span>';
+                    // One entry per selected lap so the chip reflects the comparison size, not just C/R.
+                    rows = perDriver.map(function (pd) {
+                        var dv = (metricKey === 'delta') ? pd.delta : null;
+                        var text = formatChipValue(metricKey, pd.sample, dv);
+                        return '<span class="tc-chip-row">'
+                            + '<span class="tc-chip-dot" style="background:' + (pd.color || '#bbb') + '"></span>'
+                            + '<span class="tc-chip-ref">' + escapeHtml(pd.chipShort || pd.chipLabel || '') + '</span>'
+                            + '<span class="tc-chip-val">' + escapeHtml(text) + '</span>'
+                            + '</span>';
+                    }).join('');
                 }
                 chip.innerHTML = rows;
                 chip.hidden = false;
@@ -1837,18 +1978,25 @@
             if (rafToken) cancelAnimationFrame(rafToken);
             rafToken = 0;
             scheduled = false;
-            crosshair.style.left = '-9999px';
             chips.forEach(function (chip) { chip.hidden = true; });
-            if (!compareState.focusPinned) renderFocusPanel([], null);
+            if (!compareState.focusPinned) {
+                crosshair.style.left = '-9999px';
+                renderFocusPanel([], null);
+            } else {
+                // Keep crosshair at the pinned position.
+                var pinD = compareState.focusPinned.distance;
+                var pct = (pinD - xMin) / Math.max(1, xMax - xMin);
+                crosshair.style.left = (pct * 100) + '%';
+            }
         });
         overlay.addEventListener('click', function (e) {
             if (!compareState.focusPinMode) return;
             var d = clientXToDistance(e.clientX);
             var interpCtx = createInterpContext();
             var perDriver = resolvePerDriver(d, interpCtx);
-            if (!compareState.focusPinned) compareState.focusPinned = { base: perDriver, baseDistance: d };
-            else compareState.focusPinned = { base: compareState.focusPinned.base, baseDistance: compareState.focusPinned.baseDistance, compare: perDriver, compareDistance: d };
+            compareState.focusPinned = { distance: d, perDriver: perDriver };
             renderFocusPanel(perDriver, d);
+            redraw(lapData);
         });
 
         overlay.addEventListener('pointerdown', function (e) {
@@ -2049,9 +2197,15 @@
                 rafToken = 0;
                 scheduled = false;
                 lastHoverSource = 'chart';
-                crosshair.style.left = '-9999px';
                 chips.forEach(function (chip) { chip.hidden = true; });
-                if (!compareState.focusPinned) renderFocusPanel([], null);
+                if (!compareState.focusPinned) {
+                    crosshair.style.left = '-9999px';
+                    renderFocusPanel([], null);
+                } else {
+                    var pinD = compareState.focusPinned.distance;
+                    var pct = (pinD - xMin) / Math.max(1, xMax - xMin);
+                    crosshair.style.left = (pct * 100) + '%';
+                }
             },
         };
     }
@@ -2073,35 +2227,75 @@
     function renderFocusPanel(perDriver, distance) {
         var host = document.getElementById('tcFocusPanel');
         if (!host) return;
-        var hasLive = perDriver && perDriver.length > 1;
-        var ref = hasLive ? perDriver[0] : null;
-        var cmp = hasLive ? perDriver[1] : null;
-        var diffs = ref && cmp ? {
-            delta: (cmp.delta || 0),
-            spd: (cmp.sample.spd || 0) - (ref.sample.spd || 0),
-            thr: (cmp.sample.thr || 0) - (ref.sample.thr || 0),
-            brk: (cmp.sample.brk || 0) - (ref.sample.brk || 0),
-            gr: (cmp.sample.gr || 0) - (ref.sample.gr || 0),
-            rpm: (cmp.sample.rpm || 0) - (ref.sample.rpm || 0),
-        } : null;
-        function row(label, val, inverse) {
-            if (val == null) return '<div class="tc-focus-row"><span>' + label + '</span><strong>—</strong></div>';
-            var trend = val === 0 ? '→' : ((inverse ? -val : val) < 0 ? '▲' : '▼');
-            var cls = val === 0 ? 'neutral' : ((inverse ? -val : val) < 0 ? 'gain' : 'loss');
-            return '<div class="tc-focus-row ' + cls + '"><span>' + label + '</span><strong>' + trend + ' ' + (val >= 0 ? '+' : '') + val.toFixed(2) + '</strong></div>';
-        }
         var pin = compareState.focusPinned;
+        // When pinned and called from mouseleave with empty perDriver, use stored data.
+        if (pin && (!perDriver || perDriver.length === 0)) {
+            perDriver = pin.perDriver;
+            distance = pin.distance;
+        }
+        var ref = perDriver ? perDriver.find(function (x) { return x.isReference; }) : null;
+        var compares = perDriver ? perDriver.filter(function (x) { return !x.isReference; }) : [];
+        var hasAny = !!(ref || compares.length);
+
+        // Grid header
+        var colCount = 1 + (ref ? 1 : 0) + compares.length;
+        var gridStyle = 'grid-template-columns: 56px repeat(' + (colCount - 1) + ', 1fr);';
+        var headerHtml = '<div class="tc-focus-grid-header">Metric</div>';
+        if (ref) {
+            headerHtml += '<div class="tc-focus-grid-header" title="' + escapeHtml(ref.chipLabel || '') + '">' + escapeHtml(ref.chipShort || 'REF') + '</div>';
+        }
+        compares.forEach(function (cmp) {
+            headerHtml += '<div class="tc-focus-grid-header" title="' + escapeHtml(cmp.chipLabel || '') + '">' + escapeHtml(cmp.chipShort || 'CMP') + '</div>';
+        });
+
+        var metrics = [
+            { key: 'delta', label: 'Delta', fmt: function (v) { return (v >= 0 ? '+' : '') + v.toFixed(3); }, inv: true },
+            { key: 'spd',   label: 'Speed', fmt: function (v) { return String(Math.round(v)); }, inv: true },
+            { key: 'thr',   label: 'Thr',   fmt: function (v) { return Math.round(v) + '%'; }, inv: true },
+            { key: 'brk',   label: 'Brk',   fmt: function (v) { return Math.round(v) + '%'; }, inv: false },
+            { key: 'gr',    label: 'Gear',  fmt: function (v) { return String(Math.round(v)); }, inv: true },
+            { key: 'rpm',   label: 'RPM',   fmt: function (v) { return Math.round(v).toLocaleString(); }, inv: true },
+        ];
+
+        var rowsHtml = '';
+        metrics.forEach(function (m) {
+            var cells = '<div class="tc-focus-grid-cell">' + m.label + '</div>';
+            if (ref) {
+                var rv = m.key === 'delta' ? (ref.delta || 0) : (ref.sample ? (ref.sample[m.key] || 0) : 0);
+                cells += '<div class="tc-focus-grid-cell">' + (m.fmt ? m.fmt(rv) : rv) + '</div>';
+            }
+            compares.forEach(function (cmp) {
+                var cv = m.key === 'delta' ? (cmp.delta || 0) : (cmp.sample ? (cmp.sample[m.key] || 0) : 0);
+                var rv = m.key === 'delta' ? (ref.delta || 0) : (ref.sample ? (ref.sample[m.key] || 0) : 0);
+                var diff = cv - rv;
+                var trend = diff === 0 ? '→' : ((m.inv ? -diff : diff) < 0 ? '▲' : '▼');
+                var cls = diff === 0 ? 'neutral' : ((m.inv ? -diff : diff) < 0 ? 'gain' : 'loss');
+                cells += '<div class="tc-focus-grid-cell ' + cls + '">' + trend + ' ' + (m.fmt ? m.fmt(diff) : diff) + '</div>';
+            });
+            rowsHtml += '<div class="tc-focus-grid-row">' + cells + '</div>';
+        });
+
+        var pinBtnTitle = 'Lock a point on the chart to inspect all drivers at that location';
+        var subText;
+        if (compareState.focusPinMode) {
+            if (pin) {
+                subText = 'Point pinned at ' + Math.round(pin.distance) + 'm. Click chart to move pin.';
+            } else {
+                subText = 'Pin mode ON — click chart to lock a point.';
+            }
+        } else {
+            subText = (distance == null ? 'Hover chart to inspect values' : ('d=' + Math.round(distance) + 'm'))
+                + ' · Drag zoom · Shift-drag pan · Wheel zoom · Esc reset';
+        }
+        var pinStateText = pin
+            ? 'Pinned at ' + Math.round(pin.distance) + 'm'
+            : 'Click Pin to freeze values at a point';
+
         host.innerHTML = ''
-            + '<div class="tc-focus-head"><h4>Compare Focus</h4><button class="tc-pin-btn ' + (compareState.focusPinMode ? 'active' : '') + '" data-act="pin">Pin</button></div>'
-            + '<div class="tc-focus-sub">' + (distance == null ? 'Hover chart to inspect' : ('d=' + Math.round(distance) + 'm'))
-            + ' · Pin mode: tap chart · Elsewhere: drag zoom · Shift-drag pan · wheel zoom · Esc reset</div>'
-            + row('Delta', diffs ? diffs.delta : null, true)
-            + row('Speed diff', diffs ? diffs.spd : null, true)
-            + row('Throttle diff', diffs ? diffs.thr : null, true)
-            + row('Brake diff', diffs ? diffs.brk : null, false)
-            + row('Gear diff', diffs ? diffs.gr : null, true)
-            + row('RPM diff', diffs ? diffs.rpm : null, true)
-            + '<div class="tc-focus-pin-state">' + (pin ? 'Pinned: ' + Math.round(pin.baseDistance) + 'm' + (pin.compareDistance != null ? (' vs ' + Math.round(pin.compareDistance) + 'm') : '') : 'Pin mode: click chart to lock up to two points') + '</div>';
+            + '<div class="tc-focus-head"><h4>Compare Focus</h4><button class="tc-pin-btn ' + (compareState.focusPinMode ? 'active' : '') + '" data-act="pin" title="' + pinBtnTitle + '">Pin</button></div>'
+            + '<div class="tc-focus-sub">' + subText + '</div>'
+            + (hasAny ? '<div class="tc-focus-grid" style="' + gridStyle + '">' + headerHtml + rowsHtml + '</div>' : '')
+            + '<div class="tc-focus-pin-state">' + pinStateText + '</div>';
         var pinBtn = host.querySelector('.tc-pin-btn');
         if (pinBtn) {
             pinBtn.addEventListener('click', function () {
@@ -2109,6 +2303,7 @@
                 if (!compareState.focusPinMode) compareState.focusPinned = null;
                 persistState();
                 renderFocusPanel(perDriver, distance);
+                if (latestCompareLapData) redraw(latestCompareLapData);
             });
         }
     }

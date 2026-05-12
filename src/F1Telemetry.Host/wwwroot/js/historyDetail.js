@@ -236,7 +236,8 @@
                 + '</div>';
         }
 
-        var pivot = renderLapPivotTable(cat, sess, bests, pbByDriver, false, driverOrder, maxLap);
+        var redClearAfterLap = redFlagClearedAfterLap(sess);
+        var pivot = renderLapPivotTable(cat, sess, bests, pbByDriver, false, driverOrder, maxLap, redClearAfterLap);
         var virtualGrid = isQuali ? renderVirtualGrid(sess.drivers) : '';
 
         body.innerHTML =
@@ -343,7 +344,7 @@
     // Delta classification (seconds) relative to REF lap within a stint.
     var DELTA_THRESHOLDS = { neutral: 0.8, warn: 1.5 };
 
-    function renderLapPivotTable(cat, sess, bests, pbByDriver, virtualMode, driverOrder, maxLap) {
+    function renderLapPivotTable(cat, sess, bests, pbByDriver, virtualMode, driverOrder, maxLap, redClearAfterLap) {
         var drivers = sess.drivers || {};
         var cols = LAP_COLUMNS_BY_CAT[cat] || LAP_COLUMNS_BY_CAT.unknown;
         var colCount = cols.length;
@@ -375,7 +376,7 @@
         // Body: one row per lap.
         var rowsHtml = '';
         for (var lapNum = 1; lapNum <= maxLap; lapNum++) {
-            var rowCls = rowFlagClass(lapNum, drivers, driverOrder);
+            var rowCls = rowFlagClass(lapNum, drivers, driverOrder, redClearAfterLap);
             var cells = driverOrder.map(function (carIdx) {
                 var lap = lapByNum(drivers[carIdx].laps, lapNum);
                 if (!lap) {
@@ -387,7 +388,7 @@
                     return filler;
                 }
                 return renderLapCells(lap, cat, cols, bests, pbByDriver[carIdx], virtualMode,
-                    refIndex ? refIndex[carIdx] : null, drivers, carIdx);
+                    refIndex ? refIndex[carIdx] : null, drivers, carIdx, redClearAfterLap);
             }).join('');
             rowsHtml += '<tr class="' + rowCls + '">'
                 + '<th class="lap-grid__lap-th">' + lapNum + '</th>'
@@ -435,13 +436,39 @@
     }
 
     // Row background when SC / VSC / Red Flag was active for most drivers on this lap.
-    function rowFlagClass(lapNum, drivers, driverOrder) {
+    // Older logs have a sticky Red flag bug: once RDFL fires, every subsequent lap's
+    // raceFlag is recorded as Red because CurrentRaceFlag was never reset on restart.
+    // The race-restart sequence is RDFL → ... → LGOT (lights out for the rolling start).
+    // Treat any LGOT after a RDFL (or that fires after the first Red lap) as the clear
+    // signal: lap rows past that point should ignore Red and fall back to the next flag.
+    function redFlagClearedAfterLap(sess) {
+        var events = (sess && sess.events) || [];
+        var sawRed = false, restartTime = null;
+        for (var i = 0; i < events.length; i++) {
+            var e = events[i];
+            if (e.code === 'RDFL') sawRed = true;
+            else if (sawRed && e.code === 'LGOT' && e.timeS != null) { restartTime = Number(e.timeS); break; }
+        }
+        if (restartTime == null) return null;
+        var bestLap = null, bestDt = Infinity;
+        for (var j = 0; j < events.length; j++) {
+            var o = events[j];
+            if (o.lap == null || o.timeS == null) continue;
+            var dt = Math.abs(Number(o.timeS) - restartTime);
+            if (dt < bestDt) { bestDt = dt; bestLap = Number(o.lap); }
+        }
+        return bestLap;
+    }
+
+    function rowFlagClass(lapNum, drivers, driverOrder, redClearAfterLap) {
+        var redIsSticky = redClearAfterLap != null && lapNum > redClearAfterLap;
         var counts = { 1: 0, 2: 0, 3: 0, 4: 0, total: 0 };
         driverOrder.forEach(function (carIdx) {
             var lap = lapByNum(drivers[carIdx].laps, lapNum);
             if (!lap) return;
             counts.total++;
             var raceFlag = normalizeRaceFlag(lap.raceFlag);
+            if (redIsSticky && raceFlag === 4) return; // ignore stale Red after restart
             if (raceFlag && counts[raceFlag] != null) counts[raceFlag]++;
         });
         if (counts.total === 0) return '';
@@ -455,8 +482,8 @@
 
     // Emits one <td> per sub-column listed in `cols`. Each renderer receives the same
     // (lap, ctx) bundle and decides what to draw.
-    function renderLapCells(l, cat, cols, bests, pb, virtualMode, refForDriver, drivers, carIdx) {
-        var ctx = { cat: cat, bests: bests, pb: pb, virtualMode: virtualMode, refForDriver: refForDriver };
+    function renderLapCells(l, cat, cols, bests, pb, virtualMode, refForDriver, drivers, carIdx, redClearAfterLap) {
+        var ctx = { cat: cat, bests: bests, pb: pb, virtualMode: virtualMode, refForDriver: refForDriver, redClearAfterLap: redClearAfterLap, driverLaps: drivers && drivers[carIdx] ? drivers[carIdx].laps : null };
         var out = '';
         for (var i = 0; i < cols.length; i++) {
             var key = cols[i];
@@ -517,7 +544,7 @@
             }
         }
 
-        var tags = lapTagsHtml(l, ctx.cat);
+        var tags = lapTagsHtml(l, ctx.cat, ctx.redClearAfterLap, ctx.driverLaps);
         var cellCls = 'lap-cell lap-sub--time';
         if (invalid) cellCls += ' lap-cell--invalid';
         return '<td class="' + cellCls + '">'
@@ -526,11 +553,20 @@
             + '</td>';
     }
 
-    function lapTagsHtml(l, cat) {
+    function lapTagsHtml(l, cat, redClearAfterLap, driverLaps) {
         var out = '';
         var raceFlag = normalizeRaceFlag(l.raceFlag);
+        // Strip stale Red carried over by older logs that never cleared CurrentRaceFlag on restart.
+        if (raceFlag === 4 && redClearAfterLap != null && Number(l.lapNum) > redClearAfterLap) {
+            raceFlag = 0;
+        }
         if (cat !== 'qualifying' && l.pit) {
             out += '<span class="lap-tag lap-tag--pit" title="Pit Stop">PIT</span>';
+        } else if (cat !== 'qualifying' && driverLaps) {
+            var prevLap = lapByNum(driverLaps, Number(l.lapNum) - 1);
+            if (prevLap && prevLap.pit) {
+                out += '<span class="lap-tag lap-tag--out" title="Out lap (after pit)">OUT</span>';
+            }
         }
         if (cat === 'race' && l.blueFlag) {
             out += '<span class="lap-tag lap-tag--blue" title="Blue Flag">B</span>';
@@ -1079,13 +1115,12 @@
         return max;
     }
 
-    // Position chart should use configured race distance when available.
-    // If meta is missing/zero, fallback to the max completed lap number and
-    // ignore trailing synthetic/incomplete lap snapshots after finish.
+    // Prefer the highest lap that actually has time data (matches Lap Times pivot).
+    // F1 25's SessionPacket.TotalLaps is one larger than the racing lap count emitted in
+    // LapData (formation lap appears to be counted in TotalLaps but never gets its own
+    // lapNum row), so trusting meta directly produces a chart that's +1 lap wider than
+    // the real race. Fall back to meta only when no driver has any timed lap recorded yet.
     function positionChartTotalLaps(sess) {
-        var metaLaps = Number(sess && sess.meta ? sess.meta.totalLaps : 0) || 0;
-        if (metaLaps > 0) return metaLaps;
-
         var completedMax = 0;
         var drivers = sess && sess.drivers ? sess.drivers : null;
         Object.keys(drivers || {}).forEach(function (k) {
@@ -1099,6 +1134,9 @@
             });
         });
         if (completedMax > 0) return completedMax;
+
+        var metaLaps = Number(sess && sess.meta ? sess.meta.totalLaps : 0) || 0;
+        if (metaLaps > 0) return metaLaps;
 
         return computeMaxLap(drivers);
     }
@@ -1197,12 +1235,33 @@
         function x(lap) { return PAD_L + (lap - 1) * lapStep; }
         function y(pos) { return PAD_T + (pos - 1) / Math.max(1, totalDrivers - 1) * plotH; }
 
-        // Race-flag bands: Yellow=1, SC=2, VSC=3, Red=4
-        var flagByLap = {};
-        (sess.events || []).forEach(function (e) {
-            if (e.flag != null && e.lap != null && (e.flag === 2 || e.flag === 3 || e.flag === 4) && Number(e.lap) <= totalLaps) {
-                flagByLap[e.lap] = Math.max(flagByLap[e.lap] || 0, e.flag);
+        // Race-flag bands: Yellow=1, SC=2, VSC=3, Red=4.
+        // Older logs recorded session-wide flag events (RDFL, SCAR) with no `lap` because the
+        // game emits them without a vehicle index. For those, derive the lap from `timeS` by
+        // looking at the nearest event that does carry a lap (SPTP/OVTK/etc. are emitted
+        // densely enough to give a within-1-lap mapping without needing the formation-lap
+        // offset that pure cumulative lap-times would require).
+        var events = sess.events || [];
+        function resolveEventLap(e) {
+            if (e.lap != null) return Number(e.lap);
+            if (e.timeS == null) return null;
+            var t = Number(e.timeS);
+            var bestLap = null, bestDt = Infinity;
+            for (var i = 0; i < events.length; i++) {
+                var o = events[i];
+                if (o.lap == null || o.timeS == null) continue;
+                var dt = Math.abs(Number(o.timeS) - t);
+                if (dt < bestDt) { bestDt = dt; bestLap = Number(o.lap); }
             }
+            return bestLap;
+        }
+
+        var flagByLap = {};
+        events.forEach(function (e) {
+            if (e.flag == null || (e.flag !== 2 && e.flag !== 3 && e.flag !== 4)) return;
+            var lap = resolveEventLap(e);
+            if (lap == null || lap > totalLaps) return;
+            flagByLap[lap] = Math.max(flagByLap[lap] || 0, e.flag);
         });
         var bands = '';
         var bandClass = function (f) {
@@ -1261,7 +1320,14 @@
             var d = sess.drivers[carIdx];
             var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6';
             var code = driverCode(d.name);
-            var validLaps = (d.laps || []).filter(function (l) { return l.position > 0 && l.lapNum <= totalLaps; });
+            // Sort by lapNum: SessionLogger's red-flag / final-lap rescue path can append a
+            // late-resolved lap (e.g. the lap during a red flag) out of order, which would
+            // make the polyline zigzag through the chart (lap 25 → 9 → 26). slice() so we
+            // don't mutate the source array that other passes below still iterate.
+            var validLaps = (d.laps || [])
+                .filter(function (l) { return l.position > 0 && l.lapNum <= totalLaps; })
+                .slice()
+                .sort(function (a, b) { return a.lapNum - b.lapNum; });
             if (validLaps.length === 0) return;
 
             var hidden = positionsLineHidden(carIdx);
@@ -1610,6 +1676,29 @@
         if (lap.pit === true || lap.inPit === true || lap.pitInLap === true || lap.pitStop === true) return true;
         var pitStatus = Number(lap.pitStatus);
         return pitStatus === 1 || pitStatus === 2;
+    }
+
+    // Compact PIT/OUT/SC/VSC/RF chips for the Compare laps picker (modal options + selected cards).
+    function compareLapTagsHtml(lap, allLaps) {
+        if (!lap) return '';
+        var parts = [];
+        if (isPitLap(lap)) {
+            parts.push('<span class="lap-tag lap-tag--pit" title="Pit stop on this lap">PIT</span>');
+        } else if (allLaps) {
+            var prev = allLaps.find(function (ll) { return Number(ll.lapNum) === Number(lap.lapNum) - 1; });
+            if (isPitLap(prev)) parts.push('<span class="lap-tag lap-tag--out" title="Out lap (after pit)">OUT</span>');
+        }
+        var rf = normalizeRaceFlag(lap.raceFlag);
+        // Strip stale Red carried over by older logs that never cleared CurrentRaceFlag on restart.
+        if (rf === 4) {
+            var redClearAfterLap = redFlagClearedAfterLap(state.session);
+            if (redClearAfterLap != null && Number(lap.lapNum) > redClearAfterLap) rf = 0;
+        }
+        if (rf === 2) parts.push('<span class="lap-tag lap-tag--sc" title="Safety Car">SC</span>');
+        else if (rf === 3) parts.push('<span class="lap-tag lap-tag--vsc" title="Virtual Safety Car">VSC</span>');
+        else if (rf === 4) parts.push('<span class="lap-tag lap-tag--rf" title="Red Flag">RF</span>');
+        if (!parts.length) return '';
+        return '<span class="tc-lap-tag-list">' + parts.join('') + '</span>';
     }
 
     function renderTelemetryCompare(body) {
@@ -2156,8 +2245,9 @@
                     if (isLapDuplicate(carIdx, l.lapNum)) return;
                     count++;
                     var tyre = l.compound || l.tyreCompound || l.tyre || '—';
+                    var tagsOpt = compareLapTagsHtml(l, laps);
                     html += '<button type="button" class="tc-lap-option" data-car="' + carIdx + '" data-lap="' + l.lapNum + '">'
-                        + '<span class="tc-lap-option-main">Lap ' + l.lapNum + '</span>'
+                        + '<span class="tc-lap-option-main">Lap ' + l.lapNum + tagsOpt + '</span>'
                         + '<span class="tc-lap-option-meta">' + escapeHtml(formatLapTime(l.lapTimeMs) + ' · ' + String(tyre)) + (l.valid ? '' : ' · invalid') + '</span>'
                         + '</button>';
                 });
@@ -2211,10 +2301,14 @@
                     var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6';
                     var isRef = state.compareState && Number(state.compareState.referenceCarIdx) === item.key && Number(state.compareState.referenceLap) === Number(item.sel.lap);
                     var isHidden = !!item.sel.hidden;
+                    var driverLaps = d.laps || [];
+                    var lapInfo = driverLaps.find(function (ll) { return Number(ll.lapNum) === Number(item.sel.lap); });
+                    var tagsCard = compareLapTagsHtml(lapInfo, driverLaps);
                     cards += '<div class="tc-lap-card ' + (isHidden ? 'is-muted' : '') + '" data-car="' + item.key + '" style="--tc-card-color:' + teamColor + '">'
                         + '<div class="tc-lap-card-info">'
                         +   '<div class="tc-lap-card-name-row">'
                         +     '<span class="tc-lap-card-name" title="' + escapeHtml(d.name || ('Car ' + item.sourceCarIdx)) + '">' + escapeHtml(shortDriverName(d.name || ('Car ' + item.sourceCarIdx))) + '</span>'
+                        +     tagsCard
                         +     (isRef ? '<span class="driver-ref-badge">REF</span>' : '')
                         +   '</div>'
                         +   '<span class="tc-lap-card-lap">Lap ' + item.sel.lap + '</span>'

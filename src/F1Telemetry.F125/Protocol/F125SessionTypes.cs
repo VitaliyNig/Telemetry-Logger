@@ -34,4 +34,12 @@ public static class F125SessionTypes
 
     public static string GetSlug(byte sessionType) =>
         Types.TryGetValue(sessionType, out var t) ? t.Slug : $"session{sessionType}";
+
+    private static readonly FrozenDictionary<string, string> NameBySlug =
+        Types.ToDictionary(kv => kv.Value.Slug, kv => kv.Value.Name).ToFrozenDictionary(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>Reverse lookup used by /api/sessions to recover a friendly name from a filename
+    /// when an old session log has no embedded meta.</summary>
+    public static string? GetNameBySlug(string slug) =>
+        NameBySlug.TryGetValue(slug, out var name) ? name : null;
 }

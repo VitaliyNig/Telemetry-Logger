@@ -169,18 +169,38 @@ public sealed class SessionLogger
     private void SampleTelemetry(SessionEntry entry, TelemetryPacketHeader header, CarTelemetryPacket packet)
     {
         if (!ShouldAcceptFrame(entry, header))
+        {
+            entry.DiagTelemetryRejectedOfi++;
+            if (!entry.DiagLoggedFirstTelemetryReject)
+            {
+                entry.DiagLoggedFirstTelemetryReject = true;
+                _logger.LogWarning(
+                    "[diag] First CarTelemetry rejected by OFI gate: ofi={Ofi} last={Last} sessionT={T:F2}s",
+                    header.OverallFrameIdentifier, entry.LastOverallFrameIdentifierProcessed, header.SessionTime);
+            }
             return;
+        }
 
         var lapPacket = entry.LatestPackets.GetValueOrDefault("LapData") as LapDataPacket;
-        if (lapPacket == null) return;
+        if (lapPacket == null)
+        {
+            entry.DiagTelemetryRejectedNoLapData++;
+            return;
+        }
         var statusPacket = entry.LatestPackets.GetValueOrDefault("CarStatus") as CarStatusPacket;
 
         var count = Math.Min(packet.CarTelemetryData.Length, Math.Min(lapPacket.LapDataItems.Length, MaxCars));
         for (byte idx = 0; idx < count; idx++)
         {
             if (header.SessionTime - entry.LastTelemetryTickS[idx] < TelemetryGateS)
+            {
+                entry.DiagTelemetryGated20Hz++;
                 continue;
+            }
             entry.LastTelemetryTickS[idx] = header.SessionTime;
+            if (entry.DiagTelemetryAccepted == 0 && entry.DiagFirstTelemetryAcceptedAtS < 0f)
+                entry.DiagFirstTelemetryAcceptedAtS = header.SessionTime;
+            entry.DiagTelemetryAccepted++;
 
             var t = packet.CarTelemetryData[idx];
             var l = lapPacket.LapDataItems[idx];
@@ -212,17 +232,37 @@ public sealed class SessionLogger
     private void SampleMotion(SessionEntry entry, TelemetryPacketHeader header, MotionPacket packet)
     {
         if (!ShouldAcceptFrame(entry, header))
+        {
+            entry.DiagMotionRejectedOfi++;
+            if (!entry.DiagLoggedFirstMotionReject)
+            {
+                entry.DiagLoggedFirstMotionReject = true;
+                _logger.LogWarning(
+                    "[diag] First Motion rejected by OFI gate: ofi={Ofi} last={Last} sessionT={T:F2}s",
+                    header.OverallFrameIdentifier, entry.LastOverallFrameIdentifierProcessed, header.SessionTime);
+            }
             return;
+        }
 
         var lapPacket = entry.LatestPackets.GetValueOrDefault("LapData") as LapDataPacket;
-        if (lapPacket == null) return;
+        if (lapPacket == null)
+        {
+            entry.DiagMotionRejectedNoLapData++;
+            return;
+        }
 
         var count = Math.Min(packet.CarMotionData.Length, Math.Min(lapPacket.LapDataItems.Length, MaxCars));
         for (byte idx = 0; idx < count; idx++)
         {
             if (header.SessionTime - entry.LastMotionTickS[idx] < MotionGateS)
+            {
+                entry.DiagMotionGated10Hz++;
                 continue;
+            }
             entry.LastMotionTickS[idx] = header.SessionTime;
+            if (entry.DiagMotionAccepted == 0 && entry.DiagFirstMotionAcceptedAtS < 0f)
+                entry.DiagFirstMotionAcceptedAtS = header.SessionTime;
+            entry.DiagMotionAccepted++;
 
             var m = packet.CarMotionData[idx];
             var l = lapPacket.LapDataItems[idx];
@@ -240,6 +280,8 @@ public sealed class SessionLogger
 
     private void ProcessLapData(SessionEntry entry, TelemetryPacketHeader header, LapDataPacket packet)
     {
+        var sessionPacket = entry.LatestPackets.GetValueOrDefault("Session") as SessionPacket;
+        var trackLenM = sessionPacket?.TrackLength ?? 0;
         var count = Math.Min(packet.LapDataItems.Length, MaxCars);
         for (byte idx = 0; idx < count; idx++)
         {
@@ -254,6 +296,14 @@ public sealed class SessionLogger
 
             var currentNum = lap.CurrentLapNum;
             var prevNum = entry.CurrentLapNum[idx];
+            var currentDist = lap.LapDistance;
+            var prevDist = entry.PrevLapDistance[idx];
+            entry.PrevLapDistance[idx] = currentDist;
+
+            var currentPitStatus = lap.PitStatus;
+            var prevPitStatus = entry.PrevPitStatus[idx];
+            entry.PrevPitStatus[idx] = currentPitStatus;
+
             if (prevNum == 0)
             {
                 // First time we see this car — anchor the lap start.
@@ -270,9 +320,44 @@ public sealed class SessionLogger
                 entry.CurrentLapStartSessionTimeS[idx] = header.SessionTime;
                 entry.LapMaxFlag[idx] = entry.CurrentRaceFlag;
                 entry.WasFormationLap[idx] = false;
+                continue;
+            }
+
+            // Non-race sessions (practice / quali / sprint shootout / time trial): the game keeps
+            // m_currentLapNum unchanged across pit-out → out-lap → S/F → flying lap and only ticks
+            // it when a TIMED lap finishes. Without this branch, all pre-lap samples (pit-sit +
+            // out-lap, or cool-down between push attempts) get folded into the saved flying lap.
+            // Detect the uncounted S/F crossing via PitStatus / lapDistance and reset the sample
+            // buffer so the saved lap only carries the push-lap segment.
+            //
+            // Skip for race-like sessions (race / race2 / race3 — IDs 15/16/17 per F125SessionTypes):
+            // they tick m_currentLapNum at every S/F crossing, so the boundaryByNum block above
+            // handles them. Firing here would also wipe in-lap pre-pit samples on regular pit stops.
+            if (!IsRaceLikeSession(entry.SessionType))
+            {
+                bool wrapBack = trackLenM > 0
+                    && prevDist > trackLenM * 0.9f
+                    && currentDist >= 0
+                    && currentDist < trackLenM * 0.1f;
+                bool pitExitCrossing = (prevPitStatus != 0 && currentPitStatus == 0) || (prevDist < 0 && currentDist >= 0);
+                if (wrapBack || pitExitCrossing)
+                {
+                    entry.CurrentLapSamples[idx] = null;
+                    entry.CurrentLapMotion[idx] = null;
+                    entry.CurrentLapStartSessionTimeS[idx] = header.SessionTime;
+                    entry.LapMaxFlag[idx] = entry.CurrentRaceFlag;
+                    entry.WasFormationLap[idx] = false;
+                    entry.LapBlueFlag[idx] = false;
+                }
             }
         }
     }
+
+    /// <summary>Race / Race 2 / Race 3 per F125SessionTypes. These sessions tick m_currentLapNum
+    /// at every S/F crossing, so they don't need (and shouldn't have) the non-race buffer reset
+    /// that handles uncounted out-lap → flying-lap transitions.</summary>
+    private static bool IsRaceLikeSession(byte sessionType) =>
+        sessionType is 15 or 16 or 17;
 
     private void CompleteLap(SessionEntry entry, byte idx, byte completedLapNum, LapData latest, ulong sessionUid)
     {
@@ -473,6 +558,14 @@ public sealed class SessionLogger
         if (evt.EventCode == "BUTN")
             return;
 
+        // Red flag is "sticky" in CurrentRaceFlag (UpdateRaceFlag has no way to detect a
+        // restart from SafetyCarStatus alone — the game zeroes it both during a red flag
+        // and during normal racing). The race-restart sequence is STLG → LGOT, so use
+        // LGOT after a red flag to drop back to Green; otherwise every subsequent lap
+        // inherits RaceFlag.Red via LapMaxFlag and Lap Times stays painted red forever.
+        if (evt.EventCode == "LGOT" && entry.CurrentRaceFlag == RaceFlag.Red)
+            entry.CurrentRaceFlag = RaceFlag.Green;
+
         byte? carIdx = evt.Details switch
         {
             FastestLapEvent e => e.VehicleIdx,
@@ -510,6 +603,17 @@ public sealed class SessionLogger
         if (flag.HasValue)
             entry.CurrentRaceFlag = flag.Value;
 
+        // Session-wide flag events (RDFL, SCAR full/virtual) have no carIdx, so the per-car
+        // fallback above leaves lapAtEvent null. The Lap Chart positions flag bands by lap,
+        // so without this fallback red/SC/VSC bands silently disappear. Use the player car's
+        // current lap — natural reference for a single-player session.
+        if (flag.HasValue && lapAtEvent is null
+            && entry.PlayerCarIndex < MaxCars
+            && entry.CurrentLapNum[entry.PlayerCarIndex] != 0)
+        {
+            lapAtEvent = entry.CurrentLapNum[entry.PlayerCarIndex];
+        }
+
         entry.Events.Add(new SessionLogEventV2
         {
             TimeS = header.SessionTime,
@@ -535,6 +639,8 @@ public sealed class SessionLogger
             entry.LastMotionTickS[i] = rewindToTime;
             entry.CurrentLapStartSessionTimeS[i] = rewindToTime;
             entry.LapBlueFlag[i] = false;
+            entry.PrevLapDistance[i] = 0f;
+            entry.PrevPitStatus[i] = 0;
             // Same lap number after rewind, but the in-lap flag accumulation should reflect only
             // the retaken segment (matches cleared motion/telemetry buffers).
             entry.LapMaxFlag[i] = entry.CurrentRaceFlag;
@@ -715,6 +821,8 @@ public sealed class SessionLogger
                     SessionType = entry.SessionType,
                     SessionTypeName = F125SessionTypes.GetName(entry.SessionType),
                     GameYear = entry.GameYear,
+                    Formula = sessionPacket.Formula,
+                    FormulaName = F125Formulas.GetName(sessionPacket.Formula),
                     WeekendLinkId = entry.WeekendLinkId,
                     SessionLinkId = sessionPacket.SessionLinkIdentifier,
                     PlayerCarIndex = entry.PlayerCarIndex,
@@ -736,6 +844,20 @@ public sealed class SessionLogger
                     ? new List<SessionLogEventV2>(entry.Events)
                     : null,
                 FinalClassification = finalClassification,
+                IngressDiagnostics = new IngressDiagnosticsV2
+                {
+                    TelemetryAccepted = entry.DiagTelemetryAccepted,
+                    TelemetryRejectedOfi = entry.DiagTelemetryRejectedOfi,
+                    TelemetryRejectedNoLapData = entry.DiagTelemetryRejectedNoLapData,
+                    TelemetryGated20Hz = entry.DiagTelemetryGated20Hz,
+                    MotionAccepted = entry.DiagMotionAccepted,
+                    MotionRejectedOfi = entry.DiagMotionRejectedOfi,
+                    MotionRejectedNoLapData = entry.DiagMotionRejectedNoLapData,
+                    MotionGated10Hz = entry.DiagMotionGated10Hz,
+                    FirstTelemetryAcceptedAtS = entry.DiagFirstTelemetryAcceptedAtS,
+                    FirstMotionAcceptedAtS = entry.DiagFirstMotionAcceptedAtS,
+                    QueueDroppedTotal = Volatile.Read(ref _droppedEnqueueCount),
+                },
             };
 
             var json = JsonSerializer.Serialize(logData, JsonOptions);
@@ -804,6 +926,11 @@ public sealed class SessionLogger
         public readonly float[] LastMotionTickS = new float[MaxCars];
         public readonly byte[] CurrentLapNum = new byte[MaxCars];
         public readonly float[] CurrentLapStartSessionTimeS = new float[MaxCars];
+        /// <summary>Previous frame's m_lapDistance per car. Used to detect uncounted S/F crossings
+        /// in non-race sessions (out-lap → flying-lap, cool-down → push), where m_currentLapNum
+        /// stays the same but lapDistance wraps. Initialised lazily on first LapData frame.</summary>
+        public readonly float[] PrevLapDistance = new float[MaxCars];
+        public readonly byte[] PrevPitStatus = new byte[MaxCars];
 
         // Live race-control state. Applied to each newly completed lap.
         public RaceFlag CurrentRaceFlag = RaceFlag.Green;
@@ -825,6 +952,24 @@ public sealed class SessionLogger
 
         public float LastKnownSessionTimeS { get; set; }
         public uint LastOverallFrameIdentifierProcessed { get; set; }
+
+        // ---------------------------------------------------------------------
+        // Sampling diagnostics (one-shot field for the "no samples on first laps"
+        // investigation). Counts hits per reject reason so the next race log can
+        // tell us deterministically WHY samples were missing instead of guessing.
+        // ---------------------------------------------------------------------
+        public long DiagTelemetryAccepted;
+        public long DiagTelemetryRejectedOfi;
+        public long DiagTelemetryRejectedNoLapData;
+        public long DiagTelemetryGated20Hz;
+        public long DiagMotionAccepted;
+        public long DiagMotionRejectedOfi;
+        public long DiagMotionRejectedNoLapData;
+        public long DiagMotionGated10Hz;
+        public bool DiagLoggedFirstTelemetryReject;
+        public bool DiagLoggedFirstMotionReject;
+        public float DiagFirstTelemetryAcceptedAtS = -1f;
+        public float DiagFirstMotionAcceptedAtS = -1f;
     }
 
 }

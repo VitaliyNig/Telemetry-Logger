@@ -151,6 +151,9 @@
         var folderIcon = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">'
             + '<path fill="currentColor" d="M1.75 3A1.75 1.75 0 0 0 0 4.75v6.5C0 12.216.784 13 1.75 13h12.5A1.75 1.75 0 0 0 16 11.25V5.75A1.75 1.75 0 0 0 14.25 4H7.5L6 2.5H1.75A1.75 1.75 0 0 0 0 4.25V3z"/>'
             + '</svg>';
+        var trashIcon = '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true">'
+            + '<path fill="currentColor" d="M6.5 1a.5.5 0 0 0-.5.5V2H3a.5.5 0 0 0 0 1h.06l.62 9.32A1.75 1.75 0 0 0 5.42 14h5.16a1.75 1.75 0 0 0 1.74-1.68L12.94 3H13a.5.5 0 0 0 0-1h-3v-.5a.5.5 0 0 0-.5-.5h-3zM5 5.5a.5.5 0 0 1 1 0v6a.5.5 0 0 1-1 0v-6zm2.5 0a.5.5 0 0 1 1 0v6a.5.5 0 0 1-1 0v-6zm2.5 0a.5.5 0 0 1 1 0v6a.5.5 0 0 1-1 0v-6z"/>'
+            + '</svg>';
 
         var html = '<div class="history-grid">';
         filtered.forEach(function (w) {
@@ -164,6 +167,9 @@
             var tags = gameLabel
                 ? '<span class="history-tag history-tag-game">' + escapeHtml(gameLabel) + '</span>'
                 : '';
+            if (w.formulaName) {
+                tags += '<span class="history-tag history-tag-formula">' + escapeHtml(w.formulaName) + '</span>';
+            }
             var firstDate = '';
             if (w.sessions && w.sessions.length > 0) {
                 w.sessions.forEach(function (s) {
@@ -176,6 +182,9 @@
                 + ' data-weekend-name="' + escapeHtml(w.trackName || w.folder) + '">' +
                 '<button type="button" class="history-card-open-folder" title="Open folder in Explorer" aria-label="Open folder">' +
                     folderIcon +
+                '</button>' +
+                '<button type="button" class="history-card-delete" title="Delete weekend folder" aria-label="Delete weekend">' +
+                    trashIcon +
                 '</button>' +
                 '<div class="history-card-header">' +
                     '<div class="history-card-title">' + flagHtml + '<span>' + escapeHtml(w.trackName || w.folder) + '</span></div>' +
@@ -192,6 +201,7 @@
         container.querySelectorAll('.history-card').forEach(function (card) {
             card.addEventListener('click', function (e) {
                 if (e.target.closest('.history-card-open-folder')) return;
+                if (e.target.closest('.history-card-delete')) return;
                 var weekend = _historyWeekends.find(function (x) { return x.folder === card.dataset.folder; });
                 if (!weekend || !window.HistoryDetail) return;
                 if (weekend.sessions.length === 1) {
@@ -211,6 +221,44 @@
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ folder: card.dataset.folder })
                 });
+            });
+        });
+        container.querySelectorAll('.history-card-delete').forEach(function (btn) {
+            btn.addEventListener('click', function (e) {
+                e.stopPropagation();
+                var card = btn.closest('.history-card');
+                if (!card) return;
+                var folder = card.dataset.folder;
+                var name = card.dataset.weekendName || folder;
+                if (!confirm('Delete weekend "' + name + '" and all its sessions? This cannot be undone.')) return;
+                // Optimistic UI: fade the card immediately so the click feels responsive.
+                btn.disabled = true;
+                card.style.opacity = '0.5';
+                card.style.pointerEvents = 'none';
+                fetch('/api/sessions/' + encodeURIComponent(folder), { method: 'DELETE' })
+                    .then(function (r) {
+                        if (!r.ok) {
+                            return r.json().catch(function () { return {}; }).then(function (j) {
+                                throw new Error(j.error || ('HTTP ' + r.status));
+                            });
+                        }
+                        // Drop the weekend locally and remove the card from DOM. No re-fetch —
+                        // the server cache will rebuild on the next /api/sessions hit anyway.
+                        _historyWeekends = _historyWeekends.filter(function (w) { return w.folder !== folder; });
+                        card.remove();
+                        // If that was the last visible card, refresh filter options + empty state.
+                        var grid = container.querySelector('.history-grid');
+                        if (!grid || grid.children.length === 0) {
+                            populateHistoryFilterOptions(_historyWeekends);
+                            renderHistorySessions();
+                        }
+                    })
+                    .catch(function (err) {
+                        card.style.opacity = '';
+                        card.style.pointerEvents = '';
+                        btn.disabled = false;
+                        window.alert('Failed to delete: ' + (err.message || err));
+                    });
             });
         });
     }

@@ -2,6 +2,7 @@ using System.IO;
 using System.IO.Compression;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
 using System.Xml.Linq;
@@ -59,6 +60,201 @@ static class Program
     {
         try { attrs = File.GetAttributes(path); return true; }
         catch { attrs = default; return false; }
+    }
+
+    // Lightweight view of session-log meta used by /api/sessions when listing weekend cards.
+    // TrackId is nullable because synthesized headers (old logs without meta) can't recover it.
+    private readonly record struct SessionMetaHeader(
+        int? TrackId, string TrackName, string SessionTypeName, string SavedAt,
+        byte? GameYear, byte? Formula, string? FormulaName);
+
+    /// <summary>
+    /// Reads only the top-level "meta" object from a session-log JSON file. Tries a fast path
+    /// (locate meta's byte range in the first 256 KB, JsonDocument.Parse just that slice) and
+    /// falls back to a full-stream parse for files where meta isn't where we expect it (e.g.
+    /// historical schemas, hand-edited files). Returns false on missing/invalid meta.
+    /// </summary>
+    private static bool TryReadSessionMeta(string file, out SessionMetaHeader header)
+    {
+        header = default;
+        try
+        {
+            using var stream = File.OpenRead(file);
+            if (stream.Length == 0) return false;
+
+            // Fast path: read up to 256 KB, locate meta's byte range, parse just that slice.
+            const int MaxHead = 256 * 1024;
+            var len = (int)Math.Min(stream.Length, MaxHead);
+            var buffer = new byte[len];
+            int total = 0;
+            while (total < len)
+            {
+                int n = stream.Read(buffer, total, len - total);
+                if (n == 0) break;
+                total += n;
+            }
+            bool isFinal = total == stream.Length;
+
+            if (TryExtractMetaSlice(buffer, total, isFinal, out var metaStart, out var metaEnd)
+                && TryParseMetaSlice(buffer, metaStart, metaEnd - metaStart, out header))
+            {
+                return true;
+            }
+
+            // Fallback: re-read from the top with the original full-document parser. Slower but
+            // tolerates any meta layout (e.g. meta is not the first property, file is malformed
+            // past 256 KB but meta itself parses cleanly via the document API).
+            stream.Position = 0;
+            using var doc = JsonDocument.Parse(stream);
+            return TryReadHeaderFromElement(doc.RootElement, out header);
+        }
+        catch { return false; }
+    }
+
+    private static bool TryExtractMetaSlice(byte[] buffer, int total, bool isFinal,
+        out int metaStart, out int metaEnd)
+    {
+        metaStart = -1; metaEnd = -1;
+        try
+        {
+            var reader = new Utf8JsonReader(buffer.AsSpan(0, total),
+                isFinalBlock: isFinal, state: default);
+            if (!reader.Read() || reader.TokenType != JsonTokenType.StartObject) return false;
+
+            while (reader.Read())
+            {
+                if (reader.TokenType == JsonTokenType.EndObject) return false;
+                if (reader.TokenType != JsonTokenType.PropertyName) return false;
+
+                bool isMeta = reader.ValueTextEquals("meta");
+                if (!reader.Read()) return false;
+
+                if (isMeta)
+                {
+                    if (reader.TokenType != JsonTokenType.StartObject) return false;
+                    int start = (int)reader.TokenStartIndex;
+                    if (!reader.TrySkip()) return false;
+                    metaStart = start;
+                    metaEnd = (int)reader.BytesConsumed;
+                    return true;
+                }
+
+                if (reader.TokenType == JsonTokenType.StartObject ||
+                    reader.TokenType == JsonTokenType.StartArray)
+                {
+                    if (!reader.TrySkip()) return false;
+                }
+            }
+            return false;
+        }
+        catch { return false; }
+    }
+
+    private static bool TryParseMetaSlice(byte[] buffer, int offset, int length, out SessionMetaHeader header)
+    {
+        header = default;
+        if (length <= 0) return false;
+        try
+        {
+            // JsonDocument.Parse needs an owned buffer slice, so we copy. The slice is ~kilobytes.
+            var slice = new byte[length];
+            Buffer.BlockCopy(buffer, offset, slice, 0, length);
+            using var doc = JsonDocument.Parse(slice);
+            return TryReadHeaderFromMeta(doc.RootElement, out header);
+        }
+        catch { return false; }
+    }
+
+    private static bool TryReadHeaderFromElement(JsonElement root, out SessionMetaHeader header)
+    {
+        header = default;
+        if (root.ValueKind != JsonValueKind.Object) return false;
+        if (!root.TryGetProperty("meta", out var meta) || meta.ValueKind != JsonValueKind.Object)
+            return false;
+        return TryReadHeaderFromMeta(meta, out header);
+    }
+
+    private static bool TryReadHeaderFromMeta(JsonElement meta, out SessionMetaHeader header)
+    {
+        header = default;
+        if (meta.ValueKind != JsonValueKind.Object) return false;
+        if (!meta.TryGetProperty("trackId", out var tidEl) || tidEl.ValueKind != JsonValueKind.Number) return false;
+        if (!meta.TryGetProperty("trackName", out var tnEl) || tnEl.ValueKind != JsonValueKind.String) return false;
+        if (!meta.TryGetProperty("sessionTypeName", out var stEl) || stEl.ValueKind != JsonValueKind.String) return false;
+        if (!meta.TryGetProperty("savedAt", out var saEl) || saEl.ValueKind != JsonValueKind.String) return false;
+
+        byte? gameYear = meta.TryGetProperty("gameYear", out var gy) && gy.ValueKind == JsonValueKind.Number
+            ? gy.GetByte() : (byte?)null;
+        byte? formula = meta.TryGetProperty("formula", out var fEl) && fEl.ValueKind == JsonValueKind.Number
+            ? fEl.GetByte() : (byte?)null;
+        string? formulaName = meta.TryGetProperty("formulaName", out var fnEl) && fnEl.ValueKind == JsonValueKind.String
+            ? fnEl.GetString() : null;
+
+        header = new SessionMetaHeader(
+            tidEl.GetInt32(),
+            tnEl.GetString() ?? "",
+            stEl.GetString() ?? "",
+            saEl.GetString() ?? "",
+            gameYear, formula, formulaName);
+        return true;
+    }
+
+    // Folder format produced by SessionLogger: "F1{year}_{trackSafeName}_{yyyy-MM-dd}_{HH-mm}".
+    // SafeName may itself contain underscores (replacing invalid path chars), so the suffix
+    // anchors do the heavy lifting.
+    private static readonly Regex WeekendFolderRx = new(
+        @"^F1(\d+)_(.+)_(\d{4}-\d{2}-\d{2})_(\d{2}-\d{2})$",
+        RegexOptions.Compiled);
+
+    /// <summary>
+    /// Build a minimal header from the folder + filename + file mtime when the JSON file has
+    /// no embedded meta (very old session logs from before the schema-v2 meta block was added).
+    /// trackId stays 0 → no flag is rendered on the card, which is the intended graceful
+    /// degradation.
+    /// </summary>
+    private static bool TrySynthesizeHeaderFromPath(string file, string dir, out SessionMetaHeader header)
+    {
+        header = default;
+        try
+        {
+            var folderName = Path.GetFileName(dir) ?? "";
+            var slug = Path.GetFileNameWithoutExtension(file) ?? "";
+
+            byte? gameYear = null;
+            string trackName = folderName;
+            string savedAt;
+
+            var match = WeekendFolderRx.Match(folderName);
+            if (match.Success)
+            {
+                if (byte.TryParse(match.Groups[1].Value, out var y)) gameYear = y;
+                trackName = match.Groups[2].Value.Replace('_', ' ');
+                var datePart = match.Groups[3].Value;
+                var timePart = match.Groups[4].Value.Replace('-', ':');
+                if (DateTimeOffset.TryParse($"{datePart}T{timePart}", out var folderTs))
+                    savedAt = folderTs.ToString("o");
+                else
+                    savedAt = File.GetLastWriteTime(file).ToString("o");
+            }
+            else
+            {
+                savedAt = File.GetLastWriteTime(file).ToString("o");
+            }
+
+            var sessionTypeName = F125SessionTypes.GetNameBySlug(slug)
+                ?? slug.Replace('_', ' ');
+
+            header = new SessionMetaHeader(
+                TrackId: null,
+                TrackName: trackName,
+                SessionTypeName: sessionTypeName,
+                SavedAt: savedAt,
+                GameYear: gameYear,
+                Formula: null,
+                FormulaName: null);
+            return true;
+        }
+        catch { return false; }
     }
 
     /// <summary>
@@ -556,6 +752,8 @@ static class Program
                 int? trackId = null;
                 string? trackName = null;
                 byte? gameYear = null;
+                byte? formula = null;
+                string? formulaName = null;
                 var sessions = new List<object>();
 
                 foreach (var file in files.OrderBy(f => f))
@@ -563,42 +761,33 @@ static class Program
                     var fileName = Path.GetFileName(file);
                     if (fileName.Length == 0 || fileName[0] == '.' || fileName[0] == '_') continue;
 
-                    try
+                    // Stream-read only the top-level "meta" object. Session logs are multi-MB
+                    // (Drivers, LapHistories, Packets) but the History grid needs ~5 fields from
+                    // the start of the file. Reading 64 KB instead of 50 MB is a 100× speed win.
+                    // For very old logs that have no embedded meta, synthesize a header from the
+                    // folder name (F1{year}_{track}_{date}) and the filename slug so the card
+                    // still appears in History — just without a trackId-driven flag.
+                    if (!TryReadSessionMeta(file, out var meta) &&
+                        !TrySynthesizeHeaderFromPath(file, dir, out meta)) continue;
+
+                    if (!trackId.HasValue && meta.TrackId.HasValue) trackId = meta.TrackId;
+                    trackName ??= meta.TrackName;
+                    if (!gameYear.HasValue && meta.GameYear.HasValue)
+                        gameYear = meta.GameYear;
+                    if (!formula.HasValue && meta.Formula.HasValue)
                     {
-                        using var stream = System.IO.File.OpenRead(file);
-                        using var doc = JsonDocument.Parse(stream);
-                        var root = doc.RootElement;
-
-                        // Only accept files with our session-log shape: a top-level "meta" object
-                        // carrying the four required fields. Anything else (random JSON, exports,
-                        // unrelated configs) is silently ignored.
-                        if (root.ValueKind != JsonValueKind.Object) continue;
-                        if (!root.TryGetProperty("meta", out var meta) ||
-                            meta.ValueKind != JsonValueKind.Object) continue;
-                        if (!meta.TryGetProperty("trackId", out var tidEl) ||
-                            tidEl.ValueKind != JsonValueKind.Number) continue;
-                        if (!meta.TryGetProperty("trackName", out var tnEl) ||
-                            tnEl.ValueKind != JsonValueKind.String) continue;
-                        if (!meta.TryGetProperty("sessionTypeName", out var stEl) ||
-                            stEl.ValueKind != JsonValueKind.String) continue;
-                        if (!meta.TryGetProperty("savedAt", out var saEl) ||
-                            saEl.ValueKind != JsonValueKind.String) continue;
-
-                        trackId ??= tidEl.GetInt32();
-                        trackName ??= tnEl.GetString();
-                        if (!gameYear.HasValue &&
-                            meta.TryGetProperty("gameYear", out var gy) &&
-                            gy.ValueKind == JsonValueKind.Number)
-                            gameYear = gy.GetByte();
-
-                        sessions.Add(new
-                        {
-                            slug = Path.GetFileNameWithoutExtension(file),
-                            typeName = stEl.GetString(),
-                            savedAt = saEl.GetString(),
-                        });
+                        formula = meta.Formula;
+                        formulaName = !string.IsNullOrEmpty(meta.FormulaName)
+                            ? meta.FormulaName
+                            : F125Formulas.GetName(meta.Formula.Value);
                     }
-                    catch { /* skip corrupt files */ }
+
+                    sessions.Add(new
+                    {
+                        slug = Path.GetFileNameWithoutExtension(file),
+                        typeName = meta.SessionTypeName,
+                        savedAt = meta.SavedAt,
+                    });
                 }
 
                 if (sessions.Count > 0)
@@ -609,6 +798,8 @@ static class Program
                         trackId,
                         trackName,
                         gameYear,
+                        formula,
+                        formulaName,
                         sessions,
                     });
                 }
@@ -885,6 +1076,37 @@ static class Program
 
             System.Diagnostics.Process.Start("explorer.exe", fullPath);
             return Results.Ok(new { opened = true });
+        });
+
+        // Delete a weekend folder (and all of its session files) from the History root.
+        // Folder name is sanitized to prevent path traversal — only a leaf name is accepted,
+        // and the resolved path must live inside HistoryRoot.Path.
+        app.MapDelete("/api/sessions/{folder}", (string folder) =>
+        {
+            if (string.IsNullOrWhiteSpace(folder))
+                return Results.BadRequest(new { error = "folder is required" });
+
+            var safeName = Path.GetFileName(folder);
+            if (string.IsNullOrEmpty(safeName) || safeName != folder)
+                return Results.BadRequest(new { error = "invalid folder name" });
+
+            var root = Path.GetFullPath(HistoryRoot.Path);
+            var fullPath = Path.GetFullPath(Path.Combine(root, safeName));
+            if (!fullPath.StartsWith(root + Path.DirectorySeparatorChar, StringComparison.OrdinalIgnoreCase))
+                return Results.BadRequest(new { error = "invalid folder path" });
+
+            if (!Directory.Exists(fullPath))
+                return Results.NotFound(new { error = "folder not found" });
+
+            try
+            {
+                Directory.Delete(fullPath, recursive: true);
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem("Failed to delete folder: " + ex.Message, statusCode: 500);
+            }
+            return Results.Ok(new { deleted = true });
         });
 
         // --- History source folder ---
