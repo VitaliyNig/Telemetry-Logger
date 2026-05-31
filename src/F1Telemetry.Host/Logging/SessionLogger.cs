@@ -4,6 +4,7 @@ using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using F1Telemetry.F125.Packets;
 using F1Telemetry.F125.Protocol;
+using F1Telemetry.Host.Ingress;
 using F1Telemetry.Host.Serialization;
 using F1Telemetry.State;
 using F1Telemetry.Telemetry;
@@ -21,6 +22,7 @@ namespace F1Telemetry.Host.Logging;
 public sealed class SessionLogger
 {
     private readonly LapSetupStore _lapSetupStore;
+    private readonly IngressDiagnosticsTracker _ingressDiag;
     private readonly ILogger<SessionLogger> _logger;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -72,9 +74,10 @@ public sealed class SessionLogger
 
     internal ChannelReader<LoggerEnvelope> Reader => _queue.Reader;
 
-    public SessionLogger(LapSetupStore lapSetupStore, ILogger<SessionLogger> logger)
+    public SessionLogger(LapSetupStore lapSetupStore, IngressDiagnosticsTracker ingressDiag, ILogger<SessionLogger> logger)
     {
         _lapSetupStore = lapSetupStore;
+        _ingressDiag = ingressDiag;
         _logger = logger;
     }
 
@@ -108,12 +111,23 @@ public sealed class SessionLogger
             if (!_sessions.TryGetValue(uid, out var entry))
             {
                 entry = new SessionEntry();
+                Array.Fill(entry.DiagPerTypeFirstSessionTimeS, -1f);
                 _sessions[uid] = entry;
             }
 
             entry.PlayerCarIndex = header.PlayerCarIndex;
             entry.GameYear = header.GameYear;
             entry.LastKnownSessionTimeS = header.SessionTime;
+
+            // Per-entry per-type seen counter (lives next to LatestPackets so we can tell
+            // whether a packet type ever reached *this* SessionUid even if it never made it
+            // to a sampler. Bounds-check is cheap; the array is size 64 (>F125 max id).
+            if (packetId < entry.DiagPerTypeSeen.Length)
+            {
+                entry.DiagPerTypeSeen[packetId]++;
+                if (entry.DiagPerTypeFirstSessionTimeS[packetId] < 0f)
+                    entry.DiagPerTypeFirstSessionTimeS[packetId] = header.SessionTime;
+            }
 
             // Update latest snapshot for every non-high-frequency packet. Motion / MotionEx
             // would otherwise balloon the in-memory snapshot dictionary.
@@ -498,7 +512,7 @@ public sealed class SessionLogger
             TeamId = p?.TeamId ?? 0,
             DriverId = p?.DriverId ?? 0,
             Name = p?.Name ?? $"Car {idx}",
-            LiveryColorHex = ExtractLiveryColorHex(p),
+            LiveryColorHex = ExtractLiveryColorHex(p, entry.GameYear),
         };
         entry.Drivers[idx] = driver;
         return driver;
@@ -510,14 +524,15 @@ public sealed class SessionLogger
         for (byte idx = 0; idx < packet.Participants.Length && idx < MaxCars; idx++)
         {
             if (!entry.Drivers.TryGetValue(idx, out var driver) || driver.LiveryColorHex != null) continue;
-            driver.LiveryColorHex = ExtractLiveryColorHex(packet.Participants[idx]);
+            driver.LiveryColorHex = ExtractLiveryColorHex(packet.Participants[idx], entry.GameYear);
         }
     }
 
-    private static string? ExtractLiveryColorHex(ParticipantData? p)
+    private static string? ExtractLiveryColorHex(ParticipantData? p, byte gameYear)
     {
         if (p?.LiveryColours == null || p.NumColours == 0 || p.LiveryColours.Length == 0) return null;
-        var c = p.LiveryColours[0];
+        var slotIdx = Math.Min(LiveryColourSelector.GetIndex(gameYear, p.TeamId), p.NumColours - 1);
+        var c = p.LiveryColours[slotIdx];
         if (c == null) return null;
         return $"#{c.Red:X2}{c.Green:X2}{c.Blue:X2}";
     }
@@ -775,6 +790,21 @@ public sealed class SessionLogger
         entry.WeekendFolder = folder;
     }
 
+    private static Dictionary<string, PerTypeEntryCounts> BuildPerTypeForThisSession(SessionEntry entry)
+    {
+        var result = new Dictionary<string, PerTypeEntryCounts>();
+        for (byte id = 0; id < entry.DiagPerTypeSeen.Length; id++)
+        {
+            if (entry.DiagPerTypeSeen[id] == 0) continue;
+            result[F125PacketNames.Get(id)] = new PerTypeEntryCounts
+            {
+                Seen = entry.DiagPerTypeSeen[id],
+                FirstSessionTimeS = entry.DiagPerTypeFirstSessionTimeS[id],
+            };
+        }
+        return result;
+    }
+
     private void WriteSession(ulong uid, SessionEntry entry)
     {
         if (entry.WeekendFolder == null)
@@ -857,6 +887,10 @@ public sealed class SessionLogger
                     FirstTelemetryAcceptedAtS = entry.DiagFirstTelemetryAcceptedAtS,
                     FirstMotionAcceptedAtS = entry.DiagFirstMotionAcceptedAtS,
                     QueueDroppedTotal = Volatile.Read(ref _droppedEnqueueCount),
+                    IngressPacketCounts = _ingressDiag.Snapshot()
+                        .ToDictionary(kv => kv.Key, kv => (object)kv.Value),
+                    HeaderFailedUnknownId = _ingressDiag.HeaderFailedUnknownId,
+                    PerTypeForThisSession = BuildPerTypeForThisSession(entry),
                 },
             };
 
@@ -970,6 +1004,14 @@ public sealed class SessionLogger
         public bool DiagLoggedFirstMotionReject;
         public float DiagFirstTelemetryAcceptedAtS = -1f;
         public float DiagFirstMotionAcceptedAtS = -1f;
+
+        // Per-entry per-packet-type "did ProcessPacket actually see this for THIS uid"
+        // counter. The app-wide IngressDiagnosticsTracker conflates all sessions, so it
+        // cannot tell us whether the race entry received CarTelemetry packets early
+        // (and they were dropped at the switch / sampler) vs never received them at all
+        // (game using a different sessionUid for the pre-race phase).
+        public readonly long[] DiagPerTypeSeen = new long[64];
+        public readonly float[] DiagPerTypeFirstSessionTimeS = new float[64];
     }
 
 }

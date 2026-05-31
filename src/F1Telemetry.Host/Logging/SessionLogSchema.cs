@@ -194,4 +194,19 @@ public sealed class IngressDiagnosticsV2
     public float FirstMotionAcceptedAtS { get; set; }
     /// <summary>Process-wide count of packets dropped by the bounded channel (DropOldest).</summary>
     public int QueueDroppedTotal { get; set; }
+    /// <summary>Per-packet-id counters from the UDP→ingress chain. Tells us whether a packet type
+    /// even reached the pipeline (Received), was dropped by format/null/throw, or made it to Enqueue.
+    /// App-wide (not per-session) — sums across q1/q2/q3/race in one weekend.</summary>
+    public Dictionary<string, object>? IngressPacketCounts { get; set; }
+    /// <summary>Header-reader rejected the datagram (length too short to know packetId).</summary>
+    public long HeaderFailedUnknownId { get; set; }
+    /// <summary>Per-packet-type counters scoped to THIS session entry (this sessionUid).
+    /// Distinguishes "F1 25 sent it under a different uid" from "F1 25 didn't send it at all".</summary>
+    public Dictionary<string, PerTypeEntryCounts>? PerTypeForThisSession { get; set; }
+}
+
+public sealed class PerTypeEntryCounts
+{
+    public long Seen { get; set; }
+    public float FirstSessionTimeS { get; set; }
 }

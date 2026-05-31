@@ -57,8 +57,12 @@ public static class HistoryReader
     }
 
     /// <summary>
-    /// Back-fills <see cref="DriverSessionData.LiveryColorHex"/> from the stored
-    /// Participants packet snapshot for sessions saved before the field was introduced.
+    /// Recomputes <see cref="DriverSessionData.LiveryColorHex"/> from the stored Participants
+    /// packet snapshot every time a session is loaded. The snapshot is the source of truth;
+    /// the stored hex is a denormalized cache that can be stale if (a) the session was saved
+    /// before the field existed, or (b) <see cref="LiveryColourSelector"/> rules changed since
+    /// the session was recorded. Falls back to the recorded value only when the snapshot lacks
+    /// enough data.
     /// </summary>
     private static void EnrichLiveryColors(SessionLogDataV2 data)
     {
@@ -66,16 +70,22 @@ public static class HistoryReader
         if (!data.Packets.TryGetValue("Participants", out var raw) || raw is not JsonElement el) return;
         if (!el.TryGetProperty("participants", out var parts) || parts.ValueKind != JsonValueKind.Array) return;
 
+        var gameYear = data.Meta?.GameYear ?? 0;
+
         foreach (var (carIdx, driver) in data.Drivers)
         {
-            if (driver.LiveryColorHex != null) continue;
             if (carIdx >= parts.GetArrayLength()) continue;
 
             var p = parts[carIdx];
-            if (!p.TryGetProperty("numColours", out var numColoursEl) || numColoursEl.GetByte() == 0) continue;
+            if (!p.TryGetProperty("numColours", out var numColoursEl)) continue;
+            var numColours = numColoursEl.GetByte();
+            if (numColours == 0) continue;
             if (!p.TryGetProperty("liveryColours", out var coloursEl) || coloursEl.GetArrayLength() == 0) continue;
 
-            var c = coloursEl[0];
+            if (!p.TryGetProperty("teamId", out var teamIdEl)) continue;
+            var slotIdx = Math.Min(LiveryColourSelector.GetIndex(gameYear, teamIdEl.GetByte()), numColours - 1);
+
+            var c = coloursEl[slotIdx];
             if (!c.TryGetProperty("red", out var r) ||
                 !c.TryGetProperty("green", out var g) ||
                 !c.TryGetProperty("blue", out var b)) continue;

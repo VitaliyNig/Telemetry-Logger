@@ -5169,15 +5169,6 @@ td.lap-cell__tyre { cursor: default; }
     display: flex;
     flex-direction: column;
     gap: 8px;
-    max-height: calc(100vh - 16px);
-    overflow-y: auto;
-    scrollbar-width: thin;
-    padding-right: 2px;
-}
-.tc-side::-webkit-scrollbar { width: 6px; }
-.tc-side::-webkit-scrollbar-thumb {
-    background: var(--color-border-default);
-    border-radius: 999px;
 }
 .tc-side-picker-host { min-width: 0; flex: 0 0 auto; }
 .tc-side-picker-host .history-driver-picker {
@@ -5212,9 +5203,7 @@ td.lap-cell__tyre { cursor: default; }
 .tc-focus { border: var(--tc-secondary-border) solid color-mix(in srgb, var(--color-border-default) 75%, transparent); background: color-mix(in srgb, var(--color-bg-card) 82%, transparent); border-radius: 8px; padding: 6px; }
 .tc-focus-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .tc-focus-head h4 { margin: 0; font-size: 12px; text-transform: uppercase; color: var(--text-dim); }
-.tc-pin-btn { border: 1px solid var(--color-border-default); background: transparent; color: var(--text-primary); border-radius: 6px; padding: 2px 8px; font-size: 11px; cursor: pointer; }
-.tc-pin-btn.active { background: var(--accent-brand); color: #fff; border-color: var(--accent-brand); }
-.tc-focus-sub, .tc-focus-pin-state { color: var(--text-dim); font-size: 11px; margin-bottom: 6px; }
+.tc-focus-sub { color: var(--text-dim); font-size: 11px; margin-bottom: 6px; }
 .tc-focus-row { display: flex; justify-content: space-between; gap: 8px; padding: 3px 0; font-size: 12px; border-bottom: 1px dashed rgba(255,255,255,0.06); }
 .tc-focus-row strong { font-variant-numeric: tabular-nums; }
 .tc-focus-row.gain strong { color: #22c55e; }
@@ -5546,21 +5535,127 @@ td.lap-cell__tyre { cursor: default; }
 .tc-stb-section .tc-zoom-actions { flex: 1 1 auto; min-width: 0; gap: 3px; }
 .tc-stb-section .tc-icon-btn { width: 24px; height: 24px; font-size: 13px; }
 
-/* Insights panel sits flush under the Display section in the side column. */
-.tc-stb .tc-insights { flex-basis: auto; padding: 6px 8px; }
-.tc-stb .tc-insights-empty { padding: 2px 4px; }
-.tc-stb .tc-loss-zone { grid-template-columns: 1fr; gap: 2px 6px; }
-.tc-stb .tc-loss-meta,
-.tc-stb .tc-loss-tip { font-size: 10px; }
-
-/* Insights panel (unchanged structure, refreshed look) */
-.tc-insights { flex-basis: 100%; border: 1px solid var(--color-border-default); border-radius: 8px; padding: 8px; background: color-mix(in srgb, var(--accent-brand) 4%, transparent); }
-.tc-insights-title { font-size: 11px; text-transform: uppercase; color: var(--text-dim); margin-bottom: 6px; }
-.tc-loss-zone { display: grid; grid-template-columns: auto 1fr; gap: 2px 8px; align-items: center; margin-bottom: 6px; }
-.tc-loss-zone:last-child { margin-bottom: 0; }
-.tc-loss-meta { font-size: 11px; color: var(--text-primary); }
-.tc-loss-tip { grid-column: 1 / -1; font-size: 11px; color: var(--text-dim); }
+/* Top Loss Zones panel (Insights). Lives in the compact side toolbar, so the
+   layout has to stay narrow (~200 px wide) — vertical cards with stacked rows
+   instead of horizontal split. Each zone surfaces: header (rank + range + loss),
+   relative-loss bar, primary-cause badge, quantified fact chips, and a short
+   list of actionable recommendations. */
+.tc-insights {
+    flex-basis: 100%;
+    border: 1px solid var(--color-border-default);
+    border-radius: 8px;
+    padding: 8px;
+    background: color-mix(in srgb, var(--accent-brand) 4%, transparent);
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.tc-insights-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: var(--text-dim); }
 .tc-insights-empty { font-size: 11px; color: var(--text-dim); padding: 4px 0; flex-basis: 100%; }
+.tc-stb .tc-insights { padding: 6px 8px; }
+
+.tc-loss-zone {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding: 6px;
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--color-bg-card) 70%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-border-default) 60%, transparent);
+}
+
+.tc-loss-zone-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 6px;
+}
+.tc-loss-jump {
+    display: inline-flex;
+    align-items: baseline;
+    gap: 4px;
+    padding: 1px 6px;
+    font-size: 11px;
+    background: transparent;
+    border: 1px solid var(--color-border-default);
+    border-radius: 4px;
+    color: var(--text-primary);
+    cursor: pointer;
+    font-family: inherit;
+}
+.tc-loss-jump:hover { border-color: var(--accent-brand); }
+.tc-loss-num { font-weight: 700; color: var(--accent-brand); }
+.tc-loss-range { font-variant-numeric: tabular-nums; color: var(--text-dim); }
+.tc-loss-amount {
+    font-size: 11px;
+    font-weight: 700;
+    color: #ef4444;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Loss bar — width is proportional to total loss vs the worst zone in the set. */
+.tc-loss-bar {
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.06);
+    overflow: hidden;
+}
+.tc-loss-bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #f59e0b, #ef4444);
+}
+
+.tc-loss-cause {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    align-self: flex-start;
+    background: rgba(239, 68, 68, 0.12);
+    color: #fca5a5;
+    border: 1px solid rgba(239, 68, 68, 0.30);
+}
+.tc-loss-cause--late_brake,
+.tc-loss-cause--soft_brake { background: rgba(239, 68, 68, 0.14); color: #fca5a5; border-color: rgba(239, 68, 68, 0.35); }
+.tc-loss-cause--low_apex   { background: rgba(245, 158, 11, 0.14); color: #fcd34d; border-color: rgba(245, 158, 11, 0.40); }
+.tc-loss-cause--late_throttle,
+.tc-loss-cause--poor_exit  { background: rgba(34, 197, 94, 0.10); color: #86efac; border-color: rgba(34, 197, 94, 0.30); }
+.tc-loss-cause--choppy_thr { background: rgba(168, 85, 247, 0.12); color: #d8b4fe; border-color: rgba(168, 85, 247, 0.30); }
+.tc-loss-cause--mixed      { background: rgba(148, 163, 184, 0.12); color: var(--text-dim); border-color: rgba(148, 163, 184, 0.30); }
+
+.tc-loss-facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+.tc-loss-fact {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    padding: 1px 5px;
+    font-size: 10px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.04);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    font-variant-numeric: tabular-nums;
+    line-height: 1.4;
+}
+.tc-loss-fact-label { color: var(--text-dim); text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; }
+.tc-loss-fact-value { color: var(--text-primary); font-weight: 600; }
+.tc-loss-fact--loss .tc-loss-fact-value { color: #fca5a5; }
+.tc-loss-fact--gain .tc-loss-fact-value { color: #86efac; }
+.tc-loss-fact--neutral .tc-loss-fact-value { color: var(--text-primary); }
+
+.tc-loss-recs {
+    margin: 0;
+    padding: 0 0 0 14px;
+    list-style: disc;
+    color: var(--text-primary);
+    font-size: 11px;
+    line-height: 1.4;
+}
+.tc-loss-recs li { margin-bottom: 1px; }
+.tc-loss-recs li:last-child { margin-bottom: 0; }
 
 .tc-charts {
     --tc-label-w: 20px;
@@ -5593,11 +5688,15 @@ td.lap-cell__tyre { cursor: default; }
 .tc-chart-row {
     display: grid;
     grid-template-columns: var(--tc-label-w) minmax(0, 1fr);
-    grid-template-rows: var(--tc-row-h, auto) 6px;
+    grid-template-rows: var(--tc-row-h, auto);
     align-items: stretch;
     gap: 6px 6px;
-    margin-bottom: 2px;
+    /* Vertical breathing space between adjacent charts. Top/bottom split so the
+       first row gets the same padding above it as inter-row gaps. */
+    margin: 6px 0;
 }
+.tc-chart-row:first-of-type { margin-top: 0; }
+.tc-chart-row:last-of-type  { margin-bottom: 0; }
 
 .tc-chart-label {
     font-size: 10px;
@@ -5713,9 +5812,32 @@ td.lap-cell__tyre { cursor: default; }
     letter-spacing: 0.2px;
     padding: 1px 4px;
     border-radius: 3px;
+    /* Default tone = win-green (kept for legacy chip uses outside the per-driver
+       Speed/Throttle/... chips). Per-driver chips override with --win/--loss/--ref. */
     background: #22c55e;
     color: #06210f;
 }
+/* Per-driver tag tones in the hover chips. Reference is the comparison baseline,
+   so it gets a neutral pill; compare laps light up green when they're ahead at
+   this lap-distance and yellow when behind. */
+.tc-chip-ref--win  { background: #22c55e; color: #06210f; }
+.tc-chip-ref--loss { background: #facc15; color: #2d1f00; }
+.tc-chip-ref--ref  { background: rgba(255, 255, 255, 0.12); color: var(--text-primary); border: 1px solid rgba(255, 255, 255, 0.18); }
+
+/* DRS diff tag — replaces the cryptic "+ON / -ON / 0" text. */
+.tc-chip-drs {
+    display: inline-flex;
+    align-items: center;
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.6px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    line-height: 1;
+}
+.tc-chip-drs--gain  { background: #22c55e; color: #06210f; }
+.tc-chip-drs--loss  { background: #ef4444; color: #fff; }
+.tc-chip-drs--equal { background: rgba(255, 255, 255, 0.10); color: var(--text-dim); border: 1px solid rgba(255, 255, 255, 0.15); }
 .tc-chip-sep {
     display: inline-block;
     width: 1px;
@@ -5724,40 +5846,19 @@ td.lap-cell__tyre { cursor: default; }
     margin: 0 2px;
 }
 
-.tc-resize-handle {
-    grid-column: 1 / -1;
-    height: 6px;
-    cursor: row-resize;
-    background: transparent;
-    border-radius: 2px;
-    transition: background 0.15s;
-    /* Sit above .tc-hover-layer (pointer-events: auto) so mousedown hits the handle first. */
-    position: relative;
-    z-index: 2;
-}
-/* Widen grab zone 3px above and below without changing the layout. */
-.tc-resize-handle::before {
-    content: '';
-    position: absolute;
-    left: 0;
-    right: 0;
-    top: -3px;
-    bottom: -3px;
-}
-.tc-resize-handle:hover { background: var(--accent-brand); opacity: 0.5; }
-.tc-resize-handle:active { background: var(--accent-brand); opacity: 0.85; }
-
 .tc-line { fill: none; stroke-width: 1.2; stroke-linejoin: round; stroke-linecap: round; }
-.tc-line-ref { stroke-width: 1.25; stroke-dasharray: none; opacity: 0.95; }
-.tc-line-current { stroke-width: 1.8; stroke-dasharray: none; opacity: 1; filter: drop-shadow(0 0 1px var(--tc-line-compare)); }
-.tc-line-extra { stroke-width: 1.35; stroke-dasharray: 5 3; opacity: 0.95; }
-.tc-line-pattern-ref, .tc-line-marker-ref { stroke: var(--tc-line-ref); fill: var(--tc-line-ref); stroke-width: 0.8; }
-.tc-line-pattern-current, .tc-line-marker-current { stroke: var(--tc-line-compare); fill: var(--tc-line-compare); stroke-width: 0.8; }
-.tc-line-pattern-extra, .tc-line-marker-extra { stroke: var(--tc-line-compare); fill: none; stroke-width: 0.8; }
+.tc-line-ref { stroke-width: 1.25; opacity: 0.95; }
+.tc-line-current { stroke-width: 1.8; opacity: 1; filter: drop-shadow(0 0 1px var(--tc-line-compare)); }
+.tc-line-extra { stroke-width: 1.35; opacity: 0.95; }
+
+/* Dash pattern is keyed off teammate index within the same team:
+   1st visible driver from team → solid, 2nd → dashed, 3rd+ → dotted.
+   Selectors are double-classed so they beat the role-based rules above. */
+.tc-line.tc-line--solid { stroke-dasharray: none; }
+.tc-line.tc-line--dashed { stroke-dasharray: 6 4; }
+.tc-line.tc-line--dotted { stroke-dasharray: 1 4; stroke-linecap: round; }
 .tc-baseline { stroke: rgba(255, 255, 255, 0.08); stroke-width: 0.5; }
 .tc-sector-line { stroke: var(--accent-brand); stroke-dasharray: 3 3; stroke-width: 0.5; opacity: 0.6; }
-.tc-pin-line { stroke: #3b82f6; stroke-width: 1.5; stroke-dasharray: 4 3; opacity: 0.9; pointer-events: none; }
-.tc-pin-label { font-size: 9px; font-family: var(--font-mono, 'Courier New', monospace); fill: #60a5fa; pointer-events: none; }
 
 .tc-hover-layer {
     position: absolute;
@@ -5817,17 +5918,6 @@ td.lap-cell__tyre { cursor: default; }
     z-index: 2;
 }
 .tc-overview-window:active { cursor: grabbing; }
-.tc-overview-pin {
-    position: absolute;
-    top: 2px; bottom: 2px;
-    width: 2px;
-    background: #3b82f6;
-    border-radius: 1px;
-    pointer-events: none;
-    z-index: 3;
-    transform: translateX(-50%);
-}
-.tc-overview-pin--cmp { background: #60a5fa; width: 2px; }
 
 /* Sector helper ticks (dividers only — sector zones themselves stay neutral). */
 .tc-overview-tick {
@@ -5865,12 +5955,17 @@ td.lap-cell__tyre { cursor: default; }
     opacity: 0.75;
 }
 
-.tc-map-stage { position: relative; width: 100%; aspect-ratio: 2/3; overflow: hidden; }
+.tc-map-stage { position: relative; width: 100%; aspect-ratio: 1; overflow: hidden; }
 .tc-map-camera {
     position: absolute;
     inset: 0;
     transform-origin: 0 0;
-    will-change: transform;
+    /* No `will-change: transform` here on purpose. It would force the browser to
+       pre-rasterise the SVG once at native stage size (~320 px) and then *scale
+       the bitmap* on every transform change — at Z=20 a 320×320 layer stretched
+       to 6400×6400 = noticeable blur. Without the hint the browser still GPU-
+       accelerates the 2D scale but re-rasterises SVG paths at the target zoom,
+       so trajectory lines stay crisp at any zoom level. */
 }
 .tc-map-camera--smooth { transition: transform 140ms ease-out; }
 .tc-map-outline {
@@ -5887,13 +5982,21 @@ td.lap-cell__tyre { cursor: default; }
    lines/heat/dominance get thinner as the camera zooms in — at high zoom the
    racing-line differences between drivers become visible instead of blurring
    into one fat overlap. Defaults below mirror the Z=1 (full-track) values. */
-.tc-map-line { fill: none; stroke-width: var(--tc-map-line-w, 1.5); stroke-opacity: 0.8; vector-effect: non-scaling-stroke; }
+.tc-map-line { fill: none; stroke-width: var(--tc-map-line-w, 1.5); stroke-opacity: 0.8; vector-effect: non-scaling-stroke; stroke-linejoin: round; stroke-linecap: round; }
+/* Teammate-index dash style — same convention as chart lines. Patterns use
+   short pixel units (in viewBox space) so the dash spacing stays visually
+   consistent across map zoom levels thanks to vector-effect: non-scaling-stroke. */
+.tc-map-line.tc-map-line--solid { stroke-dasharray: none; }
+.tc-map-line.tc-map-line--dashed { stroke-dasharray: 5 3; }
+.tc-map-line.tc-map-line--dotted { stroke-dasharray: 0.8 3; stroke-linecap: round; }
 .tc-map-heat { stroke-width: var(--tc-map-heat-w, 3); vector-effect: non-scaling-stroke; stroke-linecap: round; }
 .tc-map-dominance { stroke-width: var(--tc-map-dominance-w, 4); stroke-linecap: round; vector-effect: non-scaling-stroke; }
-.tc-map-marker { stroke: #fff; stroke-width: 1; transition: r 120ms ease, stroke-width 120ms ease; vector-effect: non-scaling-stroke; }
+/* Marker stroke is driven by the same var-on-stage pattern as the line widths
+   above so it can shrink with zoom — at high Z the fixed 1 px stroke previously
+   ate more visual space than the coloured fill itself. */
+.tc-map-marker { stroke: #fff; stroke-width: var(--tc-map-marker-stroke, 1); transition: r 120ms ease, stroke-width 120ms ease; vector-effect: non-scaling-stroke; }
 .tc-map-stage--hover { cursor: crosshair; }
 .tc-map-stage--hover .tc-map-line { stroke-opacity: 1; }
-.tc-map-stage--hover .tc-map-marker { stroke-width: 2; }
 .tc-map-stage--zoomed { cursor: grab; }
 .tc-map-stage--zoomed.tc-map-stage--hover { cursor: crosshair; }
 
@@ -5931,6 +6034,71 @@ td.lap-cell__tyre { cursor: default; }
 .tc-map-event-thr circle { fill: #22c55e; }
 .tc-map-event-min circle { fill: #f59e0b; }
 .tc-map-event-apx circle { fill: #60a5fa; }
+
+/* Top Loss Zones overlay. Polylines trace the compare lap through each loss
+   region; badges anchor a clickable numbered pin at the segment midpoint. The
+   --tc-loss-intensity CSS var (set inline per-zone) scales opacity so #1 reads
+   stronger than #3, while .is-active / .is-hover give explicit feedback when
+   the user pins a zone (click) or previews it from the Insights panel (hover). */
+.tc-map-loss { cursor: pointer; }
+.tc-map-loss-line {
+    fill: none;
+    stroke: #ef4444;
+    stroke-width: 6;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+    opacity: calc(var(--tc-loss-intensity, 1) * 0.55);
+    pointer-events: stroke;
+    transition: opacity 0.15s ease, stroke-width 0.15s ease;
+}
+.tc-map-loss.rank-1 .tc-map-loss-line { stroke: #ef4444; }
+.tc-map-loss.rank-2 .tc-map-loss-line { stroke: #f97316; }
+.tc-map-loss.rank-3 .tc-map-loss-line { stroke: #f59e0b; }
+.tc-map-loss:hover .tc-map-loss-line,
+.tc-map-loss.is-hover .tc-map-loss-line {
+    opacity: calc(var(--tc-loss-intensity, 1) * 0.85);
+    stroke-width: 8;
+}
+.tc-map-loss.is-active .tc-map-loss-line {
+    opacity: 1;
+    stroke-width: 9;
+    filter: drop-shadow(0 0 4px rgba(239, 68, 68, 0.85));
+    animation: tc-loss-pulse 1.6s ease-in-out infinite;
+}
+@keyframes tc-loss-pulse {
+    0%, 100% { stroke-width: 9; }
+    50% { stroke-width: 11; }
+}
+
+.tc-map-loss-badge { cursor: pointer; }
+.tc-map-loss-badge circle {
+    fill: #ef4444;
+    stroke: #111;
+    stroke-width: 1.2;
+}
+.tc-map-loss-badge.rank-2 circle { fill: #f97316; }
+.tc-map-loss-badge.rank-3 circle { fill: #f59e0b; }
+.tc-map-loss-badge text {
+    fill: #fff;
+    font-size: 9px;
+    font-weight: 700;
+    font-family: var(--font-mono, ui-monospace, monospace);
+    pointer-events: none;
+}
+.tc-map-loss-badge.is-active circle {
+    stroke: #fff;
+    stroke-width: 1.8;
+    filter: drop-shadow(0 0 3px rgba(239, 68, 68, 0.9));
+}
+
+/* Panel-side affordance: when the user hovers the map zone (or it becomes
+   active), the matching Insights card gets the same accent treatment. */
+.tc-loss-zone {
+    transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+.tc-loss-zone:hover {
+    border-color: var(--accent-brand, #4ea1ff);
+}
 
 .tc-map-caption {
     display: flex;
@@ -5980,7 +6148,6 @@ td.lap-cell__tyre { cursor: default; }
     color: var(--text-soft, var(--text-dim));
     font-style: italic;
 }
-
 .tc-map-dom-legend {
     flex: 1 1 100%;
     display: flex;
@@ -6126,9 +6293,19 @@ td.lap-cell__tyre { cursor: default; }
     pointer-events: none;
 }
 
-/* DRS blocks (dedicated row) + faint overlay on the speed row. */
-.tc-drs-block { fill: var(--drs); opacity: 0.75; }
-.tc-drs-overlay { fill: var(--drs); opacity: 0.08; }
+/* DRS row: one horizontal track per driver, fill colour set inline (team colour).
+   The `fill` here is the fallback when JS hasn't put a team colour on the rect. */
+.tc-drs-block { fill: var(--drs); opacity: 0.80; }
+.tc-drs-track-label {
+    font-size: 8px;
+    font-family: var(--font-mono, 'Courier New', monospace);
+    font-weight: 700;
+    fill: rgba(255, 255, 255, 0.85);
+    paint-order: stroke;
+    stroke: rgba(0, 0, 0, 0.55);
+    stroke-width: 2;
+    pointer-events: none;
+}
 
 @media (max-width: 1200px) {
     .tc-layout {

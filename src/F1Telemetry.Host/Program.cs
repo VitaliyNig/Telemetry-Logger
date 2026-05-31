@@ -359,6 +359,7 @@ static class Program
         builder.Services.AddSingleton<AutoDrsZoneCaptureService>();
 
         builder.Services.AddSingleton<DebugPacketTracker>();
+        builder.Services.AddSingleton<IngressDiagnosticsTracker>();
         builder.Services.AddSingleton<ITelemetryIngress, TelemetryPipelineIngress>();
         builder.Services.AddTelemetryUdpListener();
         builder.Services.AddSignalR()
@@ -1000,6 +1001,10 @@ static class Program
             });
         });
 
+        // Serves a hand-crafted outline from wwwroot/assets/tracks/{trackId}.svg.
+        // Auto-generation from motion data was removed — the synthesized outlines
+        // were too noisy to be useful. Missing files return 404 and the front-end
+        // simply renders the racing line without a track backdrop.
         app.MapGet("/api/sessions/{folder}/{slug}/track-svg",
             (string folder, string slug, IWebHostEnvironment env) =>
         {
@@ -1007,26 +1012,11 @@ static class Program
             if (data?.Meta == null)
                 return Results.NotFound(new { error = "session not found" });
 
-            var cachePath = TrackSvgGenerator.CachePath(env.WebRootPath, data.Meta.TrackId);
-            if (File.Exists(cachePath))
-            {
-                var cached = File.ReadAllText(cachePath);
-                return Results.Content(cached, "image/svg+xml");
-            }
+            var path = Path.Combine(env.WebRootPath, "assets", "tracks", $"{data.Meta.TrackId}.svg");
+            if (!File.Exists(path))
+                return Results.NotFound(new { error = "no hand-crafted outline for this track" });
 
-            var svg = TrackSvgGenerator.TryGenerate(data);
-            if (svg == null)
-                return Results.NotFound(new { error = "not enough motion data" });
-
-            try
-            {
-                var dir = Path.GetDirectoryName(cachePath);
-                if (dir != null && !Directory.Exists(dir)) Directory.CreateDirectory(dir);
-                File.WriteAllText(cachePath, svg);
-            }
-            catch { /* cache write failures don't block the response */ }
-
-            return Results.Content(svg, "image/svg+xml");
+            return Results.Content(File.ReadAllText(path), "image/svg+xml");
         });
 
         app.MapGet("/api/sessions/{folder}/{slug}/ghosts", (string folder, string slug) =>

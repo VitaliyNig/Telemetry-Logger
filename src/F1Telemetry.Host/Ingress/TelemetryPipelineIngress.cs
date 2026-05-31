@@ -27,6 +27,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
     private readonly LapTyreStore _lapTyreStore;
     private readonly SessionLogger _sessionLogger;
     private readonly DebugPacketTracker _tracker;
+    private readonly IngressDiagnosticsTracker _diag;
     private readonly AutoDrsZoneCaptureService _autoDrsCapture;
     private readonly DrsZoneStore _drsZoneStore;
     private readonly IHubContext<TelemetryHub, ITelemetryClient> _hubContext;
@@ -41,6 +42,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         LapTyreStore lapTyreStore,
         SessionLogger sessionLogger,
         DebugPacketTracker tracker,
+        IngressDiagnosticsTracker diag,
         AutoDrsZoneCaptureService autoDrsCapture,
         DrsZoneStore drsZoneStore,
         IHubContext<TelemetryHub, ITelemetryClient> hubContext,
@@ -54,6 +56,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         _lapTyreStore = lapTyreStore;
         _sessionLogger = sessionLogger;
         _tracker = tracker;
+        _diag = diag;
         _autoDrsCapture = autoDrsCapture;
         _drsZoneStore = drsZoneStore;
         _hubContext = hubContext;
@@ -88,21 +91,50 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
     private const long DebugBroadcastMinIntervalTicks = TimeSpan.TicksPerMillisecond * 200;
     private long _lastDebugBroadcastTicks;
 
-    public async Task OnPacketAsync(RawTelemetryPacket packet, CancellationToken cancellationToken)
+    /// <summary>
+    /// Fire-and-forget a SignalR broadcast so the UDP receive loop never blocks on it.
+    /// Even with zero clients the awaited call can yield (arg boxing, internal scheduling,
+    /// cold JIT paths), and the UDP listener is strictly serial — any latency here translates
+    /// directly into kernel SO_RCVBUF overflow and silent datagram loss. Exceptions are
+    /// captured + logged so they don't disappear into the void like a naked discard would.
+    /// </summary>
+    private void FireAndForgetBroadcast(Task task, string what)
+    {
+        if (task.IsCompletedSuccessfully) return; // hot path: SignalR returned synchronously.
+        _ = task.ContinueWith(
+            t =>
+            {
+                if (t.Exception != null)
+                    _logger.LogError(t.Exception, "SignalR broadcast failed: {What}", what);
+            },
+            CancellationToken.None,
+            TaskContinuationOptions.OnlyOnFaulted | TaskContinuationOptions.ExecuteSynchronously,
+            TaskScheduler.Default);
+    }
+
+    // No more await on the hot path: SignalR broadcasts are now fire-and-forget
+    // (see FireAndForgetBroadcast) and the DRS-zone save was already offloaded via
+    // Task.Run. Returning Task.CompletedTask directly avoids the async state machine
+    // allocation per packet (~120 bytes × 840 Hz = ~100 KB/s of GC churn eliminated).
+    public Task OnPacketAsync(RawTelemetryPacket packet, CancellationToken cancellationToken)
     {
         var span = packet.Payload.Span;
         if (!_headerReader.TryRead(span, out var header))
         {
+            _diag.RecordHeaderFailedUnknownId();
             _logger.LogWarning("Short or unknown packet ({Length} bytes) from {Remote}",
                 packet.Payload.Length, packet.RemoteEndPoint);
-            return;
+            return Task.CompletedTask;
         }
+
+        _diag.RecordReceived(header.PacketId, header.SessionTime);
 
         if (header.PacketFormat != F125Constants.ExpectedPacketFormat ||
             header.GameYear != F125Constants.ExpectedGameYear)
         {
+            _diag.RecordFormatMismatch(header.PacketId);
             _logger.LogWarning("Unexpected format year={Year} format={Format}", header.GameYear, header.PacketFormat);
-            return;
+            return Task.CompletedTask;
         }
 
         _tracker.RecordPacket(header.PacketId);
@@ -110,8 +142,9 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         var deserializer = _registry.Get(header.PacketId);
         if (deserializer == null)
         {
+            _diag.RecordNoDeserializer(header.PacketId);
             _logger.LogDebug("No deserializer for packet id {PacketId}", header.PacketId);
-            return;
+            return Task.CompletedTask;
         }
 
         object? deserialized;
@@ -121,18 +154,25 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         }
         catch (Exception ex)
         {
+            _diag.RecordDeserializerThrew(header.PacketId);
             _logger.LogError(ex, "Failed to deserialize packet {PacketId}", header.PacketId);
-            return;
+            return Task.CompletedTask;
         }
 
         if (deserialized == null)
-            return;
+        {
+            _diag.RecordDeserializerNull(header.PacketId);
+            return Task.CompletedTask;
+        }
 
         var settings = _appSettings.CurrentValue;
 
         _state.Update(header.PacketId, deserialized);
         if (settings.EnableSessionLogging)
+        {
             _sessionLogger.Enqueue(header, header.PacketId, deserialized);
+            _diag.RecordEnqueued(header.PacketId);
+        }
 
         if (header.PacketId == (byte)F125PacketId.LapData && deserialized is LapDataPacket lapDataPacket)
         {
@@ -191,15 +231,10 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
 
                     if (result.HasValue)
                     {
-                        try
-                        {
-                            await _hubContext.Clients.All.ReceiveSetupSnapshot(
-                                carIdx, result.Value.LapIndex, result.Value.Setup);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Failed to broadcast setup snapshot");
-                        }
+                        FireAndForgetBroadcast(
+                            _hubContext.Clients.All.ReceiveSetupSnapshot(
+                                carIdx, result.Value.LapIndex, result.Value.Setup),
+                            "setup snapshot");
                     }
                 }
                 else
@@ -209,15 +244,10 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
 
                     if (result.HasValue)
                     {
-                        try
-                        {
-                            await _hubContext.Clients.All.ReceiveTyreSnapshot(
-                                carIdx, result.Value.LapIndex, result.Value.Snapshot);
-                        }
-                        catch (Exception ex)
-                        {
-                            _logger.LogError(ex, "Failed to broadcast tyre snapshot");
-                        }
+                        FireAndForgetBroadcast(
+                            _hubContext.Clients.All.ReceiveTyreSnapshot(
+                                carIdx, result.Value.LapIndex, result.Value.Snapshot),
+                            "tyre snapshot");
                     }
                 }
             }
@@ -228,14 +258,9 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         if (ShouldBroadcastLive(header.PacketId))
         {
             packetName = F125PacketNames.Get(header.PacketId);
-            try
-            {
-                await _hubContext.Clients.All.ReceivePacket(packetName, header, deserialized);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to broadcast packet {PacketName}", packetName);
-            }
+            FireAndForgetBroadcast(
+                _hubContext.Clients.All.ReceivePacket(packetName, header, deserialized),
+                packetName);
         }
 
         if (settings.DebugMode)
@@ -246,22 +271,19 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
                 Interlocked.CompareExchange(ref _lastDebugBroadcastTicks, nowTicks, prev) == prev)
             {
                 packetName ??= F125PacketNames.Get(header.PacketId);
-                try
-                {
-                    await _hubContext.Clients.All.DebugPacket(new
+                FireAndForgetBroadcast(
+                    _hubContext.Clients.All.DebugPacket(new
                     {
                         timestamp = DateTimeOffset.UtcNow.ToString("HH:mm:ss.fff"),
                         name = packetName,
                         counts = _tracker.GetPacketCountsByName(),
-                        total = _tracker.TotalPackets
-                    });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError(ex, "Failed to send debug packet");
-                }
+                        total = _tracker.TotalPackets,
+                    }),
+                    "debug packet");
             }
         }
+
+        return Task.CompletedTask;
     }
 
     private CarSetupData? CaptureSetupSnapshot(byte idx)

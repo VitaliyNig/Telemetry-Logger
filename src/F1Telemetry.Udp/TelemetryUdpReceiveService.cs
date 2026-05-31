@@ -34,7 +34,22 @@ public sealed class TelemetryUdpReceiveService : BackgroundService
         }
 
         using var client = new UdpClient(new IPEndPoint(address, opt.Port));
-        _logger.LogTrace("UDP telemetry listening on {Endpoint}", client.Client.LocalEndPoint);
+        // Default Windows SO_RCVBUF is 8 KB — exactly one F1 25 frame (14 packets × ~600 B).
+        // Any momentary stall in OnPacketAsync (JIT, GC, SignalR cold path) causes the kernel
+        // to silently drop new datagrams. Raise to 1 MB so we tolerate ~2 s of backpressure
+        // before losing anything. Cheap (only allocated on socket, not per-packet) and the
+        // value is best-effort — Windows clamps to the system maximum if higher.
+        try
+        {
+            client.Client.ReceiveBufferSize = 1024 * 1024;
+            _logger.LogInformation(
+                "UDP telemetry listening on {Endpoint} (SO_RCVBUF = {Buf} bytes)",
+                client.Client.LocalEndPoint, client.Client.ReceiveBufferSize);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Failed to raise SO_RCVBUF; falling back to OS default.");
+        }
 
         while (!stoppingToken.IsCancellationRequested)
         {

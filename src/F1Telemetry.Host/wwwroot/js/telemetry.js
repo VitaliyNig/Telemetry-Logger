@@ -451,9 +451,29 @@ const TEAM_NAMES = {
     193: "McLaren '24", 194: "Sauber '24",
 };
 
-function extractLiveryColor(p) {
+/**
+ * Mirror of C# LiveryColourSelector. Live pipeline only accepts F1 25 packets
+ * (F125Constants.ExpectedGameYear = 25), so live always uses the 25 preset.
+ * When an F126 ingress lands, add a 26 entry and pass the year from session state.
+ */
+const LIVERY_COLOUR_SLOT_OVERRIDES = {
+    25: {
+        7: 1, // Haas: slot 0 is red (Ferrari-like); use slot 1
+    },
+};
+
+function getLiveryColourSlot(gameYear, teamId) {
+    const yearMap = LIVERY_COLOUR_SLOT_OVERRIDES[gameYear];
+    if (yearMap && yearMap[teamId] != null) return yearMap[teamId];
+    return 0;
+}
+
+function extractLiveryColor(p, gameYear = 25) {
     if (!p?.liveryColours || p.liveryColours.length === 0) return null;
-    const c = p.liveryColours[0];
+    const numColours = p.numColours | 0;
+    if (numColours === 0) return null;
+    const slot = Math.min(getLiveryColourSlot(gameYear, p.teamId), numColours - 1);
+    const c = p.liveryColours[slot];
     if (c?.red == null || c?.green == null || c?.blue == null) return null;
     return `#${(1 << 24 | c.red << 16 | c.green << 8 | c.blue).toString(16).slice(1).toUpperCase()}`;
 }
