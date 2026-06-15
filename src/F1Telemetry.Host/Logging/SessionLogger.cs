@@ -2,8 +2,8 @@ using System.IO;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Channels;
-using F1Telemetry.F125.Packets;
-using F1Telemetry.F125.Protocol;
+using F1Telemetry.Packets;
+using F1Telemetry.Protocol;
 using F1Telemetry.Host.Ingress;
 using F1Telemetry.Host.Serialization;
 using F1Telemetry.State;
@@ -23,6 +23,7 @@ public sealed class SessionLogger
 {
     private readonly LapSetupStore _lapSetupStore;
     private readonly IngressDiagnosticsTracker _ingressDiag;
+    private readonly ProtocolRegistry _registry;
     private readonly ILogger<SessionLogger> _logger;
 
     private static readonly JsonSerializerOptions JsonOptions = new()
@@ -38,7 +39,15 @@ public sealed class SessionLogger
     private const float TelemetryGateS = 0.05f; // 20 Hz
     private const float MotionGateS = 0.10f;    // 10 Hz
 
-    private const int MaxCars = 22;
+    /// <summary>
+    /// Upper bound on car slots. Format 2025 emits 22, format 2026 emits 24; future formats
+    /// will push this further. Allocating to the upper bound lets the logger handle both
+    /// formats without per-session sizing — slots that are unused for a given session simply
+    /// stay default and never appear in the saved JSON (the loops in
+    /// <see cref="SampleTelemetry"/> / <see cref="SampleMotion"/> cap at the packet's actual
+    /// car-array length).
+    /// </summary>
+    private const int MaxCars = 24;
 
     // Periodic checkpoint cadence: every N completed laps of the player car we rewrite the
     // session JSON so a crash only loses the tail of a session, not the whole thing.
@@ -74,11 +83,33 @@ public sealed class SessionLogger
 
     internal ChannelReader<LoggerEnvelope> Reader => _queue.Reader;
 
-    public SessionLogger(LapSetupStore lapSetupStore, IngressDiagnosticsTracker ingressDiag, ILogger<SessionLogger> logger)
+    public SessionLogger(
+        LapSetupStore lapSetupStore,
+        IngressDiagnosticsTracker ingressDiag,
+        ProtocolRegistry registry,
+        ILogger<SessionLogger> logger)
     {
         _lapSetupStore = lapSetupStore;
         _ingressDiag = ingressDiag;
+        _registry = registry;
         _logger = logger;
+    }
+
+    /// <summary>Per-session plugin: picks the format-appropriate lookups; null only when no plugins registered.</summary>
+    private IProtocolPlugin? GetPlugin(SessionEntry entry) =>
+        _registry.GetOrFallback(entry.PacketFormat == 0 ? (ushort)2025 : entry.PacketFormat);
+
+    /// <summary>Packet-name resolver that walks all registered plugins; falls back to the byte if nothing matches.</summary>
+    private string ResolvePacketName(byte packetId)
+    {
+        foreach (var p in _registry.All)
+        {
+            var name = p.GetPacketName(packetId);
+            // Plugins return either the enum name (e.g. "CarTelemetry25") or the numeric byte
+            // for unknown ids — accept the first non-numeric result.
+            if (!byte.TryParse(name, out _)) return name;
+        }
+        return packetId.ToString();
     }
 
     /// <summary>
@@ -117,6 +148,7 @@ public sealed class SessionLogger
 
             entry.PlayerCarIndex = header.PlayerCarIndex;
             entry.GameYear = header.GameYear;
+            entry.PacketFormat = header.PacketFormat;
             entry.LastKnownSessionTimeS = header.SessionTime;
 
             // Per-entry per-type seen counter (lives next to LatestPackets so we can tell
@@ -130,10 +162,13 @@ public sealed class SessionLogger
             }
 
             // Update latest snapshot for every non-high-frequency packet. Motion / MotionEx
-            // would otherwise balloon the in-memory snapshot dictionary.
-            if (packetId != (byte)F125PacketId.Motion && packetId != (byte)F125PacketId.MotionEx)
+            // would otherwise balloon the in-memory snapshot dictionary. Ids 0 (Motion) and
+            // 13 (MotionEx) are stable across formats 2025 and 2026.
+            const byte MotionId = 0;
+            const byte MotionExId = 13;
+            if (packetId != MotionId && packetId != MotionExId)
             {
-                var name = F125PacketNames.Get(packetId);
+                var name = ResolvePacketName(packetId);
                 entry.LatestPackets[name] = data;
             }
 
@@ -161,7 +196,7 @@ public sealed class SessionLogger
                         return;
                     }
                     break;
-                case CarTelemetryPacket telemetry:
+                case CarTelemetry25Packet telemetry:
                     SampleTelemetry(entry, header, telemetry);
                     break;
                 case MotionPacket motion:
@@ -180,7 +215,7 @@ public sealed class SessionLogger
         }
     }
 
-    private void SampleTelemetry(SessionEntry entry, TelemetryPacketHeader header, CarTelemetryPacket packet)
+    private void SampleTelemetry(SessionEntry entry, TelemetryPacketHeader header, CarTelemetry25Packet packet)
     {
         if (!ShouldAcceptFrame(entry, header))
         {
@@ -189,7 +224,7 @@ public sealed class SessionLogger
             {
                 entry.DiagLoggedFirstTelemetryReject = true;
                 _logger.LogWarning(
-                    "[diag] First CarTelemetry rejected by OFI gate: ofi={Ofi} last={Last} sessionT={T:F2}s",
+                    "[diag] First CarTelemetry25 rejected by OFI gate: ofi={Ofi} last={Last} sessionT={T:F2}s",
                     header.OverallFrameIdentifier, entry.LastOverallFrameIdentifierProcessed, header.SessionTime);
             }
             return;
@@ -203,7 +238,7 @@ public sealed class SessionLogger
         }
         var statusPacket = entry.LatestPackets.GetValueOrDefault("CarStatus") as CarStatusPacket;
 
-        var count = Math.Min(packet.CarTelemetryData.Length, Math.Min(lapPacket.LapDataItems.Length, MaxCars));
+        var count = Math.Min(packet.CarTelemetry25Data.Length, Math.Min(lapPacket.LapDataItems.Length, MaxCars));
         for (byte idx = 0; idx < count; idx++)
         {
             if (header.SessionTime - entry.LastTelemetryTickS[idx] < TelemetryGateS)
@@ -216,7 +251,7 @@ public sealed class SessionLogger
                 entry.DiagFirstTelemetryAcceptedAtS = header.SessionTime;
             entry.DiagTelemetryAccepted++;
 
-            var t = packet.CarTelemetryData[idx];
+            var t = packet.CarTelemetry25Data[idx];
             var l = lapPacket.LapDataItems[idx];
             var s = (statusPacket != null && idx < statusPacket.CarStatusDataItems.Length)
                 ? statusPacket.CarStatusDataItems[idx]
@@ -239,6 +274,9 @@ public sealed class SessionLogger
                 Drs = t.Drs,
                 DrsAllowed = s?.DrsAllowed ?? (byte)0,
                 ErsDepLapJ = s?.ErsDeployedThisLap ?? 0f,
+                // K+H combined harvest; HarvLimJ is 0 in 2025 logs (field doesn't exist in format 2025).
+                HarvJ = s == null ? 0f : (s.ErsHarvestedThisLapMguK + s.ErsHarvestedThisLapMguH),
+                HarvLimJ = s?.ErsHarvestLimitPerLap ?? 0f,
             });
         }
     }
@@ -344,7 +382,7 @@ public sealed class SessionLogger
             // Detect the uncounted S/F crossing via PitStatus / lapDistance and reset the sample
             // buffer so the saved lap only carries the push-lap segment.
             //
-            // Skip for race-like sessions (race / race2 / race3 — IDs 15/16/17 per F125SessionTypes):
+            // Skip for race-like sessions (race / race2 / race3 — IDs 15/16/17 per ProtocolLookups.SessionTypes):
             // they tick m_currentLapNum at every S/F crossing, so the boundaryByNum block above
             // handles them. Firing here would also wipe in-lap pre-pit samples on regular pit stops.
             if (!IsRaceLikeSession(entry.SessionType))
@@ -367,7 +405,7 @@ public sealed class SessionLogger
         }
     }
 
-    /// <summary>Race / Race 2 / Race 3 per F125SessionTypes. These sessions tick m_currentLapNum
+    /// <summary>Race / Race 2 / Race 3 per ProtocolLookups.SessionTypes. These sessions tick m_currentLapNum
     /// at every S/F crossing, so they don't need (and shouldn't have) the non-race buffer reset
     /// that handles uncounted out-lap → flying-lap transitions.</summary>
     private static bool IsRaceLikeSession(byte sessionType) =>
@@ -512,26 +550,34 @@ public sealed class SessionLogger
             TeamId = p?.TeamId ?? 0,
             DriverId = p?.DriverId ?? 0,
             Name = p?.Name ?? $"Car {idx}",
-            LiveryColorHex = ExtractLiveryColorHex(p, entry.GameYear),
+            LiveryColorHex = ExtractLiveryColorHex(p, GetPlugin(entry)?.Lookups),
         };
         entry.Drivers[idx] = driver;
         return driver;
     }
 
-    private static void UpdateDriverLiveryColors(SessionEntry entry, ParticipantsPacket packet)
+    private void UpdateDriverLiveryColors(SessionEntry entry, ParticipantsPacket packet)
     {
         if (packet.Participants == null) return;
+        var lookups = GetPlugin(entry)?.Lookups;
         for (byte idx = 0; idx < packet.Participants.Length && idx < MaxCars; idx++)
         {
             if (!entry.Drivers.TryGetValue(idx, out var driver) || driver.LiveryColorHex != null) continue;
-            driver.LiveryColorHex = ExtractLiveryColorHex(packet.Participants[idx], entry.GameYear);
+            driver.LiveryColorHex = ExtractLiveryColorHex(packet.Participants[idx], lookups);
         }
     }
 
-    private static string? ExtractLiveryColorHex(ParticipantData? p, byte gameYear)
+    /// <summary>
+    /// Picks the team's preferred livery slot via the format-aware
+    /// <see cref="ProtocolLookups.LiveryColourSlotOverrides"/> table and converts the RGB
+    /// triplet to a #RRGGBB hex string. Returns null when the participant has no colours
+    /// or no plugin is registered to supply overrides (falls back to slot 0 = primary).
+    /// </summary>
+    private static string? ExtractLiveryColorHex(ParticipantData? p, ProtocolLookups? lookups)
     {
         if (p?.LiveryColours == null || p.NumColours == 0 || p.LiveryColours.Length == 0) return null;
-        var slotIdx = Math.Min(LiveryColourSelector.GetIndex(gameYear, p.TeamId), p.NumColours - 1);
+        var preferred = lookups?.GetLiveryColourSlot(p.TeamId) ?? 0;
+        var slotIdx = Math.Min(preferred, p.NumColours - 1);
         var c = p.LiveryColours[slotIdx];
         if (c == null) return null;
         return $"#{c.Red:X2}{c.Green:X2}{c.Blue:X2}";
@@ -781,7 +827,7 @@ public sealed class SessionLogger
             return;
         }
 
-        var trackName = F125TrackNames.Get(session.TrackId);
+        var trackName = GetPlugin(entry)?.Lookups.GetTrackName(session.TrackId) ?? $"Track{session.TrackId}";
         var safeName = string.Join("_", trackName.Split(Path.GetInvalidFileNameChars()));
         var now = DateTimeOffset.Now;
         var folder = $"F1{entry.GameYear}_{safeName}_{now:yyyy-MM-dd_HH-mm}";
@@ -790,13 +836,13 @@ public sealed class SessionLogger
         entry.WeekendFolder = folder;
     }
 
-    private static Dictionary<string, PerTypeEntryCounts> BuildPerTypeForThisSession(SessionEntry entry)
+    private Dictionary<string, PerTypeEntryCounts> BuildPerTypeForThisSession(SessionEntry entry)
     {
         var result = new Dictionary<string, PerTypeEntryCounts>();
         for (byte id = 0; id < entry.DiagPerTypeSeen.Length; id++)
         {
             if (entry.DiagPerTypeSeen[id] == 0) continue;
-            result[F125PacketNames.Get(id)] = new PerTypeEntryCounts
+            result[ResolvePacketName(id)] = new PerTypeEntryCounts
             {
                 Seen = entry.DiagPerTypeSeen[id],
                 FirstSessionTimeS = entry.DiagPerTypeFirstSessionTimeS[id],
@@ -817,7 +863,9 @@ public sealed class SessionLogger
 
         try
         {
-            var slug = F125SessionTypes.GetSlug(entry.SessionType);
+            var plugin = GetPlugin(entry);
+            var lookups = plugin?.Lookups;
+            var slug = lookups?.GetSessionSlug(entry.SessionType) ?? $"session{entry.SessionType}";
             // Writes always target the persisted root (Settings tab), not any ephemeral
             // History "Select Folder" override that might be active for read-only browsing.
             var logsDir = Path.Combine(HistoryRoot.PersistentDefault, entry.WeekendFolder);
@@ -847,12 +895,13 @@ public sealed class SessionLogger
                 Meta = new SessionLogMetaV2
                 {
                     TrackId = sessionPacket.TrackId,
-                    TrackName = F125TrackNames.Get(sessionPacket.TrackId),
+                    TrackName = lookups?.GetTrackName(sessionPacket.TrackId) ?? $"Track{sessionPacket.TrackId}",
                     SessionType = entry.SessionType,
-                    SessionTypeName = F125SessionTypes.GetName(entry.SessionType),
+                    SessionTypeName = lookups?.GetSessionName(entry.SessionType) ?? $"Session{entry.SessionType}",
                     GameYear = entry.GameYear,
+                    PacketFormat = entry.PacketFormat,
                     Formula = sessionPacket.Formula,
-                    FormulaName = F125Formulas.GetName(sessionPacket.Formula),
+                    FormulaName = lookups?.GetFormulaName(sessionPacket.Formula) ?? $"Formula {sessionPacket.Formula}",
                     WeekendLinkId = entry.WeekendLinkId,
                     SessionLinkId = sessionPacket.SessionLinkIdentifier,
                     PlayerCarIndex = entry.PlayerCarIndex,
@@ -936,6 +985,9 @@ public sealed class SessionLogger
     {
         public byte PlayerCarIndex { get; set; }
         public byte GameYear { get; set; }
+        /// <summary>m_packetFormat for this session (2025, 2026, …). Written into the saved meta
+        /// so HistoryReader can pick the right lookup tables on load.</summary>
+        public ushort PacketFormat { get; set; }
         public byte SessionType { get; set; }
         public uint WeekendLinkId { get; set; }
         public string? WeekendFolder { get; set; }

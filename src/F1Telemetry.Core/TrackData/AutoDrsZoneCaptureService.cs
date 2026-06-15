@@ -214,6 +214,41 @@ public sealed class AutoDrsZoneCaptureService
     }
 
     /// <summary>
+    /// Tries to consume DRS zones delivered authoritatively by the game via
+    /// <c>PacketSessionData.DrsZones</c> (added in packet format 2026 — empty for 2025).
+    /// Returns <c>true</c> when the caller should persist <paramref name="zones"/> via
+    /// <see cref="DrsZoneStore.SaveAsync"/> for <paramref name="trackId"/>: i.e. the track
+    /// is not yet resolved and the store has no entry yet. The track is marked resolved
+    /// synchronously, so duplicate SessionPackets in the same session no-op.
+    ///
+    /// Falls back to the existing lap-driven auto-capture (<see cref="OnPlayerLapData"/>)
+    /// for older formats that don't ship zones in the session packet.
+    /// </summary>
+    public bool TryAcceptFromSessionPacket(int trackId, IReadOnlyList<DrsZoneRange> zones)
+    {
+        if (trackId < 0 || zones == null || zones.Count == 0) return false;
+
+        lock (_sync)
+        {
+            if (_resolvedTracks.Contains(trackId)) return false;
+            if (_store.HasZones(trackId))
+            {
+                _resolvedTracks.Add(trackId);
+                return false;
+            }
+            // Mark resolved BEFORE the save completes so a flood of Session packets at
+            // session start doesn't enqueue parallel saves for the same track. If the
+            // save fails the caller can call Forget(trackId) to re-arm.
+            _resolvedTracks.Add(trackId);
+            // If lap-capture was already armed for this track, drop its in-flight state —
+            // the authoritative zones supersede whatever fragments it had accumulated.
+            if (_trackId == trackId)
+                ResetLocked();
+            return true;
+        }
+    }
+
+    /// <summary>
     /// Forgets that <paramref name="trackId"/> was resolved and clears any pending capture
     /// state, so the next valid lap on this track triggers a fresh capture. Used by the
     /// debug "Re-capture" button after the JSON entry for the track was deleted.

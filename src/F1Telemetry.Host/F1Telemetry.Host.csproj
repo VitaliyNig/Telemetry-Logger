@@ -17,7 +17,8 @@
 
   <ItemGroup>
     <ProjectReference Include="..\F1Telemetry.Core\F1Telemetry.Core.csproj" />
-    <ProjectReference Include="..\F1Telemetry.F125\F1Telemetry.F125.csproj" />
+    <ProjectReference Include="..\F1Telemetry.Protocol.Format2025\F1Telemetry.Protocol.Format2025.csproj" />
+    <ProjectReference Include="..\F1Telemetry.Protocol.Format2026\F1Telemetry.Protocol.Format2026.csproj" />
     <ProjectReference Include="..\F1Telemetry.Udp\F1Telemetry.Udp.csproj" />
   </ItemGroup>
 

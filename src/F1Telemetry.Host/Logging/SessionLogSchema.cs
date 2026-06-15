@@ -1,4 +1,4 @@
-using F1Telemetry.F125.Packets;
+using F1Telemetry.Packets;
 
 namespace F1Telemetry.Host.Logging;
 
@@ -39,6 +39,15 @@ public sealed class LapSample
     public byte DrsAllowed { get; set; }
     /// <summary>ERS deployed this lap (joules), cumulative value from game telemetry.</summary>
     public float ErsDepLapJ { get; set; }
+    /// <summary>
+    /// ERS energy harvested this lap (joules), MGU-K + MGU-H combined. Cumulative.
+    /// </summary>
+    public float HarvJ { get; set; }
+    /// <summary>
+    /// Per-lap harvest cap reported by the game (joules). Added in packet format 2026 —
+    /// stays 0 in older logs, in which case the legacy 2 MJ MGU-K-only convention applies.
+    /// </summary>
+    public float HarvLimJ { get; set; }
 }
 
 /// <summary>One 10 Hz world-position sample for track-map trajectories.</summary>
@@ -96,8 +105,10 @@ public sealed class DriverLap
 public sealed class DriverSessionData
 {
     public byte CarIdx { get; set; }
-    public byte TeamId { get; set; }
-    public byte DriverId { get; set; }
+    /// <summary>Widened to <c>ushort</c> in format 2026 (was uint8 ≤ 2025). Old logs still fit.</summary>
+    public ushort TeamId { get; set; }
+    /// <summary>Widened to <c>ushort</c> in format 2026 (was uint8 ≤ 2025). Old logs still fit.</summary>
+    public ushort DriverId { get; set; }
     public string Name { get; set; } = "";
     public string? LiveryColorHex { get; set; }
     public List<DriverLap> Laps { get; set; } = new();
@@ -115,6 +126,9 @@ public sealed class SessionLogMetaV2
     public byte SessionType { get; set; }
     public string SessionTypeName { get; set; } = "";
     public byte GameYear { get; set; }
+    /// <summary>m_packetFormat for the session (e.g. 2025, 2026). 0 in older logs from before
+    /// this field existed — HistoryReader treats 0 as "assume format 2025" for backward compatibility.</summary>
+    public ushort PacketFormat { get; set; }
     /// <summary>m_formula from PacketSessionData: 0=F1 Modern, 1=F1 Classic, 2=F2, 3=F1 Generic,
     /// 4=Beta, 6=Esports, 8=F1 World, 9=F1 Elimination.</summary>
     public byte Formula { get; set; }

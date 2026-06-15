@@ -1,8 +1,12 @@
 "use strict";
 
-// Справочники синхронизированы с docs/F1_25_UDP_Spec.md (приложения и комментарии к пакетам).
+// Справочники объединены для форматов 2025 и 2026. Где id для одной и той же сущности
+// не пересекаются между версиями, мы держим все известные значения в одной таблице —
+// браузеру это позволяет одинаково отрисовывать как старые логи, так и live-сессии 2026.
+// Если в будущем 2027 переопределит существующий id (например, заменит трассу под тем
+// же номером), потребуется разделить лукапы по PacketFormat.
 
-// Track IDs — приложение Track IDs (m_trackId int8, -1 = неизвестно)
+// Track IDs — m_trackId (int8, -1 = неизвестно). 42 = Madrid (добавлено в формате 2026).
 const TRACK_NAMES = {
     0: "Melbourne",
     2: "Shanghai",
@@ -30,7 +34,8 @@ const TRACK_NAMES = {
     32: "Losail",
     39: "Silverstone (R)",
     40: "Austria (R)",
-    41: "Zandvoort (R)"
+    41: "Zandvoort (R)",
+    42: "Madrid"
 };
 
 /** Default pit lane loss (s) when no value is stored for a track. */
@@ -65,6 +70,7 @@ const TRACK_FLAG_MAP = {
     39: "GB",  // Silverstone (R)
     40: "AT",  // Austria (R)
     41: "NL",  // Zandvoort (R)
+    42: "ES",  // Madrid (format 2026)
 };
 
 // Session types — приложение Session Types (m_sessionType)
@@ -438,7 +444,8 @@ const RULESET_NAMES = {
     0: "Practice & Qualifying", 1: "Race", 2: "Time Trial", 12: "Elimination",
 };
 
-/** m_teamId — Participants / Lobby / Time Trial */
+/** m_teamId — Participants / Lobby / Time Trial. uint16 в формате 2026, uint8 в 2025.
+ *  Объединённый словарь покрывает оба формата без коллизий id. */
 const TEAM_NAMES = {
     0: "Mercedes", 1: "Ferrari", 2: "Red Bull Racing", 3: "Williams", 4: "Aston Martin",
     5: "Alpine", 6: "RB", 7: "Haas", 8: "McLaren", 9: "Sauber", 41: "F1 Generic",
@@ -449,16 +456,29 @@ const TEAM_NAMES = {
     185: "Mercedes '24", 186: "Ferrari '24", 187: "Red Bull Racing '24", 188: "Williams '24",
     189: "Aston Martin '24", 190: "Alpine '24", 191: "RB '24", 192: "Haas '24",
     193: "McLaren '24", 194: "Sauber '24",
+    // F2 2025 (format 2026)
+    465: "Art GP '25", 466: "Campos '25", 467: "Rodin Motorsport '25", 468: "AIX Racing '25",
+    469: "DAMS '25", 470: "Hitech '25", 471: "MP Motorsport '25", 472: "Prema '25",
+    473: "Trident '25", 474: "Van Amersfoort Racing '25", 475: "Invicta '25",
+    // F1 2026 (format 2026)
+    476: "Mercedes '26", 477: "Ferrari '26", 478: "Red Bull Racing '26",
+    479: "Williams '26", 480: "Aston Martin '26", 481: "Alpine '26",
+    482: "RB '26", 483: "Haas '26", 484: "McLaren '26",
+    485: "Audi '26", 486: "Cadillac '26",
 };
 
 /**
- * Mirror of C# LiveryColourSelector. Live pipeline only accepts F1 25 packets
- * (F125Constants.ExpectedGameYear = 25), so live always uses the 25 preset.
- * When an F126 ingress lands, add a 26 entry and pass the year from session state.
+ * Mirror of C# LiveryColourSelector. Keyed by m_gameYear.
+ * - 25: F1 25 base season; Haas slot 0 is red (Ferrari-like), use slot 1.
+ * - 26: 2026 Season Pack — no overrides yet; Audi/Cadillac liveries TBD when actual
+ *   captured colours land. Add entries here once palette is verified.
  */
 const LIVERY_COLOUR_SLOT_OVERRIDES = {
     25: {
         7: 1, // Haas: slot 0 is red (Ferrari-like); use slot 1
+    },
+    26: {
+        // intentionally empty for now
     },
 };
 
@@ -1000,8 +1020,9 @@ const _lapTimesSetupContent = new Map();
 let _lapTimesMenuBound = false;
 const GAP_BOARD_LAPS = 4;
 
-/** Max speed (km/h) seen this session per car index (Car Telemetry). */
-const sessionTopSpeedByCar = new Array(22).fill(0);
+/** Max speed (km/h) seen this session per car index (Car Telemetry). 24 slots covers
+ *  both format 2025 (22 cars) and 2026 (24 cars); unused slots stay at 0. */
+const sessionTopSpeedByCar = new Array(24).fill(0);
 /** Player peak speed on the current lap number (reset when lap advances). */
 let playerLapPeakSpeed = 0;
 let playerLapPeakForLapNum = 0;
@@ -1515,8 +1536,10 @@ function updatePedalChart() {
     lineB.setAttribute("points", buildPedalPolylinePoints(pedalHistoryB));
 }
 
-function updateCarTelemetry(data) {
-    const cars = data.carTelemetryData;
+function updateCarTelemetry25(data) {
+    // Property name follows the renamed C# DTO (CarTelemetry25Packet.CarTelemetry25Data[]).
+    // Older logs serialised as carTelemetryData; fall back so historical sessions still display.
+    const cars = data.carTelemetry25Data || data.carTelemetryData;
     if (cars && cars.length) {
         for (let i = 0; i < cars.length && i < sessionTopSpeedByCar.length; i++) {
             const sp = Number(cars[i]?.speed) || 0;
@@ -1537,7 +1560,8 @@ function updateCarTelemetry(data) {
         updateTopSpeedWidgets();
     }
 
-    const car = data.carTelemetryData?.[playerCarIndex];
+    const carList = data.carTelemetry25Data || data.carTelemetryData;
+    const car = carList?.[playerCarIndex];
     if (!car) return;
 
     setText("speed", car.speed);
@@ -1681,13 +1705,29 @@ function updateFuelErsWidget(car) {
     if (deployBar) deployBar.style.width = deployPct + "%";
     setText("csErsDeployVal", (deployJ / 1_000_000).toFixed(2) + " / 4.00 MJ");
 
-    // Only MGU-K is regulated (max 2 MJ/lap to battery) and matches the in-game MFD "Harvest".
-    // MGU-H is unlimited and not displayed here.
-    const harvestJ = Math.max(0, Number(car.ersHarvestedThisLapMguK) || 0);
-    const harvestPct = Math.max(0, Math.min(100, (harvestJ / MAX_MGUK_HARVEST_J) * 100));
+    // Harvest cap: in packet format 2026 the game ships a dynamic per-lap limit
+    // (m_ersHarvestLimitPerLap) — the 2026 regulations change the cap and split it across
+    // both MGU components, so we sum K + H and compare against the game-provided value.
+    // In format 2025 the field is absent (0) and only MGU-K is regulated (≤ 2 MJ/lap), so
+    // we keep the legacy MGU-K-only display matching the in-game MFD "Harvest".
+    const limitJ = Math.max(0, Number(car.ersHarvestLimitPerLap) || 0);
+    const has2026Limit = limitJ > 0;
+    const harvKJ = Math.max(0, Number(car.ersHarvestedThisLapMguK) || 0);
+    const harvHJ = Math.max(0, Number(car.ersHarvestedThisLapMguH) || 0);
+    const harvestJ = has2026Limit ? (harvKJ + harvHJ) : harvKJ;
+    const harvestCapJ = has2026Limit ? limitJ : MAX_MGUK_HARVEST_J;
+    const harvestPct = harvestCapJ > 0
+        ? Math.max(0, Math.min(100, (harvestJ / harvestCapJ) * 100))
+        : 0;
     const harvestBar = el("csErsHarvestBar");
-    if (harvestBar) harvestBar.style.width = harvestPct + "%";
-    setText("csErsHarvestVal", (harvestJ / 1_000_000).toFixed(2) + " / 2.00 MJ");
+    if (harvestBar) {
+        harvestBar.style.width = harvestPct + "%";
+        // Threshold cues let the strategist see "running out of harvest headroom" at a glance.
+        harvestBar.classList.toggle("cs-bar-warn", harvestPct >= 85 && harvestPct < 95);
+        harvestBar.classList.toggle("cs-bar-crit", harvestPct >= 95);
+    }
+    setText("csErsHarvestVal",
+        (harvestJ / 1_000_000).toFixed(2) + " / " + (harvestCapJ / 1_000_000).toFixed(2) + " MJ");
 }
 
 function updateCarSetups(data) {
@@ -3627,9 +3667,86 @@ function updateLapTimesWidget() {
     renderLapTimes(tbody, headRow);
 }
 
+/** PacketCarTelemetry26Data — new in packet format 2026. Drives the dedicated "F1 26 Systems"
+ *  widget (tpl-telemetry26). Renders:
+ *    • Active Aero — Corner / Straight mode + availability + distance to next zone
+ *    • Boost (Overtake mode) — available / active + distance to activation
+ *    • 2026 regulations badge (lights up when m_2026Regulations == 1)
+ *    • Wrong-way warning (only when m_drivingWrongWay == 1)
+ *  When the player is in a format-2025 session this handler never fires, so the widget
+ *  shows its "Awaiting 2026 telemetry…" placeholder. The widget can be removed from the
+ *  layout entirely if the user only ever runs 2025. */
+function updateCarTelemetry26(data) {
+    // Property name follows the renamed C# DTO (CarTelemetry26Packet.CarTelemetry26DataItems).
+    // Carries the legacy carTelemetry2DataItems fallback for any in-flight cached payloads.
+    const items = data && (data.carTelemetry26DataItems || data.carTelemetry2DataItems);
+    if (!items) return;
+    const idx = (typeof playerCarIndex === "number" && playerCarIndex >= 0) ? playerCarIndex : 0;
+    const item = items[idx];
+    if (!item) return;
+
+    // Hide the placeholder once any data flows in; show it again only on hard reload.
+    const placeholder = document.getElementById("t26Placeholder");
+    if (placeholder) placeholder.hidden = true;
+
+    // ---- Active Aero -------------------------------------------------------------
+    const aeroTile = document.getElementById("t26AeroTile");
+    const aeroStatus = document.getElementById("t26AeroStatus");
+    const aeroMode = document.getElementById("t26AeroMode");
+    const aeroIcon = document.getElementById("t26AeroModeIcon");
+    const aeroDist = document.getElementById("t26AeroDist");
+    if (aeroTile) {
+        const available = item.activeAeroAvailable === 1;
+        const isStraight = item.activeAeroMode === 1;
+        // Tile data-state drives the colour ring via CSS: idle / ready / active.
+        aeroTile.dataset.state = !available ? "idle" : (isStraight ? "active" : "ready");
+        if (aeroStatus) aeroStatus.textContent = available ? "Ready" : "N/A";
+        if (aeroMode) aeroMode.textContent = !available ? "—" : (isStraight ? "Straight" : "Corner");
+        // Half-disk for corner mode, full disk for straight mode — quick glance recognition.
+        if (aeroIcon) aeroIcon.textContent = isStraight ? "●" : "◐";
+        if (aeroDist) {
+            const d = item.activeAeroActivationDistance | 0;
+            aeroDist.textContent = available
+                ? (d > 0 ? d + " m" : "now")
+                : "—";
+        }
+    }
+
+    // ---- Boost (Overtake) --------------------------------------------------------
+    const boostTile = document.getElementById("t26BoostTile");
+    const boostStatus = document.getElementById("t26BoostStatus");
+    const boostMode = document.getElementById("t26BoostMode");
+    const boostIcon = document.getElementById("t26BoostIcon");
+    const boostDist = document.getElementById("t26BoostDist");
+    if (boostTile) {
+        const available = item.overtakeAvailable === 1;
+        const active = item.overtakeActive === 1;
+        boostTile.dataset.state = !available ? "idle" : (active ? "active" : "ready");
+        if (boostStatus) boostStatus.textContent = !available ? "N/A" : (active ? "ACTIVE" : "Ready");
+        if (boostMode) boostMode.textContent = !available ? "—" : (active ? "Pushing" : "Armed");
+        // Filled bolt when boost is firing, outline when armed.
+        if (boostIcon) boostIcon.textContent = active ? "⚡" : "⟁";
+        if (boostDist) {
+            const d = item.overtakeActivationDistance | 0;
+            boostDist.textContent = available
+                ? (d > 0 ? d + " m" : "now")
+                : "—";
+        }
+    }
+
+    // ---- 2026 regulations marker -------------------------------------------------
+    const regsBadge = document.getElementById("t26RegsBadge");
+    if (regsBadge) regsBadge.hidden = item.regulations2026 !== 1;
+
+    // ---- Wrong-way warning -------------------------------------------------------
+    const wrongBadge = document.getElementById("t26WrongWayBadge");
+    if (wrongBadge) wrongBadge.hidden = item.drivingWrongWay !== 1;
+}
+
 const PACKET_HANDLERS = {
     Session: updateSession,
-    CarTelemetry: updateCarTelemetry,
+    CarTelemetry25: updateCarTelemetry25,
+    CarTelemetry26: updateCarTelemetry26,
     CarStatus: updateCarStatus,
     CarSetups: updateCarSetups,
     LapData: updateLapData,

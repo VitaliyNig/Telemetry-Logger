@@ -1,7 +1,7 @@
 using F1Telemetry.Config;
 using F1Telemetry.Debug;
-using F1Telemetry.F125.Packets;
-using F1Telemetry.F125.Protocol;
+using F1Telemetry.Packets;
+using F1Telemetry.Protocol;
 using F1Telemetry.Ingress;
 using F1Telemetry.State;
 using F1Telemetry.Telemetry;
@@ -21,7 +21,7 @@ namespace F1Telemetry.Host.Ingress;
 public sealed class TelemetryPipelineIngress : ITelemetryIngress
 {
     private readonly IPacketHeaderReader _headerReader;
-    private readonly PacketDeserializerRegistry _registry;
+    private readonly ProtocolRegistry _protocolRegistry;
     private readonly TelemetryState _state;
     private readonly LapSetupStore _lapSetupStore;
     private readonly LapTyreStore _lapTyreStore;
@@ -36,7 +36,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
 
     public TelemetryPipelineIngress(
         IPacketHeaderReader headerReader,
-        PacketDeserializerRegistry registry,
+        ProtocolRegistry protocolRegistry,
         TelemetryState state,
         LapSetupStore lapSetupStore,
         LapTyreStore lapTyreStore,
@@ -50,7 +50,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         ILogger<TelemetryPipelineIngress> logger)
     {
         _headerReader = headerReader;
-        _registry = registry;
+        _protocolRegistry = protocolRegistry;
         _state = state;
         _lapSetupStore = lapSetupStore;
         _lapTyreStore = lapTyreStore;
@@ -73,18 +73,21 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
     // (Motion, MotionEx, LobbyInfo, LapPositions, FinalClassification) are still
     // deserialized and stored in TelemetryState for /api/state + History mode, but
     // not broadcast live — avoids ~30-50% of SignalR payload volume at 60 Hz.
+    // The byte values are stable across formats 2025 and 2026; CarTelemetry26 (16) is
+    // new in 2026 and broadcast live so the Active Aero / Overtake widgets light up.
     private static bool ShouldBroadcastLive(byte packetId) => packetId is
-        (byte)F125PacketId.Session
-        or (byte)F125PacketId.LapData
-        or (byte)F125PacketId.Event
-        or (byte)F125PacketId.Participants
-        or (byte)F125PacketId.CarSetups
-        or (byte)F125PacketId.CarTelemetry
-        or (byte)F125PacketId.CarStatus
-        or (byte)F125PacketId.CarDamage
-        or (byte)F125PacketId.SessionHistory
-        or (byte)F125PacketId.TyreSets
-        or (byte)F125PacketId.TimeTrial;
+        (byte)F1PacketId.Session
+        or (byte)F1PacketId.LapData
+        or (byte)F1PacketId.Event
+        or (byte)F1PacketId.Participants
+        or (byte)F1PacketId.CarSetups
+        or (byte)F1PacketId.CarTelemetry25
+        or (byte)F1PacketId.CarStatus
+        or (byte)F1PacketId.CarDamage
+        or (byte)F1PacketId.SessionHistory
+        or (byte)F1PacketId.TyreSets
+        or (byte)F1PacketId.TimeTrial
+        or 16; // CarTelemetry26 — format 2026 only
 
     // Debug-panel broadcasts coalesced to ~5 Hz; at 60 Hz × 14 packet types the
     // raw rate would be ~840 Hz and dominate CPU/GC when Debug Mode is on.
@@ -129,21 +132,27 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
 
         _diag.RecordReceived(header.PacketId, header.SessionTime);
 
-        if (header.PacketFormat != F125Constants.ExpectedPacketFormat ||
-            header.GameYear != F125Constants.ExpectedGameYear)
+        // Dispatch by m_packetFormat: pick the protocol plugin (2025, 2026, future 2027 …)
+        // that owns this format. m_gameYear is intentionally NOT checked — the user may run
+        // any DLC / season pack that bumps the year while keeping the format stable.
+        var plugin = _protocolRegistry.Get(header.PacketFormat);
+        if (plugin == null)
         {
             _diag.RecordFormatMismatch(header.PacketId);
-            _logger.LogWarning("Unexpected format year={Year} format={Format}", header.GameYear, header.PacketFormat);
+            _logger.LogWarning(
+                "No protocol plugin for packetFormat={Format} (gameYear={Year}); install or register the matching format module.",
+                header.PacketFormat, header.GameYear);
             return Task.CompletedTask;
         }
 
         _tracker.RecordPacket(header.PacketId);
 
-        var deserializer = _registry.Get(header.PacketId);
+        var deserializer = plugin.GetDeserializer(header.PacketId);
         if (deserializer == null)
         {
             _diag.RecordNoDeserializer(header.PacketId);
-            _logger.LogDebug("No deserializer for packet id {PacketId}", header.PacketId);
+            _logger.LogDebug("No deserializer for packet id {PacketId} in format {Format}",
+                header.PacketId, plugin.PacketFormat);
             return Task.CompletedTask;
         }
 
@@ -174,24 +183,61 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
             _diag.RecordEnqueued(header.PacketId);
         }
 
-        if (header.PacketId == (byte)F125PacketId.LapData && deserialized is LapDataPacket lapDataPacket)
+        // Format 2026 ships DRS zones in SessionPacket. When present, persist them once per
+        // track — auto-capture (lap-driven) becomes the fallback for 2025 sessions only.
+        if (deserialized is SessionPacket sp && sp.NumDrsZones > 0)
+        {
+            var zones = new List<DrsZoneRange>(sp.NumDrsZones);
+            var n = Math.Min(sp.NumDrsZones, (byte)sp.DrsZones.Length);
+            for (var z = 0; z < n; z++)
+            {
+                var dz = sp.DrsZones[z];
+                if (dz == null) continue;
+                if (dz.ZoneEnd <= dz.ZoneStart) continue; // ignore malformed entries
+                zones.Add(new DrsZoneRange(dz.ZoneStart, dz.ZoneEnd));
+            }
+            if (zones.Count > 0 && _autoDrsCapture.TryAcceptFromSessionPacket(sp.TrackId, zones))
+            {
+                var trackId = (int)sp.TrackId;
+                _ = Task.Run(async () =>
+                {
+                    try
+                    {
+                        await _drsZoneStore.SaveAsync(trackId, zones);
+                        _autoDrsCapture.MarkSaved(trackId);
+                        _logger.LogInformation(
+                            "Saved DRS zones from SessionPacket for track {TrackId}: {Zones}",
+                            trackId,
+                            string.Join(", ", zones.Select(z => $"[{z.Start:F3},{z.End:F3}]")));
+                    }
+                    catch (Exception ex)
+                    {
+                        _logger.LogError(ex, "Saving DRS zones from SessionPacket failed for track {TrackId}", trackId);
+                        // Re-arm so the next session/restart can retry.
+                        _autoDrsCapture.Forget(trackId);
+                    }
+                });
+            }
+        }
+
+        if (header.PacketId == (byte)F1PacketId.LapData && deserialized is LapDataPacket lapDataPacket)
         {
             var carIdx = header.PlayerCarIndex;
             if (carIdx < lapDataPacket.LapDataItems.Length)
             {
                 var playerLap = lapDataPacket.LapDataItems[carIdx];
                 var currentLapNum = playerLap.CurrentLapNum;
-                var session = _state.Get<SessionPacket>((byte)F125PacketId.Session);
+                var session = _state.Get<SessionPacket>((byte)F1PacketId.Session);
                 var sessionType = session?.SessionType ?? 0;
 
                 // Auto-capture DRS zones when no data exists for the current track.
                 // We use m_drs (CarTelemetry) instead of m_drsAllowed (CarStatus) because
                 // m_drs reflects the actual DRS zone boundaries, whereas m_drsAllowed only
                 // turns on after the detection line (so captured zones would be truncated).
-                var carTelemetry = _state.Get<CarTelemetryPacket>((byte)F125PacketId.CarTelemetry);
-                if (session != null && carTelemetry != null && carIdx < carTelemetry.CarTelemetryData.Length)
+                var carTelemetry = _state.Get<CarTelemetry25Packet>((byte)F1PacketId.CarTelemetry25);
+                if (session != null && carTelemetry != null && carIdx < carTelemetry.CarTelemetry25Data.Length)
                 {
-                    var drs = carTelemetry.CarTelemetryData[carIdx].Drs;
+                    var drs = carTelemetry.CarTelemetry25Data[carIdx].Drs;
                     if (_autoDrsCapture.OnPlayerLapData(
                         sessionType,
                         session.TrackId,
@@ -257,7 +303,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
 
         if (ShouldBroadcastLive(header.PacketId))
         {
-            packetName = F125PacketNames.Get(header.PacketId);
+            packetName = plugin.GetPacketName(header.PacketId);
             FireAndForgetBroadcast(
                 _hubContext.Clients.All.ReceivePacket(packetName, header, deserialized),
                 packetName);
@@ -270,7 +316,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
             if (nowTicks - prev >= DebugBroadcastMinIntervalTicks &&
                 Interlocked.CompareExchange(ref _lastDebugBroadcastTicks, nowTicks, prev) == prev)
             {
-                packetName ??= F125PacketNames.Get(header.PacketId);
+                packetName ??= plugin.GetPacketName(header.PacketId);
                 FireAndForgetBroadcast(
                     _hubContext.Clients.All.DebugPacket(new
                     {
@@ -288,7 +334,7 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
 
     private CarSetupData? CaptureSetupSnapshot(byte idx)
     {
-        var setups = _state.Get<CarSetupsPacket>((byte)F125PacketId.CarSetups);
+        var setups = _state.Get<CarSetupsPacket>((byte)F1PacketId.CarSetups);
         if (setups?.CarSetupData == null || idx >= setups.CarSetupData.Length)
             return null;
         var src = setups.CarSetupData[idx];
@@ -322,8 +368,8 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
 
     private LapTyreSnapshot? CaptureTyreSnapshot(byte idx)
     {
-        var status = _state.Get<CarStatusPacket>((byte)F125PacketId.CarStatus);
-        var damage = _state.Get<CarDamagePacket>((byte)F125PacketId.CarDamage);
+        var status = _state.Get<CarStatusPacket>((byte)F1PacketId.CarStatus);
+        var damage = _state.Get<CarDamagePacket>((byte)F1PacketId.CarDamage);
         if (status?.CarStatusDataItems == null || idx >= status.CarStatusDataItems.Length)
             return null;
         var s = status.CarStatusDataItems[idx];

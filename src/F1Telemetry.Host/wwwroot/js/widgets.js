@@ -3,6 +3,7 @@
 const WIDGET_REGISTRY = {
     session:      { title: "Session",              tpl: "tpl-session",      w: 4,   h: 9,   minW: 1,    minH: 1 },
     telemetry:    { title: "Car Telemetry",        tpl: "tpl-telemetry",    w: 6,   h: 9,   minW: 1,    minH: 1 },
+    telemetry26:  { title: "F1 26 Systems",        tpl: "tpl-telemetry26",  w: 5,   h: 7,   minW: 1,    minH: 1 },
     tyres:        { title: "Tyres",                tpl: "tpl-tyres",        w: 5,   h: 12,  minW: 1,    minH: 1 },
     tyreSets:     { title: "Available Tyre Sets",  tpl: "tpl-tyreSets",     w: 7,   h: 14,  minW: 1,    minH: 1 },
     pitPredictor: { title: "Pit Stop Predictor",   tpl: "tpl-pitPredictor", w: 6,   h: 6,   minW: 1,    minH: 1 },

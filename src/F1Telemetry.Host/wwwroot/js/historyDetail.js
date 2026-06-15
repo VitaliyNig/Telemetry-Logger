@@ -753,6 +753,15 @@
             + ' · ERS usage ' + ersPct + '%'
             + ' · DRS usage ' + drsPct + '%'
             + (p.drsZoneBased ? ' (track zones)' : ' (whole-lap fallback)');
+        // Harvest efficiency (only emitted for format 2026+ sessions, where the game ships
+        // m_ersHarvestLimitPerLap). Surfaces as an extra tooltip line so the perf badge
+        // stays single-number while strategists get the harvest-cap detail on hover.
+        if (typeof p.harvEfficiencyPct === 'number') {
+            title += ' · Harvest ' + p.harvEfficiencyPct + '%';
+            if (typeof p.harvUsedMJ === 'number' && typeof p.harvCapMJ === 'number') {
+                title += ' (' + p.harvUsedMJ.toFixed(2) + ' / ' + p.harvCapMJ.toFixed(2) + ' MJ)';
+            }
+        }
         var bg = perfColorFor(perfPct);
 
         var cellCls = 'lap-cell lap-sub--perf';

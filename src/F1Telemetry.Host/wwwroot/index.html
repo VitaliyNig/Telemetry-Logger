@@ -145,13 +145,20 @@
                         <input type="number" id="udpListenPort" value="20777" min="1" max="65535">
                         <span class="setting-hint">Must match the port configured in F1 25 game settings. Default: <code>20777</code></span>
                     </div>
+                    <div class="setting-row">
+                        <label for="udpFormatSelect">UDP Format</label>
+                        <select id="udpFormatSelect">
+                            <option value="">Auto (newest available)</option>
+                        </select>
+                        <span class="setting-hint">Which packet format the host expects. <code>2026</code> covers the F1 25: 2026 Season Pack. Auto-configure writes this value to the game's XML.</span>
+                    </div>
                 </div>
 
                 <div class="settings-group">
-                    <h3>F1 25 — telemetry in game</h3>
+                    <h3>Game telemetry settings</h3>
                     <p class="game-settings-memo-intro">Recommended values in the game’s telemetry settings so this app receives data correctly.</p>
                     <div class="game-settings-memo-wrap">
-                        <table class="game-settings-memo" aria-label="Recommended F1 25 telemetry settings">
+                        <table class="game-settings-memo" aria-label="Recommended F1 game telemetry settings">
                             <thead>
                                 <tr>
                                     <th scope="col">Setting</th>
@@ -164,7 +171,7 @@
                                 <tr><td>UDP IP Address</td><td>—</td></tr>
                                 <tr><td>UDP Port</td><td>20777</td></tr>
                                 <tr><td>UDP Send Rate</td><td>60 Hz</td></tr>
-                                <tr><td>UDP Format</td><td>2025</td></tr>
+                                <tr><td>UDP Format</td><td><span id="recommendedFormatCell">2026</span></td></tr>
                                 <tr><td>Your Telemetry</td><td>Public</td></tr>
                                 <tr><td>Show player names</td><td>On</td></tr>
                             </tbody>
@@ -174,10 +181,11 @@
                         <div class="game-settings-auto-row">
                             <select id="gameVersionSelect" class="game-version-select" aria-label="Game version">
                                 <option value="f1_25">F1 25</option>
+                                <option value="f1_26">F1 26</option>
                             </select>
                             <button type="button" id="btnAutoConfigureUdp" class="btn-auto-configure">Auto-configure</button>
                         </div>
-                        <span class="setting-hint">Writes these values directly to F1 25's <code>hardware_settings_config.xml</code>. <strong>Close the game before applying</strong> — otherwise F1 25 will overwrite the file on exit.</span>
+                        <span class="setting-hint">Writes these values directly to the selected game's <code>hardware_settings_config.xml</code>. <strong>Close the game before applying</strong> — otherwise it will overwrite the file on exit.</span>
                         <span id="autoConfigureStatus" class="auto-configure-status" hidden></span>
                     </div>
                 </div>
@@ -411,6 +419,61 @@
                 <div class="pit-gap-item"><span class="pit-gap-label">Car Behind</span><span class="pit-gap-driver" id="pitBehindName">--</span><span class="pit-gap-value" id="pitBehindGap">--</span></div>
             </div>
         </div></div>
+    </template>
+
+    <template id="tpl-telemetry26">
+        <!-- F1 26 Systems widget. Renders Active Aero + Boost (Overtake) state from
+             PacketCarTelemetry2Data (added in packet format 2026, id 16). For format-2025
+             sessions every field stays 0 and the widget reports an "Awaiting 2026 telemetry"
+             placeholder — keep it pinned to the 2026 dashboard preset to hide it from 2025
+             layouts entirely. -->
+        <div class="card t26-card">
+            <h2 class="widget-title">F1 26 Systems</h2>
+            <div class="t26-grid" id="t26Grid">
+                <!-- Active Aero tile -->
+                <section class="t26-tile" id="t26AeroTile" data-state="idle">
+                    <header class="t26-tile-head">
+                        <span class="t26-tile-label">ACTIVE AERO</span>
+                        <span class="t26-tile-status" id="t26AeroStatus">—</span>
+                    </header>
+                    <div class="t26-mode-row">
+                        <div class="t26-mode-pill" id="t26AeroModePill">
+                            <span class="t26-mode-icon" id="t26AeroModeIcon">◐</span>
+                            <span class="t26-mode-text" id="t26AeroMode">—</span>
+                        </div>
+                    </div>
+                    <div class="t26-meta">
+                        <span class="t26-meta-label">Next zone</span>
+                        <span class="t26-meta-value" id="t26AeroDist">—</span>
+                    </div>
+                </section>
+
+                <!-- Boost (Overtake) tile -->
+                <section class="t26-tile" id="t26BoostTile" data-state="idle">
+                    <header class="t26-tile-head">
+                        <span class="t26-tile-label">BOOST</span>
+                        <span class="t26-tile-status" id="t26BoostStatus">—</span>
+                    </header>
+                    <div class="t26-mode-row">
+                        <div class="t26-mode-pill" id="t26BoostPill">
+                            <span class="t26-mode-icon" id="t26BoostIcon">⚡</span>
+                            <span class="t26-mode-text" id="t26BoostMode">—</span>
+                        </div>
+                    </div>
+                    <div class="t26-meta">
+                        <span class="t26-meta-label">Activates in</span>
+                        <span class="t26-meta-value" id="t26BoostDist">—</span>
+                    </div>
+                </section>
+            </div>
+
+            <!-- Bottom row: regs marker + wrong-way warning. Both hidden when not applicable. -->
+            <div class="t26-flags">
+                <span class="t26-badge" id="t26RegsBadge" hidden title="Car is running 2026 regulations spec">2026 REGS</span>
+                <span class="t26-warn" id="t26WrongWayBadge" hidden title="Car is driving the wrong way around the circuit">⚠ WRONG WAY</span>
+                <span class="t26-placeholder" id="t26Placeholder">Awaiting 2026 telemetry…</span>
+            </div>
+        </div>
     </template>
 
     <template id="tpl-fuelErs">

@@ -1,4 +1,4 @@
-using F1Telemetry.F125.Protocol;
+using F1Telemetry.Protocol;
 using F1Telemetry.State;
 using Microsoft.AspNetCore.SignalR;
 
@@ -13,12 +13,18 @@ public sealed class TelemetryHub : Hub<ITelemetryClient>
     private readonly TelemetryState _state;
     private readonly LapSetupStore _lapSetupStore;
     private readonly LapTyreStore _lapTyreStore;
+    private readonly ProtocolRegistry _registry;
 
-    public TelemetryHub(TelemetryState state, LapSetupStore lapSetupStore, LapTyreStore lapTyreStore)
+    public TelemetryHub(
+        TelemetryState state,
+        LapSetupStore lapSetupStore,
+        LapTyreStore lapTyreStore,
+        ProtocolRegistry registry)
     {
         _state = state;
         _lapSetupStore = lapSetupStore;
         _lapTyreStore = lapTyreStore;
+        _registry = registry;
     }
 
     /// <summary>Client can request current state snapshot on connect.</summary>
@@ -28,7 +34,7 @@ public sealed class TelemetryHub : Hub<ITelemetryClient>
         var result = new Dictionary<string, object>();
         foreach (var (key, value) in all)
         {
-            var name = F125PacketNames.Get(key);
+            var name = ResolvePacketName(key);
             result[name] = value;
         }
         return result;
@@ -48,5 +54,16 @@ public sealed class TelemetryHub : Hub<ITelemetryClient>
         var snapshots = _lapTyreStore.GetSnapshots(carIndex);
         if (snapshots == null || snapshots.Count == 0) return null;
         return new Dictionary<int, object>(snapshots);
+    }
+
+    /// <summary>Cross-format packet-name resolver — see Program.ResolvePacketName for rationale.</summary>
+    private string ResolvePacketName(byte packetId)
+    {
+        foreach (var p in _registry.All)
+        {
+            var name = p.GetPacketName(packetId);
+            if (!byte.TryParse(name, out _)) return name;
+        }
+        return packetId.ToString();
     }
 }

@@ -18,4 +18,13 @@ public sealed class AppSettings
     /// process — that override is not persisted.
     /// </summary>
     public string? HistoryFolder { get; set; }
+
+    /// <summary>
+    /// UDP packet format the game is expected to emit. Written to
+    /// <c>hardware_settings_config.xml</c> via <c>/api/game/configure-udp</c> and exposed
+    /// through <c>/api/info</c>. When null/empty, the host picks the newest registered
+    /// format plugin (highest <c>m_packetFormat</c>). Valid tokens are the
+    /// <c>IProtocolPlugin.ConfigFormatToken</c> values — currently "2025" or "2026".
+    /// </summary>
+    public string? UdpFormat { get; set; }
 }

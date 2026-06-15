@@ -9,9 +9,10 @@ using System.Xml.Linq;
 using Microsoft.Extensions.Options;
 using F1Telemetry.Config;
 using F1Telemetry.Debug;
-using F1Telemetry.F125;
-using F1Telemetry.F125.Packets;
-using F1Telemetry.F125.Protocol;
+using F1Telemetry.Packets;
+using F1Telemetry.Protocol;
+using F1Telemetry.Protocol.Format2025;
+using F1Telemetry.Protocol.Format2026;
 using F1Telemetry.Host.Hubs;
 using F1Telemetry.Host.Ingress;
 using F1Telemetry.Host.Logging;
@@ -212,7 +213,7 @@ static class Program
     /// trackId stays 0 → no flag is rendered on the card, which is the intended graceful
     /// degradation.
     /// </summary>
-    private static bool TrySynthesizeHeaderFromPath(string file, string dir, out SessionMetaHeader header)
+    private static bool TrySynthesizeHeaderFromPath(string file, string dir, ProtocolRegistry registry, out SessionMetaHeader header)
     {
         header = default;
         try
@@ -241,8 +242,15 @@ static class Program
                 savedAt = File.GetLastWriteTime(file).ToString("o");
             }
 
-            var sessionTypeName = F125SessionTypes.GetNameBySlug(slug)
-                ?? slug.Replace('_', ' ');
+            // Try every registered format's session table (slugs are stable across formats,
+            // but we don't know which year this old log targeted).
+            string? sessionTypeName = null;
+            foreach (var p in registry.All)
+            {
+                sessionTypeName = p.Lookups.GetSessionNameBySlug(slug);
+                if (sessionTypeName != null) break;
+            }
+            sessionTypeName ??= slug.Replace('_', ' ');
 
             header = new SessionMetaHeader(
                 TrackId: null,
@@ -280,6 +288,11 @@ static class Program
         int drsOnInZone = 0;
         float minErsDepLapJ = float.MaxValue;
         float maxErsDepLapJ = 0f;
+        // Harvest tracking is opportunistic: 2025 logs have HarvJ/HarvLimJ == 0 because the
+        // game didn't expose the cap. We only emit harvest stats when at least one sample
+        // had a non-zero cap (format 2026+).
+        float maxHarvJ = 0f;
+        float maxHarvLimJ = 0f;
 
         for (int i = 0; i < samples.Count; i++)
         {
@@ -302,6 +315,9 @@ static class Program
             var dep = s.ErsDepLapJ;
             if (dep < minErsDepLapJ) minErsDepLapJ = dep;
             if (dep > maxErsDepLapJ) maxErsDepLapJ = dep;
+
+            if (s.HarvJ > maxHarvJ) maxHarvJ = s.HarvJ;
+            if (s.HarvLimJ > maxHarvLimJ) maxHarvLimJ = s.HarvLimJ;
         }
 
         var ersUsedLapJ = Math.Max(0f, maxErsDepLapJ - minErsDepLapJ);
@@ -311,6 +327,14 @@ static class Program
             : (float)samples.Count(s => s.Drs == 1) / samples.Count;
         var perfPct = Math.Clamp((ersUsage * Wers + drsUsage * Wdrs) * 100f, 0f, 100f);
 
+        // Harvest efficiency is "how close did this lap get to the cap" — strategically useful
+        // (low = recovering more energy than the regs allow burns, i.e. wasted capacity; high
+        // close to 100% = pushing the harvest budget). Reported separately so it doesn't
+        // muddle the existing perfPct definition; null when the format didn't supply a cap.
+        byte? harvEfficiencyPct = maxHarvLimJ > 0f
+            ? (byte)MathF.Round(Math.Clamp(maxHarvJ / maxHarvLimJ, 0f, 1f) * 100f)
+            : (byte?)null;
+
         return new
         {
             perfPct = (byte)MathF.Round(perfPct),
@@ -318,7 +342,43 @@ static class Program
             drsUsagePct = (byte)MathF.Round(drsUsage * 100f),
             drsZoneBased = hasZones,
             weights = new { ers = Wers, drs = Wdrs },
+            harvEfficiencyPct,
+            harvCapMJ = maxHarvLimJ > 0f ? (float?)MathF.Round(maxHarvLimJ / 1_000_000f, 2) : null,
+            harvUsedMJ = maxHarvLimJ > 0f ? (float?)MathF.Round(maxHarvJ / 1_000_000f, 2) : null,
         };
+    }
+
+    /// <summary>
+    /// Best-effort packet-name resolver across all registered protocol plugins. Returns
+    /// the first non-numeric name (i.e. the first plugin that recognises the byte). Falls
+    /// back to <c>id.ToString()</c> when no plugin claims the id, so downstream consumers
+    /// see the same string shape (the byte) for unknown packets.
+    /// </summary>
+    private static string ResolvePacketName(ProtocolRegistry registry, byte packetId)
+    {
+        foreach (var p in registry.All)
+        {
+            var name = p.GetPacketName(packetId);
+            if (!byte.TryParse(name, out _)) return name;
+        }
+        return packetId.ToString();
+    }
+
+    /// <summary>
+    /// Resolves which <see cref="IProtocolPlugin"/> is "active" for outbound concerns
+    /// (writing the format token to F1's XML, telling the UI which format is current).
+    /// Lookup order: explicit AppSettings.UdpFormat → registry's newest registered plugin.
+    /// Returns null only when no plugins are registered.
+    /// </summary>
+    private static IProtocolPlugin? ResolveActivePlugin(AppSettings settings, ProtocolRegistry registry)
+    {
+        if (!string.IsNullOrWhiteSpace(settings.UdpFormat))
+        {
+            var match = registry.All.FirstOrDefault(p =>
+                string.Equals(p.ConfigFormatToken, settings.UdpFormat, StringComparison.OrdinalIgnoreCase));
+            if (match != null) return match;
+        }
+        return registry.Default;
     }
 
     [STAThread]
@@ -348,11 +408,15 @@ static class Program
         builder.Services.Configure<AppSettings>(
             builder.Configuration.GetSection(AppSettings.SectionName));
 
-        builder.Services.AddF125Protocol();
+        builder.Services
+            .AddF1Protocol()
+            .AddProtocolFormat<Format2025Plugin>()
+            .AddProtocolFormat<Format2026Plugin>();
         builder.Services.AddSingleton<TelemetryState>();
         builder.Services.AddSingleton<LapSetupStore>();
         builder.Services.AddSingleton<LapTyreStore>();
         builder.Services.AddSingleton<SessionLogger>();
+        builder.Services.AddSingleton<HistoryReader>();
         builder.Services.AddHostedService<SessionLoggerWriter>();
         var drsZonesPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "data", "drs-zones.json");
         builder.Services.AddSingleton(new DrsZoneStore(drsZonesPath));
@@ -395,7 +459,20 @@ static class Program
 
         var app = builder.Build();
 
-        app.Services.GetRequiredService<DebugPacketTracker>().PacketNameResolver = F125PacketNames.Get;
+        // Packet name resolver walks every registered format and returns the first non-numeric
+        // hit. Works for both 2025-only ids (0..15) and the new CarTelemetry26 (16) added in 2026.
+        {
+            var registry = app.Services.GetRequiredService<ProtocolRegistry>();
+            app.Services.GetRequiredService<DebugPacketTracker>().PacketNameResolver = id =>
+            {
+                foreach (var p in registry.All)
+                {
+                    var name = p.GetPacketName(id);
+                    if (!byte.TryParse(name, out _)) return name;
+                }
+                return id.ToString();
+            };
+        }
 
         var lifetime = app.Services.GetRequiredService<IHostApplicationLifetime>();
         lifetime.ApplicationStopping.Register(() =>
@@ -416,41 +493,74 @@ static class Program
     {
         app.MapGet("/api/health", () => Results.Ok(new { status = "ok", service = "f1-telemetry" }));
 
-        app.MapGet("/api/info", (IConfiguration config) => Results.Ok(new
+        app.MapGet("/api/info", (IConfiguration config,
+            ProtocolRegistry registry,
+            IOptionsMonitor<AppSettings> appSettings) =>
         {
-            game = "F1 25",
-            udpAddress = config.GetValue<string>("TelemetryUdp:ListenAddress") ?? "0.0.0.0",
-            udpPort = config.GetValue<int?>("TelemetryUdp:Port") ?? 20777,
-            webPort = config.GetValue<int?>("App:WebPort") ?? 5000,
-            debugMode = config.GetValue<bool?>("App:DebugMode") ?? false,
-            packetTypes = Enum.GetValues<F125PacketId>().Select(v => F125PacketNames.Get((byte)v)).ToArray()
-        }));
+            var active = ResolveActivePlugin(appSettings.CurrentValue, registry);
+            return Results.Ok(new
+            {
+                game = "F1 25",
+                udpAddress = config.GetValue<string>("TelemetryUdp:ListenAddress") ?? "0.0.0.0",
+                udpPort = config.GetValue<int?>("TelemetryUdp:Port") ?? 20777,
+                webPort = config.GetValue<int?>("App:WebPort") ?? 5000,
+                debugMode = config.GetValue<bool?>("App:DebugMode") ?? false,
+                udpFormat = active?.ConfigFormatToken,
+                activeFormatName = active?.DisplayName,
+                availableFormats = registry.All.Select(p => new
+                {
+                    token = p.ConfigFormatToken,
+                    packetFormat = p.PacketFormat,
+                    name = p.DisplayName,
+                    maxCars = p.MaxCars,
+                }).ToArray(),
+                packetTypes = active?.KnownPacketIds.Select(id => active.GetPacketName(id)).ToArray()
+                              ?? Array.Empty<string>(),
+            });
+        });
 
-        app.MapGet("/api/state", (TelemetryState state) =>
+        app.MapGet("/api/state", (TelemetryState state, ProtocolRegistry registry) =>
         {
             var all = state.GetAll();
             var result = new Dictionary<string, object>();
             foreach (var (key, value) in all)
             {
-                var name = F125PacketNames.Get(key);
+                var name = ResolvePacketName(registry, key);
                 result[name] = value;
             }
             return Results.Ok(result);
         });
 
-        app.MapGet("/api/state/{packetType}", (string packetType, TelemetryState state) =>
+        app.MapGet("/api/state/{packetType}", (string packetType, TelemetryState state, ProtocolRegistry registry) =>
         {
-            if (!Enum.TryParse<F125PacketId>(packetType, true, out var packetId))
+            // Find the packet id whose resolved name matches the requested string across any plugin.
+            byte? packetId = null;
+            foreach (var p in registry.All)
+            {
+                foreach (var id in p.KnownPacketIds)
+                {
+                    if (string.Equals(p.GetPacketName(id), packetType, StringComparison.OrdinalIgnoreCase))
+                    {
+                        packetId = id;
+                        break;
+                    }
+                }
+                if (packetId.HasValue) break;
+            }
+            if (!packetId.HasValue)
                 return Results.NotFound(new { error = $"Unknown packet type: {packetType}" });
 
-            var data = state.Get((byte)packetId);
+            var data = state.Get(packetId.Value);
             return data != null ? Results.Ok(data) : Results.NotFound(new { error = $"No data for {packetType}" });
         });
 
-        app.MapGet("/api/settings", (IConfiguration config, IOptionsMonitor<AppSettings> appSettings) =>
+        app.MapGet("/api/settings", (IConfiguration config,
+            IOptionsMonitor<AppSettings> appSettings,
+            ProtocolRegistry registry) =>
         {
             var udpSection = config.GetSection("TelemetryUdp");
             var s = appSettings.CurrentValue;
+            var active = ResolveActivePlugin(s, registry);
             return Results.Ok(new
             {
                 udpListenIp = udpSection.GetValue<string>("ListenAddress") ?? "0.0.0.0",
@@ -461,6 +571,12 @@ static class Program
                 historyFolder = s.HistoryFolder,
                 historyFolderResolved = HistoryRoot.PersistentDefault,
                 historyFolderDefault = HistoryRoot.BuiltInDefault,
+                udpFormat = active?.ConfigFormatToken,
+                availableFormats = registry.All.Select(p => new
+                {
+                    token = p.ConfigFormatToken,
+                    name = p.DisplayName,
+                }).ToArray(),
             });
         });
 
@@ -491,6 +607,8 @@ static class Program
 
             existing["TelemetryUdp"] = new { ListenAddress = body.UdpListenIp, Port = body.UdpListenPort };
             var currentApp = config.GetSection(AppSettings.SectionName).Get<AppSettings>() ?? new AppSettings();
+            // Null/empty udpFormat means "auto" — host picks the newest registered plugin.
+            string? udpFormat = string.IsNullOrWhiteSpace(body.UdpFormat) ? null : body.UdpFormat!.Trim();
             existing["App"] = new
             {
                 WebPort = body.WebPort,
@@ -498,6 +616,7 @@ static class Program
                 EnableSessionLogging = body.EnableSessionLogging,
                 LaunchBrowserOnStart = currentApp.LaunchBrowserOnStart,
                 HistoryFolder = historyFolder,
+                UdpFormat = udpFormat,
             };
 
             // Apply immediately so subsequent reads/writes target the new path without
@@ -515,7 +634,10 @@ static class Program
             });
         });
 
-        app.MapPost("/api/game/configure-udp", async (IConfiguration config) =>
+        app.MapPost("/api/game/configure-udp", async (HttpContext ctx,
+            IConfiguration config,
+            ProtocolRegistry registry,
+            IOptionsMonitor<AppSettings> appSettings) =>
         {
             var udpSection = config.GetSection("TelemetryUdp");
             var listenIp = udpSection.GetValue<string>("ListenAddress") ?? "0.0.0.0";
@@ -525,17 +647,61 @@ static class Program
                 ? "127.0.0.1"
                 : listenIp;
 
+            // Pick the game install whose XML we'll edit. The body is optional — when
+            // missing, default to F1 25 for backward compat with older Auto-configure clicks.
+            string gameVersionToken = "f1_25";
+            string gameDisplayName = "F1 25";
+            try
+            {
+                if (ctx.Request.ContentLength > 0)
+                {
+                    var body = await ctx.Request.ReadFromJsonAsync<ConfigureUdpRequest>();
+                    if (body != null && !string.IsNullOrWhiteSpace(body.GameVersion))
+                        gameVersionToken = body.GameVersion.Trim().ToLowerInvariant();
+                }
+            }
+            catch
+            {
+                // Tolerant: malformed body falls through to default F1 25 — same behaviour as the
+                // old fire-and-forget POST that didn't carry a body.
+            }
+
+            // Token → "My Games" subfolder + human-readable name. Add new game years here
+            // when F1 27 etc. ship; everything else is data-driven.
+            var (myGamesFolder, displayName) = gameVersionToken switch
+            {
+                "f1_26" => ("F1 26", "F1 26"),
+                "f1_25" or "" => ("F1 25", "F1 25"),
+                _ => (string.Empty, string.Empty),
+            };
+            if (string.IsNullOrEmpty(myGamesFolder))
+            {
+                return Results.BadRequest(new
+                {
+                    error = $"Unknown gameVersion '{gameVersionToken}'. Expected one of: f1_25, f1_26.",
+                });
+            }
+            gameDisplayName = displayName;
+
             var docs = Environment.GetFolderPath(Environment.SpecialFolder.MyDocuments);
-            var xmlPath = Path.Combine(docs, "My Games", "F1 25", "hardwaresettings", "hardware_settings_config.xml");
+            var xmlPath = Path.Combine(docs, "My Games", myGamesFolder, "hardwaresettings", "hardware_settings_config.xml");
 
             if (!File.Exists(xmlPath))
             {
                 return Results.NotFound(new
                 {
-                    error = "hardware_settings_config.xml not found. Launch F1 25 once to create it.",
-                    expectedPath = xmlPath
+                    error = $"hardware_settings_config.xml not found for {gameDisplayName}. Launch {gameDisplayName} once to create it.",
+                    expectedPath = xmlPath,
+                    gameVersion = gameVersionToken,
                 });
             }
+
+            // Use the configured/default plugin's format token, so the game emits packets the
+            // host is actually prepared to parse.
+            var active = ResolveActivePlugin(appSettings.CurrentValue, registry);
+            if (active == null)
+                return Results.Problem("No protocol format plugins registered.", statusCode: 500);
+            var formatToken = active.ConfigFormatToken;
 
             try
             {
@@ -561,7 +727,7 @@ static class Program
                 udp.SetAttributeValue("ip", sendIp);
                 udp.SetAttributeValue("port", port.ToString());
                 udp.SetAttributeValue("sendRate", "60");
-                udp.SetAttributeValue("format", "2025");
+                udp.SetAttributeValue("format", formatToken);
                 udp.SetAttributeValue("yourTelemetry", "public");
                 udp.SetAttributeValue("onlineNames", "on");
 
@@ -572,7 +738,11 @@ static class Program
                     saved = true,
                     path = xmlPath,
                     ip = sendIp,
-                    port
+                    port,
+                    format = formatToken,
+                    formatName = active.DisplayName,
+                    gameVersion = gameVersionToken,
+                    gameName = gameDisplayName,
                 });
             }
             catch (Exception ex)
@@ -644,13 +814,13 @@ static class Program
             });
         });
 
-        app.MapGet("/api/debug/log", (DebugPacketTracker tracker) =>
+        app.MapGet("/api/debug/log", (DebugPacketTracker tracker, ProtocolRegistry registry) =>
         {
             var entries = tracker.GetRecentEntries();
             return Results.Ok(entries.Select(e => new
             {
                 timestamp = e.Timestamp.ToString("HH:mm:ss.fff"),
-                name = F125PacketNames.Get(e.PacketId)
+                name = ResolvePacketName(registry, e.PacketId)
             }));
         });
 
@@ -670,13 +840,22 @@ static class Program
         // Lists every known track plus its current state in drs-zones.json. The
         // current-track block exposes the id of the live session so the UI can offer a
         // "re-capture" button only when the player is actually on track.
-        app.MapGet("/api/debug/drs-zones", (DrsZoneStore store, AutoDrsZoneCaptureService capture, TelemetryState state) =>
+        app.MapGet("/api/debug/drs-zones", (DrsZoneStore store, AutoDrsZoneCaptureService capture,
+            TelemetryState state, ProtocolRegistry registry) =>
         {
             var zonesByTrack = store.Load();
-            var session = state.Get<SessionPacket>((byte)F125PacketId.Session);
+            var session = state.Get<SessionPacket>((byte)F1PacketId.Session);
             int? currentTrackId = session != null ? session.TrackId : null;
 
-            var tracks = F125TrackNames.GetAll().Select(kv =>
+            // Aggregate the track table across every registered plugin's lookups, so a 2026-only
+            // track (e.g. Madrid id 42) shows up even if Format2025 doesn't know it.
+            var allTracks = new SortedDictionary<int, string>();
+            foreach (var p in registry.All)
+                foreach (var kv in p.Lookups.TrackNames)
+                    if (!allTracks.ContainsKey(kv.Key))
+                        allTracks[kv.Key] = kv.Value;
+
+            var tracks = allTracks.Select(kv =>
             {
                 var has = zonesByTrack.TryGetValue(kv.Key, out var zones) && zones.Length > 0;
                 float coverage = 0f;
@@ -695,10 +874,14 @@ static class Program
                 };
             }).ToArray();
 
+            string? currentTrackName = null;
+            if (currentTrackId.HasValue)
+                currentTrackName = allTracks.TryGetValue(currentTrackId.Value, out var n) ? n : $"Track{currentTrackId.Value}";
+
             return Results.Ok(new
             {
                 currentTrackId,
-                currentTrackName = currentTrackId.HasValue ? F125TrackNames.Get(currentTrackId.Value) : null,
+                currentTrackName,
                 captureStatus = capture.GetStatus(),
                 tracks,
             });
@@ -716,7 +899,7 @@ static class Program
 
         // --- Sessions (History) ---
 
-        app.MapGet("/api/sessions", () =>
+        app.MapGet("/api/sessions", (ProtocolRegistry registry) =>
         {
             var logsDir = HistoryRoot.Path;
             if (!Directory.Exists(logsDir))
@@ -769,7 +952,7 @@ static class Program
                     // folder name (F1{year}_{track}_{date}) and the filename slug so the card
                     // still appears in History — just without a trackId-driven flag.
                     if (!TryReadSessionMeta(file, out var meta) &&
-                        !TrySynthesizeHeaderFromPath(file, dir, out meta)) continue;
+                        !TrySynthesizeHeaderFromPath(file, dir, registry, out meta)) continue;
 
                     if (!trackId.HasValue && meta.TrackId.HasValue) trackId = meta.TrackId;
                     trackName ??= meta.TrackName;
@@ -778,9 +961,13 @@ static class Program
                     if (!formula.HasValue && meta.Formula.HasValue)
                     {
                         formula = meta.Formula;
+                        // The saved log already carries FormulaName; fall back to the lookups
+                        // for very old logs where it was empty. Any registered plugin works
+                        // because formula ids are stable across formats.
                         formulaName = !string.IsNullOrEmpty(meta.FormulaName)
                             ? meta.FormulaName
-                            : F125Formulas.GetName(meta.Formula.Value);
+                            : (registry.Default?.Lookups.GetFormulaName(meta.Formula.Value)
+                               ?? $"Formula {meta.Formula.Value}");
                     }
 
                     sessions.Add(new
@@ -817,9 +1004,9 @@ static class Program
 
         // Session detail: meta + per-driver lap summaries (NO samples/motion). Small enough
         // to hold in the browser for the whole lifetime of the detail view.
-        app.MapGet("/api/sessions/{folder}/{slug}", (string folder, string slug, DrsZoneStore store) =>
+        app.MapGet("/api/sessions/{folder}/{slug}", (string folder, string slug, DrsZoneStore store, HistoryReader historyReader) =>
         {
-            var data = HistoryReader.Load(folder, slug);
+            var data = historyReader.Load(folder, slug);
             if (data == null)
                 return Results.NotFound(new { error = "session not found or schema < v2" });
 
@@ -863,9 +1050,9 @@ static class Program
         });
 
         // Per-driver lap summaries only (compact).
-        app.MapGet("/api/sessions/{folder}/{slug}/laps", (string folder, string slug) =>
+        app.MapGet("/api/sessions/{folder}/{slug}/laps", (string folder, string slug, HistoryReader historyReader) =>
         {
-            var data = HistoryReader.Load(folder, slug);
+            var data = historyReader.Load(folder, slug);
             if (data == null)
                 return Results.NotFound(new { error = "session not found" });
 
@@ -887,9 +1074,9 @@ static class Program
         // Lazy-load samples + motion for one lap of one driver. Called by Telemetry Compare
         // when the user picks a lap from the per-driver dropdown. Cached on the client.
         app.MapGet("/api/sessions/{folder}/{slug}/lap-samples",
-            (string folder, string slug, int carIdx, int lap) =>
+            (string folder, string slug, int carIdx, int lap, HistoryReader historyReader) =>
         {
-            var data = HistoryReader.Load(folder, slug);
+            var data = historyReader.Load(folder, slug);
             if (data?.Drivers == null || !data.Drivers.TryGetValue(carIdx, out var driver))
                 return Results.NotFound(new { error = "driver not found" });
 
@@ -920,9 +1107,9 @@ static class Program
             });
         });
 
-        app.MapGet("/api/sessions/{folder}/{slug}/events", (string folder, string slug) =>
+        app.MapGet("/api/sessions/{folder}/{slug}/events", (string folder, string slug, HistoryReader historyReader) =>
         {
-            var data = HistoryReader.Load(folder, slug);
+            var data = historyReader.Load(folder, slug);
             if (data == null)
                 return Results.NotFound(new { error = "session not found" });
             return Results.Ok(data.Events ?? new List<SessionLogEventV2>());
@@ -930,9 +1117,9 @@ static class Program
 
         // Export one driver's full session data as a standalone JSON. The payload stays compatible
         // with /api/history/import so two instances can swap ghost files directly.
-        app.MapGet("/api/sessions/{folder}/{slug}/export", (string folder, string slug, int carIdx) =>
+        app.MapGet("/api/sessions/{folder}/{slug}/export", (string folder, string slug, int carIdx, HistoryReader historyReader) =>
         {
-            var data = HistoryReader.Load(folder, slug);
+            var data = historyReader.Load(folder, slug);
             if (data?.Drivers == null || !data.Drivers.TryGetValue(carIdx, out var driver))
                 return Results.NotFound(new { error = "driver not found" });
 
@@ -958,9 +1145,9 @@ static class Program
 
         // Import a ghost driver. Stored on disk under _ghosts/ so re-opening the session picks
         // them up via /ghosts without a re-upload.
-        app.MapPost("/api/history/import", async (HttpContext ctx, string folder, string slug) =>
+        app.MapPost("/api/history/import", async (HttpContext ctx, string folder, string slug, HistoryReader historyReader) =>
         {
-            var target = HistoryReader.Load(folder, slug);
+            var target = historyReader.Load(folder, slug);
             if (target?.Meta == null)
                 return Results.NotFound(new { error = "target session not found" });
 
@@ -1006,9 +1193,9 @@ static class Program
         // were too noisy to be useful. Missing files return 404 and the front-end
         // simply renders the racing line without a track backdrop.
         app.MapGet("/api/sessions/{folder}/{slug}/track-svg",
-            (string folder, string slug, IWebHostEnvironment env) =>
+            (string folder, string slug, IWebHostEnvironment env, HistoryReader historyReader) =>
         {
-            var data = HistoryReader.Load(folder, slug);
+            var data = historyReader.Load(folder, slug);
             if (data?.Meta == null)
                 return Results.NotFound(new { error = "session not found" });
 
@@ -1019,9 +1206,9 @@ static class Program
             return Results.Content(File.ReadAllText(path), "image/svg+xml");
         });
 
-        app.MapGet("/api/sessions/{folder}/{slug}/ghosts", (string folder, string slug) =>
+        app.MapGet("/api/sessions/{folder}/{slug}/ghosts", (string folder, string slug, HistoryReader historyReader) =>
         {
-            var target = HistoryReader.Load(folder, slug);
+            var target = historyReader.Load(folder, slug);
             if (target?.Meta == null)
                 return Results.NotFound(new { error = "session not found" });
 
@@ -1213,10 +1400,14 @@ record SettingsUpdateRequest(
     [property: JsonPropertyName("webPort")] int WebPort,
     [property: JsonPropertyName("debugMode")] bool DebugMode,
     [property: JsonPropertyName("enableSessionLogging")] bool EnableSessionLogging,
-    [property: JsonPropertyName("historyFolder")] string? HistoryFolder);
+    [property: JsonPropertyName("historyFolder")] string? HistoryFolder,
+    [property: JsonPropertyName("udpFormat")] string? UdpFormat);
 
 record OpenFolderRequest(string Folder);
 
 record PitTimeUpdateRequest(
     string? TrackName,
     double PitTimeSec);
+
+record ConfigureUdpRequest(
+    [property: JsonPropertyName("gameVersion")] string? GameVersion);

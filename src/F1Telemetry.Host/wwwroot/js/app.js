@@ -21,6 +21,8 @@
 
     var udpListenIp = document.getElementById('udpListenIp');
     var udpListenPort = document.getElementById('udpListenPort');
+    var udpFormatSelect = document.getElementById('udpFormatSelect');
+    var recommendedFormatCell = document.getElementById('recommendedFormatCell');
     var webPort = document.getElementById('webPort');
     var webPortRestartBadge = document.getElementById('webPortRestartBadge');
     var debugModeToggle = document.getElementById('debugMode');
@@ -546,6 +548,7 @@
                 udpListenIp.value = data.udpListenIp;
                 udpListenPort.value = data.udpListenPort;
                 webPort.value = data.webPort;
+                populateUdpFormatOptions(data.availableFormats || [], data.udpFormat || '');
                 initialWebPort = parseInt(data.webPort, 10);
                 debugModeToggle.checked = data.debugMode;
                 if (enableSessionLogging) enableSessionLogging.checked = data.enableSessionLogging;
@@ -574,7 +577,8 @@
                 webPort: parseInt(webPort.value, 10),
                 debugMode: debugModeToggle.checked,
                 enableSessionLogging: !!(enableSessionLogging && enableSessionLogging.checked),
-                historyFolder: historyFolderRaw || null
+                historyFolder: historyFolderRaw || null,
+                udpFormat: (udpFormatSelect && udpFormatSelect.value) ? udpFormatSelect.value : null
             };
 
             fetch('/api/settings', {
@@ -726,6 +730,32 @@
         });
     }
 
+    if (udpFormatSelect) {
+        udpFormatSelect.addEventListener('change', autoSaveSettings);
+    }
+
+    function populateUdpFormatOptions(formats, currentToken) {
+        if (!udpFormatSelect) return;
+        // Reset to a single "Auto" option; rebuild from server-provided list.
+        udpFormatSelect.innerHTML = '<option value="">Auto — use newest available</option>';
+        formats.forEach(function (f) {
+            var opt = document.createElement('option');
+            opt.value = f.token;
+            // Plugin DisplayName already embeds the format identifier, e.g.
+            // "F1 25 (format 2025)" — don't duplicate it by appending the token again.
+            opt.textContent = f.name;
+            opt.title = f.name + ' (UDP format ' + f.token + ')';
+            udpFormatSelect.appendChild(opt);
+        });
+        // Selecting an empty string preserves "Auto" when the user hasn't pinned a format.
+        udpFormatSelect.value = currentToken || '';
+        if (recommendedFormatCell) {
+            // The memo table mirrors what auto-configure will write; show the active token.
+            var activeToken = currentToken || (formats.length ? formats[0].token : '2026');
+            recommendedFormatCell.textContent = activeToken;
+        }
+    }
+
     [udpListenIp, udpListenPort, webPort].forEach(function (el) {
         if (!el) return;
         el.addEventListener('input', function () {
@@ -758,14 +788,23 @@
                 autoConfigureStatus.textContent = 'Applying…';
                 autoConfigureStatus.className = 'auto-configure-status is-pending';
             }
-            fetch('/api/game/configure-udp', { method: 'POST' })
+            // Send the currently selected game version so the backend writes the right
+            // hardware_settings_config.xml under "My Games\<F1 25|F1 26>\..."
+            var gameVersion = gameVersionSelect ? gameVersionSelect.value : 'f1_25';
+            fetch('/api/game/configure-udp', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ gameVersion: gameVersion })
+            })
                 .then(function (res) {
                     return res.json().then(function (body) { return { ok: res.ok, body: body }; });
                 })
                 .then(function (r) {
                     if (autoConfigureStatus) {
                         if (r.ok) {
-                            autoConfigureStatus.textContent = 'Applied: ' + r.body.ip + ':' + r.body.port;
+                            var name = (r.body && r.body.gameName) ? r.body.gameName : 'game';
+                            autoConfigureStatus.textContent =
+                                'Applied to ' + name + ': ' + r.body.ip + ':' + r.body.port + ' (format ' + r.body.format + ')';
                             autoConfigureStatus.className = 'auto-configure-status is-ok';
                         } else {
                             autoConfigureStatus.textContent = (r.body && (r.body.error || r.body.detail)) || 'Failed';

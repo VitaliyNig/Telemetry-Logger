@@ -8,4 +8,8 @@
     <AssemblyName>F1Telemetry.Core</AssemblyName>
   </PropertyGroup>
 
+  <ItemGroup>
+    <PackageReference Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="9.0.0" />
+  </ItemGroup>
+
 </Project>

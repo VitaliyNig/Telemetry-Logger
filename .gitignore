@@ -7,5 +7,8 @@ publish-win/
 appsettings.Development.local.json
 appsettings.user.json
 
+# Throwaway packet-inspection scripts used while reverse-engineering the UDP formats
+/check_*.py
+
 # Generated from assets/logo.svg at build time
 src/F1Telemetry.Host/wwwroot/logo.svg

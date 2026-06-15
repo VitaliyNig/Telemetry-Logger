@@ -1,4 +1,4 @@
-using F1Telemetry.F125.Protocol;
+using F1Telemetry.Protocol;
 
 namespace F1Telemetry.Host.Ingress;
 
@@ -11,7 +11,7 @@ namespace F1Telemetry.Host.Ingress;
 /// </summary>
 public sealed class IngressDiagnosticsTracker
 {
-    private const int PacketTypes = 64; // F125 has <30 ids; over-allocate for safety.
+    private const int PacketTypes = 64; // F1 protocol formats use <32 packet ids; over-allocate.
 
     private readonly long[] _received = new long[PacketTypes];
     private readonly long[] _formatMismatch = new long[PacketTypes];
@@ -22,9 +22,11 @@ public sealed class IngressDiagnosticsTracker
     private readonly float[] _firstSessionTime = new float[PacketTypes];
 
     private long _headerFailedNoId;
+    private readonly ProtocolRegistry _registry;
 
-    public IngressDiagnosticsTracker()
+    public IngressDiagnosticsTracker(ProtocolRegistry registry)
     {
+        _registry = registry;
         Array.Fill(_firstSessionTime, -1f);
     }
 
@@ -78,7 +80,7 @@ public sealed class IngressDiagnosticsTracker
                 continue;
             }
 
-            var name = F125PacketNames.Get(id);
+            var name = ResolvePacketName(id);
             result[name] = new IngressPacketCounts
             {
                 Received = Interlocked.Read(ref _received[id]),
@@ -94,6 +96,17 @@ public sealed class IngressDiagnosticsTracker
     }
 
     public long HeaderFailedUnknownId => Interlocked.Read(ref _headerFailedNoId);
+
+    /// <summary>Cross-format packet-name resolver — same logic as Program.ResolvePacketName.</summary>
+    private string ResolvePacketName(byte packetId)
+    {
+        foreach (var p in _registry.All)
+        {
+            var name = p.GetPacketName(packetId);
+            if (!byte.TryParse(name, out _)) return name;
+        }
+        return packetId.ToString();
+    }
 }
 
 public sealed class IngressPacketCounts
