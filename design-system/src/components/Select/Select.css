@@ -1,0 +1,37 @@
+/* Select field (ported from the `.setting-row select` styling in wwwroot/css/app.css).
+   Standalone `.select-field` class so it can be used outside a setting row.
+   appearance:none + inline SVG chevron keeps the dark theme consistent. */
+.select-field {
+    width: 100%;
+    padding: 8px 36px 8px 12px;
+    background-color: var(--bg-tertiary);
+    background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 12 8' fill='none'><path d='M1 1.5L6 6.5L11 1.5' stroke='%237a8190' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'/></svg>");
+    background-repeat: no-repeat;
+    background-position: right 12px center;
+    background-size: 12px 8px;
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+    color: var(--color-text-primary);
+    font-size: 14px;
+    font-family: var(--font-mono);
+    transition: border-color var(--transition);
+    outline: none;
+    cursor: pointer;
+    -webkit-appearance: none;
+    -moz-appearance: none;
+    appearance: none;
+}
+
+.select-field:hover {
+    border-color: var(--color-border-strong, rgba(255, 255, 255, 0.18));
+}
+
+.select-field:focus {
+    border-color: var(--accent);
+    box-shadow: 0 0 0 3px var(--accent-glow);
+}
+
+.select-field option {
+    background: var(--bg-tertiary);
+    color: var(--color-text-primary);
+}

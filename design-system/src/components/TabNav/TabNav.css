@@ -1,0 +1,40 @@
+/* Tab navigation (ported from wwwroot/css/app.css) */
+.tab-nav {
+    display: inline-flex;
+    align-items: stretch;
+    gap: 4px;
+    height: 40px;
+    padding: 4px;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.04);
+    flex-shrink: 0;
+}
+
+.tab-btn {
+    display: inline-flex;
+    align-items: center;
+    padding: 0 20px;
+    background: transparent;
+    border: none;
+    border-radius: 6px;
+    color: var(--text-dim);
+    font-size: 14px;
+    font-weight: 600;
+    letter-spacing: 0.5px;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+
+.tab-btn:hover {
+    color: var(--color-text-secondary);
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.tab-btn.active {
+    background: var(--color-accent-primary);
+    color: #fff;
+}
+
+.tab-btn.hidden {
+    display: none;
+}

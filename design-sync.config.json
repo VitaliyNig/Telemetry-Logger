@@ -1,0 +1,9 @@
+{
+  "pkg": "@telemetry-logger/design-system",
+  "globalName": "TelemetryDS",
+  "shape": "storybook",
+  "storybookConfigDir": "design-system/.storybook",
+  "storybookStatic": ".design-sync/sb-reference",
+  "cssEntry": "dist/styles.css",
+  "buildCmd": "npm --prefix design-system run build"
+}

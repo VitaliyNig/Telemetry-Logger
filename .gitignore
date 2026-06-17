@@ -17,3 +17,13 @@ appsettings.user.json
 
 # Generated from assets/logo.svg at build time
 src/F1Telemetry.Host/wwwroot/logo.svg
+
+# design-sync: build artifacts / transient scratch / staged scripts / converter output.
+# (design-sync.config.json, .design-sync/NOTES.md, .design-sync/previews/, and
+#  .design-sync/overrides/ ARE committed — they carry the sync's durable state.)
+.design-sync/sb-reference/
+.design-sync/learnings/
+.design-sync/.cache/
+.design-sync/node_modules/
+.ds-sync/
+ds-bundle/
