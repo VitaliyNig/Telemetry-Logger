@@ -666,11 +666,13 @@ static class Program
                 // old fire-and-forget POST that didn't carry a body.
             }
 
-            // Token → "My Games" subfolder + human-readable name. Add new game years here
-            // when F1 27 etc. ship; everything else is data-driven.
+            // Token → "My Games" subfolder + human-readable name. F1 26 ships as the
+            // "2026 Season Pack" DLC for F1 25, not a standalone release, so it shares the
+            // F1 25 Documents folder — there is no separate "My Games\F1 26". A future
+            // standalone F1 27 would get its own folder entry here.
             var (myGamesFolder, displayName) = gameVersionToken switch
             {
-                "f1_26" => ("F1 26", "F1 26"),
+                "f1_26" => ("F1 25", "F1 25 (2026 Season Pack)"),
                 "f1_25" or "" => ("F1 25", "F1 25"),
                 _ => (string.Empty, string.Empty),
             };

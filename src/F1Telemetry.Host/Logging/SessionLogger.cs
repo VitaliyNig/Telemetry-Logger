@@ -325,6 +325,7 @@ public sealed class SessionLogger
                 T = header.SessionTime - entry.CurrentLapStartSessionTimeS[idx],
                 D = l.LapDistance,
                 X = m.WorldPositionX,
+                Y = m.WorldPositionY,
                 Z = m.WorldPositionZ,
             });
         }

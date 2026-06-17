@@ -2173,6 +2173,27 @@
         var container = document.createElement('div');
         container.className = 'history-driver-picker';
 
+        // Comparison limits: at most 3 laps per team and 6 laps total — the reference counts
+        // toward both. Keeps the chart/map/cards readable and within the colour-shade and
+        // dash distinguishability ceilings.
+        var MAX_COMPARE_PER_TEAM = 3;
+        var MAX_COMPARE_TOTAL = 6;
+        function teamIdOf(carIdx) {
+            var d = opts.drivers[carIdx];
+            return d && d.teamId != null ? String(d.teamId) : ('_' + carIdx);
+        }
+        function compareCounts() {
+            var total = 0, byTeam = {};
+            state.driverSelection.forEach(function (sel, key) {
+                if (!sel || sel.lap == null) return;
+                total++;
+                var src = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : key);
+                var tid = teamIdOf(src);
+                byTeam[tid] = (byTeam[tid] || 0) + 1;
+            });
+            return { total: total, byTeam: byTeam };
+        }
+
         function rowsSorted() {
             return Object.keys(opts.drivers || {}).sort(function (a, b) { return Number(a) - Number(b); });
         }
@@ -2230,6 +2251,9 @@
                         var pickedCar = Number(btn.dataset.car);
                         var pickedLap = Number(btn.dataset.lap);
                         if (isLapDuplicate(pickedCar, pickedLap)) return;
+                        var counts = compareCounts();
+                        if (counts.total >= MAX_COMPARE_TOTAL) return;
+                        if ((counts.byTeam[teamIdOf(pickedCar)] || 0) >= MAX_COMPARE_PER_TEAM) return;
                         var key = nextCompareSelectionKey();
                         state.driverSelection.set(key, { lap: pickedLap, ghost: false, sourceCarIdx: pickedCar, hidden: false });
                         render();
@@ -2244,6 +2268,11 @@
                 var d = opts.drivers[carIdx];
                 if (!d) {
                     panel.innerHTML = '<div class="tc-lap-empty">No driver data.</div>';
+                    panel.setAttribute('data-filled', '1');
+                    return;
+                }
+                if ((compareCounts().byTeam[teamIdOf(carIdx)] || 0) >= MAX_COMPARE_PER_TEAM) {
+                    panel.innerHTML = '<div class="tc-lap-empty">Max ' + MAX_COMPARE_PER_TEAM + ' laps per team — remove one to add another for this team.</div>';
                     panel.setAttribute('data-filled', '1');
                     return;
                 }
@@ -2329,9 +2358,13 @@
                         + '</div>'
                         + '</div>';
                 });
-                cards += '<button type="button" class="tc-lap-card tc-lap-card-add" id="tcAddLapCard">+ Add lap</button></div>';
+                var atTotalCap = compareCounts().total >= MAX_COMPARE_TOTAL;
+                cards += '<button type="button" class="tc-lap-card tc-lap-card-add" id="tcAddLapCard"'
+                    + (atTotalCap ? ' disabled title="Maximum ' + MAX_COMPARE_TOTAL + ' laps (reference included)"' : '')
+                    + '>+ Add lap</button></div>';
                 container.innerHTML = cards;
-                container.querySelector('#tcAddLapCard').addEventListener('click', openCompareLapModal);
+                var addBtn = container.querySelector('#tcAddLapCard');
+                if (addBtn && !addBtn.disabled) addBtn.addEventListener('click', openCompareLapModal);
                 container.querySelectorAll('.tc-lap-card[data-car]').forEach(function (card) {
                     card.addEventListener('click', function (ev) {
                         if (ev.target && ev.target.closest('[data-act]')) return;

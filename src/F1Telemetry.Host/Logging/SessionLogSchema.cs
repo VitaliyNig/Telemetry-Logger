@@ -56,6 +56,10 @@ public sealed class MotionSample
     public float T { get; set; }
     public float D { get; set; }
     public float X { get; set; }
+    /// <summary>World-space vertical position (elevation) in metres — drives the 3D track map.
+    /// Nullable so logs recorded before elevation capture deserialize as null (the 3D map then
+    /// falls back to the authored track-geometry elevation) rather than a misleading 0.</summary>
+    public float? Y { get; set; }
     public float Z { get; set; }
 }
 

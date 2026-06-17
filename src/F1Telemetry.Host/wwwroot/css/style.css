@@ -3691,18 +3691,6 @@ input.history-folder-path:focus {
     flex-shrink: 0;
 }
 
-.history-tag-game {
-    background: rgba(148, 163, 184, 0.14);
-    border-color: rgba(148, 163, 184, 0.32);
-    color: var(--color-text-secondary);
-}
-
-.history-tag-formula {
-    background: rgba(56, 189, 248, 0.12);
-    border-color: rgba(56, 189, 248, 0.32);
-    color: #7dd3fc;
-}
-
 .history-card-tags {
     display: flex;
     flex-wrap: wrap;
@@ -3718,6 +3706,42 @@ input.history-folder-path:focus {
     border: 1px solid var(--accent-brand-border);
     color: var(--accent-brand-hover);
     letter-spacing: 0.3px;
+}
+
+/* Category colours so a weekend's tags read at a glance. Declared after the base
+   rule and as double-class selectors so they win regardless of source order
+   (the previous single-class modifiers were silently overridden by .history-tag).
+   Meta tags: game year = neutral slate, formula/era = cyan. Session kinds each get
+   their own racing hue: practice = blue, qualifying = brand purple, race = red, TT = green. */
+.history-tag.history-tag-game {
+    background: rgba(148, 163, 184, 0.14);
+    border-color: rgba(148, 163, 184, 0.32);
+    color: var(--color-text-secondary);
+}
+.history-tag.history-tag-formula {
+    background: rgba(56, 189, 248, 0.12);
+    border-color: rgba(56, 189, 248, 0.32);
+    color: #7dd3fc;
+}
+.history-tag.history-tag-practice {
+    background: rgba(88, 166, 255, 0.12);
+    border-color: rgba(88, 166, 255, 0.34);
+    color: #79b8ff;
+}
+.history-tag.history-tag-qualifying {
+    background: var(--accent-brand-muted);
+    border-color: var(--accent-brand-border);
+    color: var(--accent-brand-hover);
+}
+.history-tag.history-tag-race {
+    background: rgba(248, 81, 73, 0.13);
+    border-color: rgba(248, 81, 73, 0.36);
+    color: #ff7b72;
+}
+.history-tag.history-tag-time_trial {
+    background: rgba(63, 185, 80, 0.13);
+    border-color: rgba(63, 185, 80, 0.34);
+    color: #56d364;
 }
 
 .history-card-date {
@@ -5377,12 +5401,35 @@ td.lap-cell__tyre { cursor: default; }
     display: flex;
     flex-direction: column;
     gap: 8px;
+    /* Cap the toolbar to the viewport and scroll internally so a long list of compare
+       laps / Top-Loss-Zones never pushes the page or runs off-screen. */
+    max-height: calc(100vh - 12px);
+    overflow-y: auto;
+    scrollbar-width: thin;
 }
 .tc-side-picker-host { min-width: 0; flex: 0 0 auto; }
 .tc-side-picker-host .history-driver-picker {
     min-width: 0;
     max-height: none;
 }
+/* COMPARE LAPS block: grows with content up to a share of the viewport height, then
+   scrolls internally. Capping it (rather than letting it grow unbounded) keeps the
+   View / Sectors / Channels / Display / Insights blocks reachable, and the viewport-
+   relative ceiling means it uses available height instead of a rigid pixel box. */
+.tc-side-picker-host .tc-lap-card-list {
+    max-height: clamp(160px, 42vh, 460px);
+    overflow-y: auto;
+    overflow-x: hidden;
+    scrollbar-width: thin;
+    padding-right: 3px;
+}
+.tc-side-picker-host .tc-lap-card-list::-webkit-scrollbar { width: 6px; }
+.tc-side-picker-host .tc-lap-card-list::-webkit-scrollbar-thumb {
+    background: var(--color-border-default);
+    border-radius: 999px;
+}
+/* The Add button stays a fixed size even when the list scrolls. */
+.tc-side-picker-host .tc-lap-card-add { flex: 0 0 auto; }
 .tc-side-toolbar { min-width: 0; flex: 0 0 auto; }
 
 .tc-main { grid-area: main; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
@@ -5399,6 +5446,171 @@ td.lap-cell__tyre { cursor: default; }
 .tc-layer { min-width: 0; }
 .tc-layer[data-priority="primary"] { gap: var(--tc-primary-gap); }
 .tc-layer[data-priority="secondary"] { gap: var(--tc-secondary-gap); opacity: 0.86; }
+
+/* Compare layout mode toggle (Charts | Map). */
+.tc-mode-toggle {
+    display: inline-flex;
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm, 4px);
+    overflow: hidden;
+}
+.tc-mode-toggle button {
+    flex: 0 0 auto;
+    min-width: 52px;
+    padding: 5px 12px;
+    border: none;
+    border-left: 1px solid var(--color-border-default);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    cursor: pointer;
+    transition: background var(--motion-fast, .15s), color var(--motion-fast, .15s);
+}
+.tc-mode-toggle button:first-child { border-left: none; }
+.tc-mode-toggle button:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
+.tc-mode-toggle button.active { background: var(--color-accent-primary); color: #fff; }
+
+/* Map-priority mode: the 3D-map rail becomes the hero column; charts shrink to a
+   secondary column. Pure grid-column reflow — DOM order is unchanged. */
+/* Map-priority mode (wide screens only): the 3D map becomes the centre hero, the YOU-vs-REF
+   card sits to its right, and the chart stack drops to a compact strip along the bottom.
+   `display: contents` promotes the charts / map / focus out of their .tc-main / .tc-rail
+   wrappers into the parent grid so they can be placed by area — no DOM changes, and Charts
+   mode is left completely untouched. */
+@media (min-width: 1201px) {
+    .tc-layout--map {
+        grid-template-columns: minmax(200px, 230px) minmax(0, 1fr) minmax(300px, 360px);
+        grid-template-rows: minmax(0, 1fr) auto;
+        grid-template-areas:
+            "side map    focus"
+            "side charts charts";
+    }
+    .tc-layout--map .tc-main,
+    .tc-layout--map .tc-rail { display: contents; }
+    .tc-layout--map .tc-layer-b { grid-area: charts; min-width: 0; max-height: 32vh; overflow-y: auto; opacity: 1; }
+    .tc-layout--map .tc-map { grid-area: map; }
+    .tc-layout--map .tc-focus { grid-area: focus; }
+    .tc-layout--map .tc-map3d { aspect-ratio: auto; height: min(72vh, 600px); }
+    /* The tools/insights column spans both rows; cap it and scroll internally so a long
+       Top Loss Zones list can't stretch the grid and open a gap between map and charts. */
+    .tc-layout--map .tc-side { align-self: start; max-height: calc(100vh - 96px); overflow-y: auto; }
+}
+
+/* Top bar: the Charts/Map mode toggle (right-aligned). The big running delta now lives as
+   an overlay inside the 3D map (.tc-map3d-delta), shown only in Map mode. */
+.tc-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: flex-end;
+    gap: 12px;
+    padding: 2px 4px 8px;
+}
+.tc-topbar .tc-mode-toggle { flex: 0 0 auto; }
+
+/* Big running delta pinned to the top of the 3D map stage (Map mode only). */
+.tc-map3d-delta {
+    position: absolute;
+    top: 8px;
+    left: 50%;
+    transform: translateX(-50%);
+    z-index: 4;
+    pointer-events: none;
+    padding: 4px 16px;
+    border-radius: 999px;
+    background: color-mix(in srgb, var(--color-bg-base) 60%, transparent);
+    backdrop-filter: blur(3px);
+    -webkit-backdrop-filter: blur(3px);
+    border: 1px solid color-mix(in srgb, var(--color-border-default) 60%, transparent);
+    font-family: var(--font-mono);
+    font-size: 30px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+    line-height: 1;
+    color: var(--text-dim);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+}
+.tc-map3d-delta[hidden] { display: none; }
+.tc-map3d-delta.is-ahead { color: #22c55e; }
+.tc-map3d-delta.is-behind { color: #ef4444; }
+.tc-map3d-delta.is-even { color: var(--color-text-secondary); }
+
+/* YOU vs REFERENCE instrument cards (focus panel). */
+.tc-readouts { display: flex; flex-direction: column; gap: 6px; }
+.tc-rd {
+    background: color-mix(in srgb, var(--color-bg-card) 82%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-border-default) 70%, transparent);
+    border-left: 3px solid var(--rd, #888);
+    border-radius: 8px;
+    padding: 7px 9px;
+}
+.tc-rd-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.tc-rd-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--rd, #888); flex: 0 0 auto; }
+.tc-rd-name { font-size: 12px; font-weight: 600; color: var(--color-text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-rd-tag { margin-left: auto; flex: 0 0 auto; font-size: 9px; font-weight: 700; letter-spacing: .5px; padding: 1px 5px; border-radius: 3px; background: var(--color-bg-elevated); color: var(--color-text-secondary); }
+.tc-rd-tag--ref { background: rgba(88,166,255,.16); color: #58a6ff; }
+.tc-rd-body { display: flex; align-items: center; gap: 10px; }
+.tc-rd-stats { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.tc-rd-spd b, .tc-rd-rpm b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--color-text-primary); }
+.tc-rd-spd b { font-size: 22px; line-height: 1; }
+.tc-rd-rpm b { font-size: 14px; }
+.tc-rd-spd span, .tc-rd-rpm span { font-size: 10px; color: var(--color-text-muted); margin-left: 4px; }
+.tc-rd-gear, .tc-rd-steer { display: flex; flex-direction: column; align-items: center; gap: 1px; flex: 0 0 auto; }
+.tc-rd-gear-num { fill: var(--color-text-primary); font-family: var(--font-mono); font-size: 18px; font-weight: 700; }
+.tc-rd-cap { font-size: 9px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .4px; }
+.tc-rd-pedals { display: flex; gap: 6px; margin-top: 7px; }
+.tc-rd-bar { position: relative; flex: 1; height: 14px; background: var(--color-bg-elevated); border-radius: 3px; overflow: hidden; }
+.tc-rd-bar-fill { position: absolute; top: 0; left: 0; bottom: 0; }
+.tc-rd-bar--thr .tc-rd-bar-fill { background: var(--throttle, #00d700); }
+.tc-rd-bar--brk .tc-rd-bar-fill { background: var(--brake, #e10600); }
+.tc-rd-bar-lbl { position: absolute; right: 4px; top: 0; line-height: 14px; font-size: 9px; font-family: var(--font-mono); color: var(--color-text-primary); }
+.tc-rd-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.tc-rd-chip { font-size: 9px; padding: 1px 5px; border-radius: 3px; background: var(--color-bg-elevated); color: var(--color-text-secondary); }
+.tc-rd-chip--drs.is-on { background: rgba(0,208,255,.18); color: #00d0ff; }
+
+.tc-lap-card-add:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Lap playback transport (scrubber + play/speed) — spans the bottom of the Compare view. */
+.tc-transport { display: flex; align-items: center; gap: 10px; padding: 8px 6px 2px; margin-top: 4px; }
+.tc-tp-btn {
+    flex: 0 0 auto;
+    width: 30px; height: 26px;
+    border: 1px solid var(--color-border-default);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    border-radius: var(--radius-sm, 4px);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+}
+.tc-tp-btn:hover { background: var(--color-bg-card-hover); }
+.tc-tp-btn.is-playing { background: var(--color-accent-primary); color: #fff; border-color: var(--color-accent-primary); }
+.tc-tp-scrub { flex: 1; min-width: 0; accent-color: var(--color-accent-primary); }
+.tc-tp-pos { flex: 0 0 auto; font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary); min-width: 56px; text-align: right; }
+.tc-tp-speed {
+    flex: 0 0 auto;
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm, 4px);
+    font-size: 11px;
+    padding: 3px 4px;
+}
+/* Marker sync toggle: Pos (same track position) | Gap (real elapsed-time gap). */
+.tc-tp-sync { display: inline-flex; flex: 0 0 auto; border: 1px solid var(--color-border-default); border-radius: var(--radius-sm, 4px); overflow: hidden; }
+.tc-tp-sync button {
+    border: none;
+    border-left: 1px solid var(--color-border-default);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    font-size: 11px; font-weight: 600;
+    padding: 3px 9px;
+    cursor: pointer;
+}
+.tc-tp-sync button:first-child { border-left: none; }
+.tc-tp-sync button:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
+.tc-tp-sync button.active { background: var(--color-accent-primary); color: #fff; }
 .tc-kpi-sticky {
     position: sticky;
     top: 0;
@@ -5457,6 +5669,70 @@ td.lap-cell__tyre { cursor: default; }
     gap: 6px;
     min-width: 0;
 }
+
+/* 3D track map (track3d.js) — square WebGL stage plus a one-line caption. */
+.tc-map3d {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    min-height: 200px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--color-bg-base) 60%, transparent);
+    touch-action: none;
+}
+.tc-map3d canvas { position: absolute; inset: 0; }
+.tc-map3d-caption {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--color-text-muted);
+    letter-spacing: 0.2px;
+}
+.tc-map3d-hint { white-space: nowrap; }
+/* Three-position overlay selector: DRS | hide (eye-off) | SM. */
+.tc-map3d-seg {
+    display: inline-flex;
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm, 4px);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.tc-map3d-seg button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    padding: 3px 9px;
+    border: none;
+    border-left: 1px solid var(--color-border-default);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    cursor: pointer;
+    transition: background var(--motion-fast, .15s), color var(--motion-fast, .15s);
+}
+.tc-map3d-seg button:first-child { border-left: none; }
+.tc-map3d-seg button:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
+.tc-map3d-seg button.active { background: var(--color-accent-primary); color: #fff; }
+.tc-map3d-seg button svg { display: block; }
+.tc-map3d-ctrls { display: inline-flex; align-items: center; gap: 8px; }
+.tc-map3d-follow {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 22px;
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+}
+.tc-map3d-follow:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
+.tc-map3d-follow.active { background: var(--color-accent-primary); color: #fff; border-color: var(--color-accent-primary); }
+.tc-map3d-follow svg { display: block; }
 
 .tc-sector-badges {
     display: flex;
@@ -5953,19 +6229,25 @@ td.lap-cell__tyre { cursor: default; }
 }
 
 .tc-axis-tick {
+    position: absolute;
+    left: 5px;
     font-size: 9px;
     font-family: var(--font-mono, 'Courier New', monospace);
-    fill: var(--text-dim);
+    color: var(--text-dim);
     opacity: 0.85;
     pointer-events: none;
+    white-space: nowrap;
 }
 
 .tc-plot-title {
+    position: absolute;
+    left: 8px;
+    bottom: 3px;
     font-size: 11px;
     font-weight: 800;
     letter-spacing: 0.75px;
     text-transform: uppercase;
-    fill: var(--tc-metric-color);
+    color: var(--tc-metric-color);
     pointer-events: none;
 }
 
@@ -6493,26 +6775,31 @@ td.lap-cell__tyre { cursor: default; }
 .tc-ers-mode-2 { fill: #ffd700; opacity: 0.22; }
 .tc-ers-mode-3 { fill: #e10600; opacity: 0.25; }
 .tc-ers-mode-tag {
+    position: absolute;
+    transform: translateX(-100%);
     font-size: 9px;
     font-weight: 700;
-    fill: var(--text-secondary);
+    color: var(--text-secondary);
     font-family: var(--font-mono, 'Courier New', monospace);
     letter-spacing: 0.5px;
     pointer-events: none;
+    white-space: nowrap;
 }
 
 /* DRS row: one horizontal track per driver, fill colour set inline (team colour).
    The `fill` here is the fallback when JS hasn't put a team colour on the rect. */
 .tc-drs-block { fill: var(--drs); opacity: 0.80; }
 .tc-drs-track-label {
+    position: absolute;
+    left: 3px;
+    transform: translateY(-50%);
     font-size: 8px;
     font-family: var(--font-mono, 'Courier New', monospace);
     font-weight: 700;
-    fill: rgba(255, 255, 255, 0.85);
-    paint-order: stroke;
-    stroke: rgba(0, 0, 0, 0.55);
-    stroke-width: 2;
+    color: rgba(255, 255, 255, 0.9);
+    text-shadow: 0 0 2px rgba(0, 0, 0, 0.7), 0 0 2px rgba(0, 0, 0, 0.7);
     pointer-events: none;
+    white-space: nowrap;
 }
 
 @media (max-width: 1200px) {

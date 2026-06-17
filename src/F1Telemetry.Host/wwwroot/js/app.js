@@ -125,6 +125,24 @@
             });
     }
 
+    // Coarse session kind (practice / qualifying / race / time_trial) used to colour-code
+    // the weekend tags. Classifies off the file-name slug (q1, race, time_trial, fp1, …),
+    // with a typeName fallback for synthesized headers. Sprint shootouts count as
+    // qualifying, matching the session-type ranges in historyDetail.js.
+    function historyTagSessionKind(slug, typeName) {
+        var s = String(slug || '').toLowerCase();
+        if (/^fp\d/.test(s) || s.indexOf('practice') !== -1) return 'practice';
+        if (/^q\d/.test(s) || s.indexOf('quali') !== -1 || s.indexOf('shootout') !== -1 || s === 'osq' || s === 'oss') return 'qualifying';
+        if (/^race/.test(s)) return 'race';
+        if (s === 'time_trial' || s === 'timetrial' || /^tt/.test(s)) return 'time_trial';
+        var n = String(typeName || '').toLowerCase();
+        if (n.indexOf('practice') !== -1) return 'practice';
+        if (n.indexOf('quali') !== -1 || n.indexOf('shootout') !== -1) return 'qualifying';
+        if (n.indexOf('time trial') !== -1) return 'time_trial';
+        if (n.indexOf('race') !== -1 || n.indexOf('sprint') !== -1) return 'race';
+        return '';
+    }
+
     function renderHistorySessions() {
         var container = document.getElementById('historySessionList');
         if (!container) return;
@@ -175,7 +193,9 @@
             var firstDate = '';
             if (w.sessions && w.sessions.length > 0) {
                 w.sessions.forEach(function (s) {
-                    tags += '<span class="history-tag">' + escapeHtml(s.typeName || s.slug) + '</span>';
+                    var kind = historyTagSessionKind(s.slug, s.typeName);
+                    var kindCls = kind ? ' history-tag-' + kind : '';
+                    tags += '<span class="history-tag history-tag-session' + kindCls + '">' + escapeHtml(s.typeName || s.slug) + '</span>';
                 });
                 firstDate = formatSessionDate(w.sessions[0].savedAt);
             }

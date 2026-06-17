@@ -1,0 +1,23 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "telemetry-dev",
+      "runtimeExecutable": "dotnet",
+      "runtimeArgs": [
+        "run",
+        "--project",
+        "src/F1Telemetry.Host",
+        "--",
+        "--App:HistoryFolder=D:\\Telemetry-Logger\\publish-win\\Logs"
+      ],
+      "port": 5000
+    },
+    {
+      "name": "telemetry-published",
+      "runtimeExecutable": "D:\\Telemetry-Logger\\publish-win\\Telemetry Logger.exe",
+      "runtimeArgs": [],
+      "port": 5000
+    }
+  ]
+}

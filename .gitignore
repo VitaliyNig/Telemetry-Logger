@@ -10,5 +10,10 @@ appsettings.user.json
 # Throwaway packet-inspection scripts used while reverse-engineering the UDP formats
 /check_*.py
 
+# Raw extracted game track files — source for tools/convert_track_geometry.py. The
+# generated per-track JSON under wwwroot/data/track-geometry is what ships; the bulky
+# raw XML (1000+ files) stays local.
+/docs/tracks/
+
 # Generated from assets/logo.svg at build time
 src/F1Telemetry.Host/wwwroot/logo.svg
