@@ -1,0 +1,82 @@
+/* Connection pill (ported from wwwroot/css/style.css) */
+.connection-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: 40px;
+    padding: 0 var(--space-4);
+    border-radius: 10px;
+    border: 1px solid var(--color-border-default);
+    background: var(--color-bg-card);
+    color: var(--color-text-secondary);
+    font-size: 13px;
+    font-weight: 500;
+    flex-shrink: 0;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.18);
+    transition: background var(--motion-slow), border-color var(--motion-slow), color var(--motion-slow);
+}
+
+.connection-pill__dot {
+    position: relative;
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: var(--accent-orange);
+    flex-shrink: 0;
+}
+
+.connection-pill__dot::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    background: inherit;
+    opacity: 0;
+}
+
+.connection-pill[data-state="connecting"] {
+    background: rgba(255, 140, 0, 0.12);
+    border-color: rgba(255, 140, 0, 0.32);
+    color: var(--color-semantic-warning);
+}
+.connection-pill[data-state="connecting"] .connection-pill__dot { background: var(--accent-orange); }
+.connection-pill[data-state="connecting"] .connection-pill__dot::before {
+    animation: pulse-ring 1.5s ease-out infinite;
+}
+
+.connection-pill[data-state="reconnecting"] {
+    background: rgba(255, 215, 0, 0.12);
+    border-color: rgba(255, 215, 0, 0.32);
+    color: var(--accent-yellow);
+}
+.connection-pill[data-state="reconnecting"] .connection-pill__dot { background: var(--accent-yellow); }
+.connection-pill[data-state="reconnecting"] .connection-pill__dot::before {
+    animation: pulse-ring 1s ease-out infinite;
+}
+
+.connection-pill[data-state="connected"] {
+    background: rgba(0, 215, 0, 0.10);
+    border-color: rgba(0, 215, 0, 0.28);
+    color: var(--accent-green);
+}
+.connection-pill[data-state="connected"] .connection-pill__dot {
+    background: var(--accent-green);
+    box-shadow: 0 0 0 3px rgba(0, 215, 0, 0.22);
+}
+
+.connection-pill[data-state="offline"] {
+    background: rgba(225, 6, 0, 0.08);
+    border-color: rgba(225, 6, 0, 0.25);
+    color: var(--semantic-red);
+}
+.connection-pill[data-state="offline"] .connection-pill__dot { background: var(--semantic-red); }
+
+@keyframes pulse-ring {
+    0%   { transform: scale(1);   opacity: 0.6; }
+    80%  { transform: scale(2.6); opacity: 0; }
+    100% { transform: scale(2.6); opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .connection-pill__dot::before { animation: none; }
+}

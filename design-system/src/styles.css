@@ -1,0 +1,12 @@
+/* Single import closure for the design system.
+   tokens.css must come first so component CSS can resolve every var(). */
+@import "./tokens.css";
+
+@import "./components/Button/Button.css";
+@import "./components/ToggleSwitch/ToggleSwitch.css";
+@import "./components/TabNav/TabNav.css";
+@import "./components/ConnectionPill/ConnectionPill.css";
+@import "./components/Select/Select.css";
+@import "./components/Badge/Badge.css";
+@import "./components/SettingRow/SettingRow.css";
+@import "./components/WidgetShell/WidgetShell.css";

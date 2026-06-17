@@ -1,0 +1,59 @@
+/* Dashboard widget shell (ported from wwwroot/css/style.css) */
+.widget-wrapper {
+    display: flex;
+    flex-direction: column;
+    height: 100%;
+    overflow: hidden;
+}
+
+.widget-header {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+    padding: 8px;
+    background: rgba(255, 255, 255, 0.03);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.widget-drag-handle {
+    cursor: grab;
+    color: var(--text-dim);
+    font-size: 14px;
+    user-select: none;
+    line-height: 1;
+}
+
+.widget-drag-handle:active { cursor: grabbing; }
+
+.widget-header-title {
+    flex: 1;
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 1.5px;
+    color: var(--color-text-secondary);
+    font-weight: 600;
+}
+
+.widget-close-btn {
+    background: none;
+    border: none;
+    color: var(--text-dim);
+    font-size: 14px;
+    cursor: pointer;
+    padding: 0 4px;
+    line-height: 1;
+    border-radius: 3px;
+    transition: color 0.15s, background 0.15s;
+}
+
+.widget-close-btn:hover {
+    color: var(--accent-brand);
+    background: var(--accent-brand-muted);
+}
+
+.widget-body {
+    flex: 1;
+    overflow: auto;
+    min-height: 0;
+}
