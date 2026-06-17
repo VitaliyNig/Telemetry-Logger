@@ -1,9 +1,15 @@
 {
+  "projectId": "2601881a-868d-466e-b712-911d3495d17d",
   "pkg": "@telemetry-logger/design-system",
   "globalName": "TelemetryDS",
   "shape": "storybook",
   "storybookConfigDir": "design-system/.storybook",
   "storybookStatic": ".design-sync/sb-reference",
   "cssEntry": "dist/styles.css",
-  "buildCmd": "npm --prefix design-system run build"
+  "buildCmd": "npm --prefix design-system run build",
+  "readmeHeader": ".design-sync/conventions.md",
+  "overrides": {
+    "SettingRow": { "cardMode": "column" },
+    "TabNav": { "cardMode": "column" }
+  }
 }
