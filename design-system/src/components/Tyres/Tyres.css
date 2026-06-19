@@ -1,0 +1,139 @@
+.tyre-widget { display: flex; flex-direction: column; min-height: 0; }
+
+.tyres-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: clamp(4px, 1.2vw, 12px);
+    flex: 1;
+    min-height: 0;
+}
+
+.tc {
+    position: relative;
+    overflow: hidden;
+    border-radius: 6px;
+    border: 2px solid var(--border);
+    background: rgba(255,255,255,0.03);
+    display: flex;
+    flex-direction: column;
+    transition: border-color 0.3s, box-shadow 0.3s;
+}
+
+.tc.tc-blister-risk {
+    animation: tcBlisterPulse 1.2s ease-in-out infinite;
+}
+
+@keyframes tcBlisterPulse {
+    0%, 100% { box-shadow: 0 0 8px rgba(239,68,68,0.45); }
+    50%      { box-shadow: 0 0 16px rgba(239,68,68,0.85); }
+}
+
+.tc-fill {
+    position: absolute;
+    bottom: -1px;
+    left: -1px;
+    right: -1px;
+    height: 100%;
+    transition: height 0.5s ease, background 0.4s;
+    pointer-events: none;
+    z-index: 0;
+}
+
+.tc-body {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    flex: 1;
+    padding: clamp(4px, 1vw, 12px);
+    gap: clamp(1px, 0.4vw, 4px);
+}
+
+.tc-temps {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    flex-wrap: nowrap;
+}
+
+.tc-sep {
+    color: rgba(255,255,255,0.15);
+    font-size: clamp(10px, 1.2vw, 14px);
+    font-weight: 300;
+    user-select: none;
+    margin: 0 1px;
+}
+
+.tc-ico {
+    width: clamp(8px, 1.2vw, 12px);
+    height: clamp(8px, 1.2vw, 12px);
+    flex-shrink: 0;
+}
+
+.tc-tv {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: clamp(11px, 1.6vw, 16px);
+}
+
+.tc-wear {
+    font-family: var(--font-mono);
+    font-weight: 800;
+    font-size: clamp(18px, 3.5vw, 32px);
+    color: #fff;
+    line-height: 1.1;
+}
+
+.tc-info {
+    display: flex;
+    gap: clamp(4px, 0.8vw, 8px);
+    font-family: var(--font-mono);
+    font-size: clamp(9px, 1.1vw, 12px);
+    color: var(--color-text-secondary);
+}
+
+.tc-psi {
+    font-family: var(--font-mono);
+    font-size: clamp(8px, 1vw, 11px);
+    color: var(--color-text-secondary);
+}
+
+.tc-lbl {
+    position: absolute;
+    font-size: clamp(8px, 1vw, 11px);
+    font-weight: 400;
+    color: rgba(255,255,255,0.2);
+    letter-spacing: 0.5px;
+    z-index: 1;
+    pointer-events: none;
+}
+.tc-lbl-FL { bottom: 3px; right: 5px; }
+.tc-lbl-FR { bottom: 3px; left: 5px; }
+.tc-lbl-RL { top: 3px; right: 5px; }
+.tc-lbl-RR { top: 3px; left: 5px; }
+
+.tyre-info-row {
+    display: flex;
+    align-items: center;
+    gap: clamp(8px, 1vw, 12px);
+    padding: clamp(4px, 0.6vw, 8px) 0 0;
+    font-size: clamp(10px, 1.2vw, 13px);
+    font-family: var(--font-mono);
+    flex-shrink: 0;
+    flex-wrap: wrap;
+}
+
+.ti-dot {
+    width: clamp(10px, 1.2vw, 14px);
+    height: clamp(10px, 1.2vw, 14px);
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: var(--text-dim);
+}
+
+.ti-name { font-weight: 700; color: var(--text-primary); }
+.ti-range { color: var(--color-text-secondary); }
+.ti-age { color: var(--text-dim); margin-left: auto; }

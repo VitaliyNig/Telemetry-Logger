@@ -1,0 +1,522 @@
+.lt-container { display: flex; flex-direction: column; gap: 12px; padding: 4px; }
+
+.lt-toolbar { display: flex; justify-content: flex-end; flex-wrap: wrap; gap: 8px; }
+
+.lt-toolbar--tt { justify-content: flex-start; }
+
+.lt-tt-hint {
+    margin: 0;
+    max-width: 52rem;
+    font-size: 12px;
+    line-height: 1.4;
+    color: var(--color-text-secondary);
+}
+
+/* Pivot lap grid: rows = laps, columns = drivers. */
+
+/* Horizontal-scroll shadow hints: solid "covers" ride along with the content
+   (background-attachment: local) and hide the fixed shadow bands underneath
+   until the user scrolls away from that edge. */
+.lap-grid-wrap {
+    width: 100%;
+    overflow-x: auto;
+    overflow-y: auto;
+    max-height: calc(100vh - 240px);
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    background-color: var(--bg-card);
+    background-image:
+        linear-gradient(to right, var(--bg-card) 30%, rgba(20, 22, 28, 0)),
+        linear-gradient(to right, rgba(20, 22, 28, 0), var(--bg-card) 70%),
+        linear-gradient(to right, rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0)),
+        linear-gradient(to left,  rgba(0, 0, 0, 0.55), rgba(0, 0, 0, 0));
+    background-repeat: no-repeat;
+    background-position: left center, right center, left center, right center;
+    background-size: 32px 100%, 32px 100%, 14px 100%, 14px 100%;
+    background-attachment: local, local, scroll, scroll;
+}
+
+/* Use dvh where supported so mobile URL-bar toggling doesn't clip the table. */
+@supports (max-height: 100dvh) {
+    .lap-grid-wrap { max-height: calc(100dvh - 240px); }
+}
+
+.lap-grid {
+    display: table;
+    width: max-content;
+    min-width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    color: var(--text-primary);
+}
+
+.lap-grid__driver-th {
+    min-width: 200px;
+    max-width: 240px;
+    padding: 8px 10px;
+    background: var(--color-bg-header);
+    backdrop-filter: blur(4px);
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+    border-top: 3px solid #9aa0a6;
+    position: sticky;
+    top: 0;
+    z-index: 2;
+    text-align: left;
+    vertical-align: middle;
+}
+
+.lap-grid__driver-name {
+    font-family: var(--font-sans);
+    font-weight: 600;
+    font-size: 13px;
+    color: var(--text-primary);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.lap-grid__driver-pb {
+    font-size: 11px;
+    color: var(--text-dim);
+    margin-top: 2px;
+}
+
+.lap-grid__lap-th {
+    min-width: 48px;
+    width: 48px;
+    padding: 6px 8px;
+    background: var(--color-bg-header);
+    color: var(--text-dim);
+    font-weight: 600;
+    font-size: 11px;
+    text-align: center;
+    position: sticky;
+    left: 0;
+    z-index: 1;
+    border-bottom: 1px solid var(--border);
+    border-right: 1px solid var(--border);
+}
+
+.lap-grid__lap-th--head {
+    top: 0;
+    z-index: 3;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.lap-grid tbody tr.lap-row:hover { background: rgba(255, 255, 255, 0.02); }
+
+.lap-row--rf     { background: rgba(225, 6, 0, 0.12); }
+.lap-row--sc     { background: rgba(255, 140, 0, 0.10); }
+.lap-row--vsc    { background: rgba(255, 215, 0, 0.08); }
+.lap-row--yellow { background: rgba(255, 215, 0, 0.05); }
+
+.lap-cell {
+    padding: 6px 8px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+    vertical-align: middle;
+    text-align: center;
+}
+
+/* Draw a heavier divider on the LAST sub-column of each driver group to
+   visually separate drivers without boxing every sub-column. */
+.lap-grid tbody td.lap-sub--last,
+.lap-grid thead th.lap-grid__sub-th--last {
+    border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Per sub-column widths. Combine with media-queries below for smaller viewports. */
+.lap-sub--time    { min-width: 72px; text-align: left; }
+/* sectors/wear/perf use the same padding so their inner stretched containers
+   share an equal margin from the cell border (and from each other inside Wear). */
+.lap-sub--sectors { min-width: 62px; padding: 3px; border-left: 1px solid rgba(255, 255, 255, 0.04); height: 1px; }
+.lap-sub--wear    { min-width: 80px; padding: 3px; border-left: 1px solid rgba(255, 255, 255, 0.04); height: 1px; }
+.lap-sub--delta   { min-width: 56px; padding-left: 4px; padding-right: 4px; border-left: 1px solid rgba(255, 255, 255, 0.04); }
+.lap-sub--perf    { min-width: 62px; padding: 3px; border-left: 1px solid rgba(255, 255, 255, 0.04); height: 1px; }
+.lap-sub--tt_delta { min-width: 56px; padding-left: 4px; padding-right: 4px; border-left: 1px solid rgba(255, 255, 255, 0.04); }
+
+.lap-cell--empty { color: var(--text-dim); font-family: var(--font-mono); }
+
+.lap-cell__time {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 600;
+    white-space: nowrap;
+}
+
+.lap-cell__time--sb       { color: var(--accent-brand); }
+.lap-cell__time--pb       { color: var(--accent-green); }
+.lap-cell__time--invalid  { color: var(--semantic-red); text-decoration: line-through; opacity: 0.75; }
+
+.lap-cell__tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 3px;
+}
+
+.lap-tag {
+    display: inline-block;
+    padding: 1px 5px;
+    font-family: var(--font-sans);
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.3px;
+    border-radius: 3px;
+    color: #000;
+    line-height: 1.4;
+}
+
+.lap-tag--pit    { background: var(--accent-blue); color: #fff; }
+.lap-tag--out    { background: #14b8a6; color: #04201c; }
+.lap-tag--sc     { background: var(--accent-orange); color: #fff; }
+.lap-tag--vsc    { background: var(--accent-yellow); color: #000; }
+.lap-tag--rf     { background: var(--semantic-red); color: #fff; }
+.lap-tag--yellow { background: rgba(255, 215, 0, 0.55); color: #000; }
+.lap-tag--blue   { background: var(--accent-blue); color: #fff; }
+
+/* Second header row (sub-column labels). Sits right below the driver names and
+   stays sticky along with them while the body scrolls vertically. */
+.lap-grid__sub-th {
+    position: sticky;
+    top: 48px;
+    z-index: 2;
+    background: var(--color-bg-header);
+    backdrop-filter: blur(4px);
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    font-weight: 600;
+    font-size: 9px;
+    letter-spacing: 0.3px;
+    text-transform: uppercase;
+    padding: 4px 6px;
+    text-align: center;
+    border-bottom: 1px solid var(--border);
+}
+.lap-grid__sub-th--time { text-align: left; padding-left: 8px; }
+.lap-grid__sub-th--sectors { border-left: 1px solid rgba(255, 255, 255, 0.04); }
+.lap-grid__sub-th--wear { border-left: 1px solid rgba(255, 255, 255, 0.04); }
+.lap-grid__sub-th--delta { border-left: 1px solid rgba(255, 255, 255, 0.04); }
+.lap-grid__sub-th--perf { border-left: 1px solid rgba(255, 255, 255, 0.04); }
+.lap-grid__sub-th--tt_delta { border-left: 1px solid rgba(255, 255, 255, 0.04); }
+
+/* Delta column */
+.lap-delta {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    padding: 1px 5px;
+    border-radius: 3px;
+    display: inline-block;
+    min-width: 44px;
+    text-align: center;
+}
+.lap-delta--ref        { background: var(--accent-brand); color: #fff; letter-spacing: 0.5px; }
+.lap-delta--ref--dirty { border-bottom: 1px dashed rgba(255, 255, 255, 0.5); }
+.lap-delta--faster     { color: var(--accent-green); }
+.lap-delta--neutral    { color: var(--color-text-secondary); }
+.lap-delta--warn       { color: var(--color-semantic-warning); }
+.lap-delta--bad        { color: var(--semantic-red); font-weight: 700; }
+.lap-delta--outlap     { color: var(--text-dim); }
+
+/* Performance column — single badge stretched to fill the cell.
+   Background colour is interpolated between light grey-blue (0%) and brand purple (100%)
+   in JS (see perfColorFor). */
+.lap-sub--perf {
+    line-height: 1.2;
+    white-space: nowrap;
+}
+.lap-perf-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+    padding: 2px 6px;
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    border-radius: 3px;
+    color: #fff;
+}
+
+/* Perf cells on pit/SC/VSC laps where the metric is not representative. */
+.lap-cell--muted .lap-perf-badge { opacity: 0.4; }
+
+.lap-cell__sectors {
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.lap-sector {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 0;
+    min-height: 14px;
+    padding: 1px 5px;
+    text-align: center;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-primary);
+    white-space: nowrap;
+}
+
+.lap-sector--sb    { background: var(--accent-brand); color: #fff; font-weight: 700; }
+.lap-sector--pb    { background: var(--accent-green);  color: #000; font-weight: 700; }
+.lap-sector--empty { background: transparent; color: var(--text-dim); }
+
+/* The wear <td> carries .lap-cell__tyre so the hover popup handler still finds it;
+   an inner div handles the flex layout so we don't rely on display:flex-on-td. */
+td.lap-cell__tyre { cursor: default; }
+.lap-cell__wear-inner {
+    display: flex;
+    align-items: stretch;
+    justify-content: stretch;
+    gap: 3px;
+    width: 100%;
+    height: 100%;
+    box-sizing: border-box;
+}
+
+.wear-badge {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex: 1 1 0;
+    min-width: 0;
+    min-height: 18px;
+    border-radius: 4px;
+    font-size: 11px;
+    font-weight: 700;
+    color: #000;
+}
+
+.tyre-popup {
+    position: fixed;
+    padding: 8px 10px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.45);
+    z-index: 9999;
+    min-width: 140px;
+    pointer-events: none;
+}
+
+.tyre-popup__title {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text-primary);
+    margin-bottom: 6px;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.tyre-popup__age {
+    font-weight: 400;
+    color: var(--text-dim);
+    text-transform: none;
+    letter-spacing: 0;
+}
+
+.tyre-popup__grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 4px 10px;
+}
+
+.tyre-popup__cell {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    font-family: var(--font-mono);
+    font-size: 11px;
+}
+
+.tyre-popup__lbl { color: var(--text-dim); font-weight: 600; }
+.tyre-popup__val { color: var(--text-primary); }
+
+.lap-cell--invalid .lap-sector { opacity: 0.7; }
+
+.lt-virtual-grid {
+    width: 100%;
+    max-width: 560px;
+    flex-shrink: 0;
+    background: var(--color-bg-header);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md);
+    overflow: hidden;
+}
+
+.lt-virtual-title {
+    padding: 10px 14px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+}
+
+.lt-virtual-table-wrap {
+    overflow-x: auto;
+}
+
+.lt-virtual-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.lt-virtual-table th {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    background: var(--color-bg-header);
+    white-space: nowrap;
+}
+
+.lt-virtual-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+}
+
+.lt-virtual-row {
+    transition: background var(--motion-fast);
+    border-left: 3px solid transparent;
+    background: var(--color-bg-card);
+}
+
+.lt-virtual-row:hover {
+    background: var(--color-bg-elevated);
+}
+
+.lt-virtual-row--leader {
+    background: rgba(155, 63, 245, 0.08);
+}
+
+.lt-virtual-row--leader:hover {
+    background: rgba(155, 63, 245, 0.14);
+}
+
+.lt-virtual-cell--pos {
+    width: 44px;
+    text-align: center;
+}
+
+.lt-virtual-pos {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-primary);
+}
+
+.lt-virtual-row--leader .lt-virtual-pos {
+    color: var(--color-accent-primary);
+}
+
+.lt-virtual-cell--driver {
+    font-weight: 600;
+    color: var(--text-primary);
+}
+
+.lt-virtual-cell--time {
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.lt-virtual-cell--delta {
+    white-space: nowrap;
+}
+
+.lt-virtual-delta-time {
+    font-family: var(--font-mono);
+}
+
+.lt-virtual-delta-time--faster {
+    color: var(--accent-green);
+}
+
+.lt-virtual-delta-time--slower {
+    color: var(--semantic-red);
+}
+
+.delta-up   { color: var(--accent-green); font-weight: 700; }
+.delta-down { color: var(--semantic-red); font-weight: 700; }
+.delta-same { color: var(--text-dim); }
+
+@media (max-width: 960px) {
+    .lap-grid-wrap { max-height: calc(100vh - 200px); }
+    @supports (max-height: 100dvh) {
+        .lap-grid-wrap { max-height: calc(100dvh - 200px); }
+    }
+    .lap-grid__driver-th { padding: 6px 8px; }
+    .lap-grid__driver-name { font-size: 12px; }
+    .lap-grid__driver-pb { font-size: 10px; }
+    .lap-grid__sub-th { font-size: 8px; padding: 3px 4px; top: 44px; }
+    .lap-sub--time    { min-width: 58px; }
+    .lap-sub--sectors { min-width: 52px; }
+    .lap-sub--wear    { min-width: 70px; }
+    .lap-sub--delta   { min-width: 46px; }
+    .lap-sub--perf    { min-width: 54px; }
+    .lap-cell__time   { font-size: 12px; }
+    .lap-cell__sectors { font-size: 10px; min-width: 48px; }
+    .lap-delta        { font-size: 11px; min-width: 38px; }
+    .lap-perf-badge   { font-size: 9px; padding: 1px 4px; }
+    .lt-virtual-grid { max-width: 100%; }
+    .lt-virtual-title { padding: 8px 12px; font-size: 10px; }
+    .lt-virtual-table th,
+    .lt-virtual-table td { padding: 6px 8px; font-size: 12px; }
+    .lt-virtual-pos { font-size: 12px; }
+}
+
+@media (max-width: 600px) {
+    .lt-container { gap: 8px; padding: 0; }
+    .lap-grid-wrap {
+        max-height: calc(100vh - 180px);
+        /* Simpler gradient on phone: just an inner box-shadow edge hint. */
+        background-image: none;
+        box-shadow: inset 8px 0 10px -10px rgba(0, 0, 0, 0.6), inset -8px 0 10px -10px rgba(0, 0, 0, 0.6);
+    }
+    @supports (max-height: 100dvh) {
+        .lap-grid-wrap { max-height: calc(100dvh - 180px); }
+    }
+    .lap-grid { font-size: 11px; }
+    .lap-grid__driver-th { padding: 5px 6px; }
+    .lap-grid__driver-name { font-size: 11px; }
+    .lap-grid__driver-pb { font-size: 9px; }
+    .lap-grid__lap-th { min-width: 34px; width: 34px; padding: 4px 4px; font-size: 10px; }
+    .lap-grid__sub-th { font-size: 8px; padding: 2px 3px; top: 40px; }
+    .lap-sub--time    { min-width: 50px; }
+    .lap-sub--sectors { min-width: 44px; }
+    .lap-sub--wear    { min-width: 60px; }
+    .lap-sub--delta   { min-width: 40px; }
+    .lap-sub--perf    { min-width: 46px; }
+    .lap-cell__time   { font-size: 11px; }
+    .lap-cell__sectors { font-size: 9px; min-width: 40px; }
+    .lap-sector { padding: 1px 3px; }
+    .lap-tag { font-size: 8px; padding: 1px 4px; }
+    .lap-delta { font-size: 10px; min-width: 34px; padding: 1px 3px; }
+    .lap-perf-badge { font-size: 7px; padding: 0 3px; }
+    .lt-virtual-title { padding: 6px 10px; font-size: 10px; }
+    .lt-virtual-table { font-size: 11px; }
+    .lt-virtual-table th,
+    .lt-virtual-table td { padding: 5px 6px; }
+    .lt-virtual-pos { font-size: 11px; }
+}

@@ -1,0 +1,85 @@
+/* Packet Stats (Debug tab, left column). `.muted` is shared with DebugConsole/DrsZonesTable. */
+.debug-left {
+    width: 320px;
+    flex-shrink: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.debug-left h3 {
+    font-size: 15px;
+    font-weight: 600;
+    margin-bottom: 4px;
+}
+
+.packet-stats {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md);
+    padding: 16px;
+    flex: 1;
+    overflow-y: auto;
+}
+
+.stat-total {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding-bottom: 12px;
+    margin-bottom: 12px;
+    border-bottom: 1px solid var(--border);
+}
+
+/* .stat-label / .stat-value are intentionally not redefined here: the original app.css
+   versions (13px/20px) are shadowed by style.css's bare .stat-label/.stat-value rules
+   (10px uppercase / 16px, from StatBox.css here) because style.css loads after app.css —
+   so the StatBox styling is what actually renders in the live Debug tab today. */
+
+.stat-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.stat-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px;
+    background: var(--bg-tertiary);
+    border-radius: var(--radius-sm);
+    font-size: 13px;
+}
+
+.stat-item-name {
+    color: var(--color-text-primary);
+    font-family: var(--font-mono);
+}
+
+.stat-item-count {
+    color: var(--blue);
+    font-weight: 600;
+    font-family: var(--font-mono);
+}
+
+.debug-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.debug-actions .btn {
+    flex: 1;
+}
+
+.muted {
+    color: var(--color-text-muted);
+    font-style: italic;
+    font-size: 13px;
+}
+
+@media (max-width: 768px) {
+    .debug-left {
+        width: 100%;
+    }
+}

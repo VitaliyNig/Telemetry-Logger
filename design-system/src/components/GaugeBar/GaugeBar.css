@@ -1,0 +1,25 @@
+.gauge-bar {
+    position: relative;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    height: clamp(6px, 1.8cqb, 12px);
+}
+
+.gauge-bar-thin {
+    height: clamp(4px, 1.0cqb, 7px);
+}
+
+.gauge-bar-fill {
+    height: 100%;
+    border-radius: var(--radius-sm);
+    transition: width var(--motion-normal), background var(--motion-slow);
+}
+
+.gauge-bar-safe     { background: var(--safe); }
+.gauge-bar-warning  { background: var(--warning); }
+.gauge-bar-danger   { background: var(--semantic-red); }
+.gauge-bar-throttle { background: var(--throttle); }
+.gauge-bar-brake    { background: var(--brake); }
+.gauge-bar-ers      { background: var(--ers); }
+.gauge-bar-drs      { background: var(--drs); }

@@ -1,0 +1,418 @@
+.telemetry-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+}
+
+.rpm-strip {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.rpm-bar-bg {
+    position: relative;
+    height: 10px;
+    border-radius: 999px;
+    overflow: hidden;
+}
+
+/* Grey track; fill: green 0-11k, gradient 11k-12k, red 12k-max (see component vs max RPM) */
+.rpm-bar-track {
+    position: absolute;
+    inset: 0;
+    background: rgba(255,255,255,0.12);
+    border-radius: inherit;
+}
+
+.rpm-bar-lit-clip {
+    position: absolute;
+    inset: 0;
+    z-index: 1;
+    clip-path: inset(0 calc(100% - var(--rpm-pct, 0%)) 0 0);
+    transition: clip-path 0.08s linear;
+}
+
+.rpm-bar-lit {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+    height: 100%;
+    border-radius: inherit;
+}
+
+.rpm-bar-lit .rpm-seg-green {
+    flex: 1 1 0;
+    min-width: 0;
+    background: var(--accent-green);
+    box-shadow: 0 0 6px rgba(0, 215, 0, 0.35);
+}
+
+.rpm-bar-lit .rpm-seg-gradient {
+    flex: 1 1 0;
+    min-width: 0;
+    background: linear-gradient(to right, var(--accent-green), var(--semantic-red));
+    box-shadow: 0 0 6px rgba(120, 110, 0, 0.28);
+}
+
+.rpm-bar-lit .rpm-seg-red {
+    flex: 1 1 0;
+    min-width: 0;
+    background: var(--semantic-red);
+    box-shadow: 0 0 6px rgba(225, 6, 0, 0.35);
+}
+
+.rpm-value {
+    font-size: 10px;
+    color: var(--text-dim);
+    text-align: center;
+    font-family: var(--font-mono);
+}
+
+.rpm-value-row {
+    display: flex;
+    justify-content: center;
+    align-items: baseline;
+    gap: 8px;
+}
+
+.telemetry-middle {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 4px;
+    align-items: stretch;
+    min-height: 60px;
+}
+
+.telemetry-cell {
+    box-sizing: border-box;
+    min-width: 0;
+    min-height: 56px;
+    height: 100%;
+    border-radius: 12px;
+}
+
+/* DRS + PIT: same off-state chrome; green vs blue only when .active */
+.drs-tile,
+.pit-limiter-tile {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-weight: 800;
+    font-size: 11px;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    background: rgba(255,255,255,0.06);
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-border-default);
+}
+
+.drs-indicator.active {
+    background: rgba(0, 215, 0, 0.12);
+    color: var(--accent-green);
+    border-color: rgba(0, 215, 0, 0.45);
+}
+
+.pit-limiter-tile.active {
+    background: rgba(0, 166, 255, 0.12);
+    color: var(--accent-blue);
+    border-color: rgba(0, 166, 255, 0.45);
+}
+
+.telemetry-cell-gear {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255,255,255,0.04);
+    border: 1px solid var(--color-border-default);
+}
+
+.gear-value {
+    font-size: clamp(28px, 5.5vw, 52px);
+    font-weight: 900;
+    font-family: var(--font-mono);
+    line-height: 1;
+    color: var(--text-primary);
+}
+
+.speed-tile {
+    padding: 8px 4px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--color-border-default);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+}
+
+/* Column 5: BB + DIFF as two equal horizontal rows inside one tile */
+.telemetry-metrics-column {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid var(--color-border-default);
+}
+
+.telemetry-metric-row {
+    flex: 1 1 0;
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    min-height: 0;
+    padding: 4px 8px;
+}
+
+.telemetry-metric-row + .telemetry-metric-row {
+    border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.telemetry-metric-label {
+    flex-shrink: 0;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    line-height: 1;
+}
+
+.telemetry-metric-value {
+    font-size: clamp(13px, 2.2vw, 16px);
+    font-weight: 700;
+    font-family: var(--font-mono);
+    line-height: 1;
+    color: var(--text-primary);
+    text-align: right;
+    min-width: 0;
+}
+
+.speed-tile-value {
+    font-size: clamp(18px, 3.5vw, 24px);
+    font-weight: 800;
+    font-family: var(--font-mono);
+    line-height: 1;
+    color: var(--text-primary);
+}
+
+.speed-tile-unit {
+    font-size: 8px;
+    letter-spacing: 1.5px;
+    color: var(--text-dim);
+    margin-top: -1px;
+}
+
+.pedals-panel {
+    display: flex;
+    align-items: stretch;
+    gap: 8px;
+    min-height: 88px;
+}
+
+.pedal-chart-box {
+    flex: 1;
+    min-width: 0;
+    border: 1px solid var(--color-border-default);
+    border-radius: 10px;
+    background: rgba(0,0,0,0.25);
+    padding: 4px 8px;
+    overflow: hidden;
+}
+
+.pedal-chart {
+    display: block;
+    width: 100%;
+    height: 72px;
+}
+
+.pedal-chart-grid line {
+    stroke: rgba(255,255,255,0.08);
+    stroke-width: 0.35;
+}
+
+.pedal-line {
+    stroke-width: 1.1;
+    vector-effect: non-scaling-stroke;
+}
+
+.pedal-line-brake {
+    stroke: var(--brake);
+    opacity: 0.95;
+}
+
+.pedal-line-throttle {
+    stroke: var(--throttle);
+    opacity: 0.95;
+}
+
+.pedal-vbars {
+    flex: 0 0 auto;
+    display: flex;
+    gap: 8px;
+    align-items: stretch;
+}
+
+.pedal-vbar {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 4px;
+    width: 22px;
+}
+
+.pedal-vbar-track {
+    flex: 1;
+    width: 100%;
+    min-height: 56px;
+    border-radius: 999px;
+    background: rgba(255,255,255,0.06);
+    border: 1px solid rgba(255,255,255,0.08);
+    display: flex;
+    flex-direction: column;
+    justify-content: flex-end;
+    overflow: hidden;
+    padding: 4px;
+    box-sizing: border-box;
+}
+
+.pedal-vbar-fill {
+    width: 100%;
+    height: 0%;
+    border-radius: 999px;
+    transition: height 0.05s linear;
+}
+
+.pedal-vbar-brake {
+    background: var(--brake);
+}
+
+.pedal-vbar-throttle {
+    background: var(--throttle);
+}
+
+.pedal-vbar-label {
+    font-size: 9px;
+    font-family: var(--font-mono);
+    color: var(--text-dim);
+    line-height: 1;
+}
+
+/* Car Telemetry: sizes follow widget cell (GridStack resize) via container queries */
+.card.telemetry-widget {
+    container-type: size;
+    container-name: telemetry;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    overflow: hidden;
+}
+
+.card.telemetry-widget .telemetry-stack {
+    flex: 1 1 0;
+    min-height: 0;
+    gap: clamp(8px, 2cqb, 16px);
+}
+
+.card.telemetry-widget .rpm-strip {
+    gap: clamp(4px, 0.6cqb, 8px);
+}
+
+.card.telemetry-widget .rpm-bar-bg {
+    height: clamp(6px, 2.2cqb, 12px);
+}
+
+.card.telemetry-widget .rpm-value {
+    font-size: clamp(8px, 2.4cqi, 11px);
+}
+
+.card.telemetry-widget .telemetry-middle {
+    gap: clamp(4px, 1.2cqi, 8px);
+    align-items: start;
+    grid-auto-rows: auto;
+}
+
+.card.telemetry-widget .telemetry-cell {
+    aspect-ratio: 1 / 1;
+    width: 100%;
+    min-height: 0;
+    height: auto;
+    border-radius: clamp(8px, 2.2cqi, 14px);
+}
+
+.card.telemetry-widget .drs-tile,
+.card.telemetry-widget .pit-limiter-tile {
+    font-size: clamp(9px, 2.5cqi, 12px);
+}
+
+.card.telemetry-widget .gear-value {
+    font-size: clamp(20px, 11cqi, 54px);
+}
+
+.card.telemetry-widget .speed-tile {
+    padding: clamp(4px, 1cqi, 8px) clamp(4px, 0.8cqi, 8px);
+}
+
+.card.telemetry-widget .speed-tile-value {
+    font-size: clamp(14px, 5.5cqi, 26px);
+}
+
+.card.telemetry-widget .speed-tile-unit {
+    font-size: clamp(7px, 1.8cqi, 9px);
+    margin-top: clamp(4px, 0.6cqb, 8px);
+}
+
+.card.telemetry-widget .telemetry-metric-row {
+    gap: clamp(4px, 1cqi, 8px);
+    padding: clamp(4px, 1cqb, 8px) clamp(4px, 1.8cqi, 12px);
+}
+
+.card.telemetry-widget .telemetry-metric-label {
+    font-size: clamp(8px, 2.2cqi, 11px);
+}
+
+.card.telemetry-widget .telemetry-metric-value {
+    font-size: clamp(11px, 3.8cqi, 17px);
+}
+
+.card.telemetry-widget .pedals-panel {
+    flex: 1 1 0;
+    min-height: 0;
+    gap: clamp(8px, 2cqi, 12px);
+}
+
+.card.telemetry-widget .pedal-chart-box {
+    flex: 1 1 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    border-radius: clamp(8px, 2cqi, 12px);
+    padding: clamp(4px, 0.7cqi, 8px) clamp(4px, 1.1cqi, 8px);
+}
+
+.card.telemetry-widget .pedal-chart {
+    flex: 1 1 0;
+    width: 100%;
+    min-height: clamp(32px, 12cqb, 96px);
+    height: auto;
+}
+
+.card.telemetry-widget .pedal-vbars {
+    gap: clamp(4px, 1.5cqi, 8px);
+}
+
+.card.telemetry-widget .pedal-vbar {
+    width: clamp(18px, 5cqi, 26px);
+    gap: clamp(4px, 0.6cqb, 8px);
+}
+
+.card.telemetry-widget .pedal-vbar-track {
+    min-height: clamp(40px, 18cqb, 72px);
+}
+
+.card.telemetry-widget .pedal-vbar-label {
+    font-size: clamp(7px, 2cqi, 10px);
+}

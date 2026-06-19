@@ -10,6 +10,26 @@
   "readmeHeader": ".design-sync/conventions.md",
   "overrides": {
     "SettingRow": { "cardMode": "column" },
-    "TabNav": { "cardMode": "column" }
+    "TabNav": { "cardMode": "column" },
+    "FuelErs": { "cardMode": "column" },
+    "GapBoard": { "cardMode": "column" },
+    "PitPredictor": { "cardMode": "column" },
+    "Session": { "cardMode": "column" },
+    "Standings": { "cardMode": "column" },
+    "TopSpeedCompare": { "cardMode": "column" },
+    "TyreSets": { "cardMode": "column" },
+    "Weather": { "cardMode": "column" },
+    "DebugConsole": { "cardMode": "column" },
+    "DrsZonesTable": { "cardMode": "column" },
+    "HistoryDetailShell": { "cardMode": "column" },
+    "HistoryEventsTable": { "cardMode": "column" },
+    "HistoryLapChart": { "cardMode": "column" },
+    "HistoryLapTimesGrid": { "cardMode": "column" },
+    "HistorySessionList": { "cardMode": "column" },
+    "SettingsScreen": { "cardMode": "column" },
+    "TelemetryChartStack": { "cardMode": "column", "viewport": "900x950" },
+    "EventsCard": { "cardMode": "column" },
+    "QualiStandings": { "cardMode": "column" },
+    "LapTimesCard": { "cardMode": "single", "primaryStory": "QualifyingWithSetupOpen" }
   }
 }

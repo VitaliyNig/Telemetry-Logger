@@ -1,0 +1,160 @@
+/* Settings screen (ported from wwwroot/css/app.css + style.css) */
+.settings-scroll {
+    padding: 8px 24px 90px;
+}
+
+.settings-container {
+    max-width: 640px;
+    margin: 0 auto;
+}
+
+.settings-container h2 {
+    font-size: 22px;
+    font-weight: 600;
+    margin-bottom: 24px;
+}
+
+.settings-group {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md);
+    padding: 20px;
+    margin-bottom: 16px;
+}
+
+.settings-group h3 {
+    font-size: 14px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    margin-bottom: 16px;
+}
+
+.game-settings-memo-intro {
+    font-size: 13px;
+    color: var(--color-text-muted);
+    margin: -8px 0 16px;
+    line-height: 1.45;
+}
+
+.game-settings-memo-wrap {
+    overflow-x: auto;
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--color-border-default);
+}
+
+.game-settings-memo {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.game-settings-memo th,
+.game-settings-memo td {
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+}
+
+.game-settings-memo tbody tr:last-child td {
+    border-bottom: none;
+}
+
+.game-settings-memo th {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-secondary);
+    background: var(--bg-tertiary);
+}
+
+.game-settings-memo td:first-child {
+    color: var(--color-text-primary);
+    width: 52%;
+}
+
+.game-settings-memo td:last-child {
+    font-family: var(--font-mono);
+    color: var(--color-text-muted);
+}
+
+.setting-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.history-folder-input-row input[type="text"] {
+    flex: 1 1 280px;
+    min-width: 200px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+.history-folder-resolved {
+    color: var(--color-text-secondary);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    word-break: break-all;
+}
+
+.history-folder-error {
+    color: #f59e9e;
+}
+
+.game-settings-auto {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-top: 8px;
+}
+
+.game-settings-auto-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.game-version-select {
+    padding: 8px 32px 8px 8px;
+    background: var(--bg-tertiary) url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path d='M1 1l4 4 4-4' stroke='%23888' stroke-width='1.5' fill='none' stroke-linecap='round'/></svg>") no-repeat right 10px center;
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    color: var(--text-primary);
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    appearance: none;
+    -webkit-appearance: none;
+    outline: none;
+    transition: border-color var(--transition);
+}
+.game-version-select:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+
+.btn-auto-configure {
+    background: var(--accent-brand);
+    color: #fff;
+    border: none;
+    border-radius: 6px;
+    padding: 8px 16px;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    transition: background 0.15s;
+}
+.btn-auto-configure:hover:not(:disabled) { background: var(--accent-brand-hover); }
+.btn-auto-configure:disabled { opacity: 0.6; cursor: wait; }
+
+.auto-configure-status {
+    font-size: 12px;
+    font-family: var(--font-mono);
+}
+.auto-configure-status.is-pending { color: var(--color-text-secondary); }
+.auto-configure-status.is-ok { color: var(--accent-green); }
+.auto-configure-status.is-err { color: var(--semantic-red); }

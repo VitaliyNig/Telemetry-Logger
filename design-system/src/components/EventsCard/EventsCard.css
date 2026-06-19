@@ -1,0 +1,109 @@
+.events-list {
+    flex: 1;
+    min-height: 0;
+    max-height: none;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.events-list::-webkit-scrollbar { width: 4px; }
+.events-list::-webkit-scrollbar-track { background: transparent; }
+.events-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+
+.pinned-section {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    margin-bottom: 8px;
+    padding-bottom: 8px;
+    border-bottom: 1px solid var(--border);
+}
+
+.pinned-header {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    color: var(--accent-brand);
+    font-weight: 700;
+    padding: 4px 0;
+}
+
+.event-item {
+    font-size: 12px;
+    padding: 8px;
+    border-radius: 4px;
+    background: rgba(255,255,255,0.03);
+    font-family: var(--font-mono);
+    color: var(--color-text-secondary);
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.event-item.placeholder {
+    color: var(--text-dim);
+    font-style: italic;
+    font-family: var(--font-sans);
+}
+
+.event-item.penalty-serious {
+    background: var(--semantic-red-soft);
+    color: #ff6b6b;
+    border-left: 3px solid var(--semantic-red);
+}
+
+.event-item.penalty-serious.pinned {
+    background: var(--semantic-red-mid);
+    color: #ff8a8a;
+    border-left: 3px solid var(--semantic-red);
+    box-shadow: 0 0 8px var(--semantic-red-glow);
+}
+
+.event-item.penalty-serious .event-code {
+    color: #fecaca !important;
+}
+
+.event-item.penalty-serious.pinned .event-detail {
+    color: #ff8a8a;
+}
+
+.event-item .event-code {
+    font-weight: 700;
+    min-width: 48px;
+    flex-shrink: 0;
+}
+
+.pin-icon {
+    font-size: 10px;
+    margin-right: 4px;
+}
+
+.served-badge {
+    display: inline-block;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1px;
+    padding: 1px 8px;
+    border-radius: 3px;
+    background: rgba(0, 215, 0, 0.15);
+    color: var(--accent-green);
+    border: 1px solid rgba(0, 215, 0, 0.3);
+    margin-left: 4px;
+    vertical-align: middle;
+}
+
+.event-item .event-detail {
+    flex: 1;
+    margin-left: 8px;
+}
+
+.event-item .event-time {
+    color: var(--text-dim);
+    font-size: 11px;
+    flex-shrink: 0;
+    margin-left: 8px;
+    min-width: 76px;
+    text-align: right;
+}

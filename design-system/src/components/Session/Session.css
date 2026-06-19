@@ -1,0 +1,61 @@
+.flag-rect {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    align-self: flex-start;
+    padding: 4px 8px;
+    border-radius: 4px;
+    border: 1px solid var(--color-border-default);
+    background: transparent;
+    color: var(--text-dim);
+    min-width: 56px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+}
+.flag-rect[data-flag="yellow"] { background: var(--accent-yellow); color: #0f1117; border-color: var(--accent-yellow); }
+.flag-rect[data-flag="blue"]   { background: var(--accent-blue);   color: #0f1117; border-color: var(--accent-blue); }
+.flag-rect[data-flag="red"]    { background: var(--semantic-red);  color: #fff;    border-color: var(--semantic-red); }
+.flag-rect[data-flag="green"]  { background: var(--accent-green);  color: #0f1117; border-color: var(--accent-green); }
+
+.session-flags-box {
+    justify-content: center;
+}
+.session-flags-box .flag-rect {
+    padding: 2px 8px;
+    font-size: 13px;
+}
+
+.temp-trend {
+    font-size: 12px;
+    font-weight: 700;
+    margin-left: 4px;
+    vertical-align: middle;
+    letter-spacing: 0;
+}
+
+.temp-trend-up {
+    color: var(--semantic-red);
+}
+
+.temp-trend-down {
+    color: #4dc9ff;
+}
+
+.temp-trend-stable {
+    color: var(--text-dim);
+}
+
+.stat-value-track {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.track-flag {
+    width: 22px;
+    height: 15px;
+    border-radius: 3px;
+    object-fit: cover;
+    flex-shrink: 0;
+    box-shadow: 0 0 0 1px rgba(255,255,255,0.12);
+}

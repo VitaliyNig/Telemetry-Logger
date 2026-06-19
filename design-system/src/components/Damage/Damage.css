@@ -1,0 +1,29 @@
+.widget-wrapper[data-widget-id="damage"] {
+    container-type: inline-size;
+    container-name: damage-widget;
+}
+
+.damage-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+}
+
+@container damage-widget (max-width: 220px) {
+    .damage-grid {
+        grid-template-columns: 1fr;
+    }
+}
+
+.damage-item {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.damage-label {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+}

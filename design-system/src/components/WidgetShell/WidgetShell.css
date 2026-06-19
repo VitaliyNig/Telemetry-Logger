@@ -57,3 +57,11 @@
     overflow: auto;
     min-height: 0;
 }
+
+/* Every widget's content root mirrors the app's `.card` (the div every
+   `tpl-*` template wraps its body in, inside `.widget-body`). */
+.card {
+    background: transparent;
+    container-type: inline-size;
+    padding: clamp(8px, 2cqi, 12px);
+}

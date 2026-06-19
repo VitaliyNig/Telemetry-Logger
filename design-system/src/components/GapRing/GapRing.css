@@ -1,0 +1,129 @@
+/* Gap Ring — radial gaps (outer = to leader, inner = to car ahead) */
+.gap-ring-card {
+    container-type: size;
+    container-name: gap-ring-widget;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+.gap-ring-body {
+    position: relative;
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.gap-ring-svg-wrap {
+    width: 100%;
+    max-width: min(100%, 420px);
+    aspect-ratio: 1;
+    margin: 0 auto;
+}
+
+.gap-ring-svg {
+    width: 100%;
+    height: 100%;
+    display: block;
+    overflow: visible;
+}
+
+.gap-ring-svg .gap-ring-spoke {
+    stroke-linecap: round;
+    pointer-events: none;
+}
+
+.gap-ring-svg .gap-ring-txt-outer {
+    fill: rgba(255, 255, 255, 0.72);
+    font-family: var(--font-mono);
+    font-weight: 500;
+    text-anchor: middle;
+    dominant-baseline: central;
+}
+
+.gap-ring-svg .gap-ring-txt-inner {
+    fill: rgba(200, 210, 225, 0.85);
+    font-family: var(--font-mono);
+    font-weight: 500;
+    text-anchor: middle;
+    dominant-baseline: central;
+}
+
+.gap-ring-svg .gap-ring-txt-name {
+    text-anchor: middle;
+    dominant-baseline: central;
+    font-family: var(--font-sans, system-ui, sans-serif);
+}
+
+.gap-ring-svg .gap-ring-txt-player {
+    filter: drop-shadow(0 0 4px rgba(56, 189, 248, 0.55));
+}
+
+.gap-ring-center {
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: clamp(64px, 38%, 180px);
+    text-align: center;
+    pointer-events: none;
+    display: flex;
+    flex-direction: column;
+    gap: 1px;
+    justify-content: center;
+}
+
+.gap-ring-c-neighbor {
+    font-size: clamp(9px, 3.5cqi, 14px);
+    font-weight: 600;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Ahead / behind colours come from team livery (inline style) */
+
+.gap-ring-c-gap {
+    font-family: var(--font-mono);
+    font-size: clamp(8px, 3.2cqi, 13px);
+    font-weight: 600;
+    line-height: 1.2;
+    letter-spacing: 0.02em;
+}
+
+.gap-ring-c-player {
+    font-size: clamp(10px, 3.8cqi, 15px);
+    font-weight: 700;
+    letter-spacing: 0.04em;
+    line-height: 1.25;
+    color: var(--text-primary);
+    padding: 4px 0;
+}
+
+.gap-ring-c-dim {
+    color: var(--text-dim);
+    font-weight: 500;
+}
+
+.gap-ring-c-pos {
+    opacity: 0.85;
+    margin-right: 4px;
+}
+
+.gap-ring-c-abbr {
+    font-weight: 600;
+}
+
+@container gap-ring-widget (max-height: 280px) {
+    .widget-title { display: none; }
+    .gap-ring-center { gap: 0; }
+}
+
+@container gap-ring-widget (max-width: 160px) {
+    .gap-ring-c-neighbor { display: none; }
+}

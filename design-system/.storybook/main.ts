@@ -3,6 +3,7 @@ import type { StorybookConfig } from "@storybook/react-vite";
 const config: StorybookConfig = {
   stories: ["../src/**/*.stories.@(tsx|ts)"],
   addons: [],
+  staticDirs: ["../public"],
   framework: {
     name: "@storybook/react-vite",
     options: {},

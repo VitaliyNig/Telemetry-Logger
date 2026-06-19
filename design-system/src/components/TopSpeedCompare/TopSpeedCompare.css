@@ -1,0 +1,118 @@
+/* Внешний контейнер для @container (сам .tsc-layout не может быть query-контейнером для себя). */
+.tsc-outer {
+    flex: 1;
+    min-height: 0;
+    container-type: inline-size;
+}
+
+.tsc-layout {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0;
+    padding: 0 8px 8px;
+}
+
+/* Узкий виджет — колонка; достаточная ширина — три блока в ряд */
+@container (min-width: 340px) {
+    .tsc-layout {
+        flex-direction: row;
+        align-items: stretch;
+    }
+}
+
+.tsc-block {
+    flex: 1;
+    min-width: 0;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    padding: 8px;
+    border-radius: var(--radius);
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+.tsc-block-live {
+    border-color: rgba(0, 166, 255, 0.25);
+    background: rgba(0, 166, 255, 0.05);
+}
+
+.tsc-label {
+    font-size: clamp(9px, 1.2cqw + 0.4cqh, 12px);
+    text-transform: uppercase;
+    letter-spacing: 1.2px;
+    color: var(--text-dim);
+    margin-bottom: 4px;
+    text-align: center;
+}
+
+.tsc-value-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: center;
+    flex-wrap: wrap;
+    gap: 4px;
+}
+
+.tsc-metric {
+    font-size: clamp(16px, 2.8cqw + 2.2cqh, 40px);
+    font-weight: 800;
+    font-family: var(--font-mono);
+    color: var(--text-primary);
+    line-height: 1;
+}
+
+.tsc-unit {
+    font-size: clamp(9px, 1cqw + 0.45cqh, 14px);
+    font-weight: 500;
+    color: var(--text-dim);
+    font-family: var(--font-mono);
+    letter-spacing: 0.5px;
+}
+
+.tsc-sep-between {
+    flex-shrink: 0;
+    background: var(--border);
+    margin: 4px 0;
+    height: 1px;
+    width: 100%;
+    align-self: center;
+}
+
+@container (min-width: 340px) {
+    .tsc-sep-between {
+        width: 1px;
+        height: auto;
+        min-height: 48px;
+        margin: 0 4px;
+        align-self: stretch;
+    }
+}
+
+.tsc-live-val {
+    color: var(--accent-blue);
+}
+
+.tsc-delta {
+    font-size: clamp(9px, 0.95cqw + 0.55cqh, 13px);
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--text-dim);
+    white-space: nowrap;
+    padding: 1px 4px;
+    border-radius: 3px;
+    line-height: 1;
+    align-self: center;
+}
+.tsc-delta:empty { display: none; }
+
+.tsc-delta-down { color: #ef4444; }
+.tsc-delta-up   { color: #22c55e; }
+.tsc-delta-pb   { color: #a855f7; letter-spacing: 0.5px; }
+.tsc-delta-neutral { color: var(--text-dim); }

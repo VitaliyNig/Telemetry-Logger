@@ -1,0 +1,66 @@
+.standings-table-wrap {
+    overflow-y: visible;
+}
+
+.standings-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+}
+
+.standings-table th {
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    padding: 8px 12px;
+    text-align: left;
+    border-bottom: 1px solid var(--border);
+    position: sticky;
+    top: -1px;
+    background: var(--color-bg-card);
+}
+
+.standings-table td {
+    padding: 8px 12px;
+    border-bottom: 1px solid rgba(255,255,255,0.04);
+    font-family: var(--font-mono);
+}
+
+.standings-table tr.player-row {
+    background: rgba(0, 166, 255, 0.12);
+}
+
+.standings-table tr.player-row td:first-child {
+    color: var(--accent-blue);
+    font-weight: 700;
+    border-left: 3px solid var(--accent-blue);
+}
+
+.standings-table td.pit-status {
+    color: var(--color-semantic-warning);
+}
+
+/* Tyre: header + body centered so badge + age align under "Tyre" */
+.standings-table th.standings-tyre-col,
+.standings-table td.standings-tyre-cell {
+    text-align: center;
+}
+
+.standings-table td.standings-tyre-cell {
+    vertical-align: middle;
+    padding: 8px 12px;
+}
+
+.standings-tyre-wrap {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.standings-tyre-age {
+    font-size: 11px;
+    font-family: var(--font-mono);
+    font-weight: 600;
+    color: var(--text-primary);
+}

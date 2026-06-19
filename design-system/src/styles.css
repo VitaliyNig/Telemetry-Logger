@@ -10,3 +10,41 @@
 @import "./components/Badge/Badge.css";
 @import "./components/SettingRow/SettingRow.css";
 @import "./components/WidgetShell/WidgetShell.css";
+
+@import "./components/TyreCompoundBadge/TyreCompoundBadge.css";
+@import "./components/GaugeBar/GaugeBar.css";
+@import "./components/DeltaDisplay/DeltaDisplay.css";
+@import "./components/StatBox/StatBox.css";
+@import "./components/EventBadge/EventBadge.css";
+@import "./components/Popover/Popover.css";
+
+@import "./components/Damage/Damage.css";
+@import "./components/Weather/Weather.css";
+@import "./components/PitStopTimer/PitStopTimer.css";
+@import "./components/TopSpeed/TopSpeed.css";
+@import "./components/TopSpeedCompare/TopSpeedCompare.css";
+@import "./components/Standings/Standings.css";
+@import "./components/GapBoard/GapBoard.css";
+
+@import "./components/FuelErs/FuelErs.css";
+@import "./components/PitPredictor/PitPredictor.css";
+@import "./components/Session/Session.css";
+@import "./components/Telemetry26/Telemetry26.css";
+@import "./components/TyreSets/TyreSets.css";
+@import "./components/Tyres/Tyres.css";
+@import "./components/CarTelemetry/CarTelemetry.css";
+@import "./components/LapData/LapData.css";
+@import "./components/EventsCard/EventsCard.css";
+@import "./components/GapRing/GapRing.css";
+@import "./components/QualiStandings/QualiStandings.css";
+@import "./components/LapTimesCard/LapTimesCard.css";
+@import "./components/SettingsScreen/SettingsScreen.css";
+@import "./components/PacketStats/PacketStats.css";
+@import "./components/DebugConsole/DebugConsole.css";
+@import "./components/DrsZonesTable/DrsZonesTable.css";
+@import "./components/HistorySessionList/HistorySessionList.css";
+@import "./components/HistoryDetailShell/HistoryDetailShell.css";
+@import "./components/HistoryLapTimesGrid/HistoryLapTimesGrid.css";
+@import "./components/HistoryEventsTable/HistoryEventsTable.css";
+@import "./components/HistoryLapChart/HistoryLapChart.css";
+@import "./components/TelemetryChartStack/TelemetryChartStack.css";

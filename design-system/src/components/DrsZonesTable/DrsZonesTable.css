@@ -1,0 +1,116 @@
+/* DRS Zones inspector (Debug tab). Relies on PacketStats.css for shared `.muted`. */
+.debug-section {
+    margin-top: var(--space-4);
+}
+
+.drs-zones-section {
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md);
+    padding: var(--space-3) var(--space-4);
+}
+
+.drs-zones-header {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-bottom: var(--space-2);
+}
+
+.drs-zones-header h3 { margin: 0; }
+
+.drs-zones-current {
+    color: var(--color-text-muted);
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+.drs-zones-current--live {
+    color: var(--color-accent-primary);
+    font-weight: 600;
+}
+
+.drs-zones-header .btn { margin-left: auto; }
+
+.drs-zones-hint {
+    color: var(--color-text-muted);
+    font-size: 12px;
+    line-height: 1.5;
+    margin: 0 0 var(--space-3);
+}
+
+.drs-zones-hint code {
+    font-family: var(--font-mono);
+    font-size: 11px;
+    background: var(--color-bg-card-alt);
+    padding: 1px 5px;
+    border-radius: 3px;
+}
+
+.drs-zones-table-wrap {
+    overflow-x: auto;
+}
+
+.drs-zones-table {
+    width: 100%;
+    border-collapse: separate;
+    border-spacing: 0;
+    font-family: var(--font-mono);
+    font-size: 12px;
+}
+
+.drs-zones-table th,
+.drs-zones-table td {
+    padding: 6px 10px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+    text-align: left;
+    vertical-align: middle;
+}
+
+.drs-zones-table thead th {
+    color: var(--color-text-muted);
+    font-weight: 600;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    border-bottom: 1px solid var(--color-border-default);
+}
+
+.drs-zones-table tbody tr:hover { background: rgba(255, 255, 255, 0.02); }
+
+.drs-zone-row--current {
+    background: var(--color-accent-soft);
+}
+.drs-zone-row--current:hover { background: var(--color-accent-muted); }
+
+.drs-zone-id {
+    color: var(--color-text-muted);
+    font-size: 10px;
+    margin-left: 4px;
+}
+
+.drs-zones-status {
+    display: inline-block;
+    padding: 1px 7px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+}
+
+.drs-zones-status--has {
+    background: var(--color-semantic-success);
+    color: #000;
+}
+
+.drs-zones-status--missing {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--color-text-muted);
+}
+
+.drs-zone-ranges {
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    white-space: nowrap;
+}

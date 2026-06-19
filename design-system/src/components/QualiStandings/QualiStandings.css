@@ -1,0 +1,111 @@
+/* Quali Standings — base .standings-table / .standings-table-wrap rules live in Standings.css */
+.quali-table th {
+    font-size: 9px;
+}
+
+.qs-badge {
+    display: inline-block;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.qs-badge.qs-outlap {
+    background: rgba(0, 166, 255, 0.15);
+    color: #4dc9ff;
+    border: 1px solid rgba(0, 166, 255, 0.3);
+}
+
+.qs-badge.qs-flying {
+    background: rgba(170, 0, 255, 0.15);
+    color: #c96bff;
+    border: 1px solid rgba(170, 0, 255, 0.3);
+}
+
+.qs-badge.qs-inlap {
+    background: rgba(255, 215, 0, 0.12);
+    color: #ffd700;
+    border: 1px solid rgba(255, 215, 0, 0.25);
+}
+
+.qs-badge.qs-pit {
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text-dim);
+    border: 1px solid var(--color-border-default);
+}
+
+.qs-badge.qs-garage {
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--text-dim);
+    border: 1px solid var(--color-border-default);
+}
+
+.qs-row-qs-outlap td:first-child {
+    border-left: 3px solid #4dc9ff;
+}
+
+.qs-row-qs-flying td:first-child {
+    border-left: 3px solid #c96bff;
+}
+
+.qs-row-qs-flying {
+    background: rgba(170, 0, 255, 0.06);
+}
+
+.qs-row-qs-inlap {
+    background: rgba(255, 215, 0, 0.04);
+}
+
+.qs-gap {
+    color: var(--accent-yellow);
+}
+
+.qs-delta-pb {
+    font-family: var(--font-mono);
+    font-size: 12px;
+    min-width: 72px;
+}
+
+.qs-sector-hdr,
+.qs-sector {
+    width: 1%;
+    white-space: nowrap;
+}
+
+.qs-sector {
+    font-size: 11px;
+    color: var(--color-text-secondary);
+}
+
+.qs-invalid {
+    color: var(--semantic-red);
+    font-weight: 700;
+    font-size: 12px;
+}
+
+.qs-sector-up {
+    color: var(--accent-green);
+    font-weight: 700;
+}
+
+.qs-sector-down {
+    color: var(--semantic-red);
+    font-weight: 600;
+}
+
+.qs-sector-active {
+    color: var(--accent-yellow);
+    animation: sector-pulse 0.8s infinite;
+}
+
+@keyframes sector-pulse {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.4; }
+}
+
+.qs-sector-none {
+    color: var(--text-dim);
+}

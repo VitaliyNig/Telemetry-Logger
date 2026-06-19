@@ -1,0 +1,108 @@
+.ts-widget-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    height: 100%;
+    overflow: hidden;
+}
+
+.ts-widget-card .widget-title {
+    flex-shrink: 0;
+}
+
+.ts-widget-layout {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    padding: 0 0 8px;
+    container-type: inline-size;
+}
+
+.ts-lb-head {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) 52px;
+    gap: 4px 8px;
+    align-items: center;
+    padding: 8px 4px 4px;
+    font-size: 10px;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--text-dim);
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+}
+
+.ts-lb-head .ts-lb-speed {
+    text-align: right;
+}
+
+.ts-lb-rows {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 4px 0;
+}
+
+.ts-lb-row {
+    display: grid;
+    grid-template-columns: 28px minmax(0, 1fr) 52px;
+    gap: 4px 8px;
+    align-items: center;
+    padding: 4px;
+    border-radius: 4px;
+    font-size: 13px;
+    font-family: var(--font-mono);
+    border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+}
+
+.ts-lb-row:last-child {
+    border-bottom: none;
+}
+
+.ts-lb-rank {
+    font-weight: 700;
+    color: var(--color-text-secondary);
+    text-align: center;
+}
+
+.ts-lb-name {
+    font-weight: 600;
+    color: var(--text-primary);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.ts-lb-speed {
+    text-align: right;
+    font-weight: 700;
+    color: var(--accent-blue);
+}
+
+.ts-lb-row.player-row {
+    background: rgba(0, 166, 255, 0.12);
+    border: 1px solid rgba(0, 166, 255, 0.3);
+}
+
+.ts-lb-row.player-row .ts-lb-rank {
+    color: var(--accent-blue);
+}
+
+.ts-lb-row.player-row .ts-lb-speed {
+    color: var(--accent-blue);
+}
+
+.ts-lb-placeholder {
+    padding: 16px 8px;
+    text-align: center;
+    color: var(--text-dim);
+    font-size: 13px;
+}
+
+.ts-widget-layout.ts-compact .ts-lb-head,
+.ts-widget-layout.ts-compact .ts-lb-row {
+    grid-template-columns: 22px minmax(0, 1fr) 44px;
+    font-size: 11px;
+    gap: 4px 8px;
+}

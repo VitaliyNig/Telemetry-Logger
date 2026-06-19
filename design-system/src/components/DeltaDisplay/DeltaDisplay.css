@@ -1,0 +1,9 @@
+.delta-display {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+.delta-good    { color: var(--accent-green); }
+.delta-bad     { color: var(--semantic-red); }
+.delta-neutral { color: var(--text-dim); font-weight: 400; }
