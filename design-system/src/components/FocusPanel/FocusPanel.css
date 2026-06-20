@@ -1,0 +1,40 @@
+.tc-focus { border: var(--tc-secondary-border, 1px) solid color-mix(in srgb, var(--color-border-default) 75%, transparent); background: color-mix(in srgb, var(--color-bg-card) 82%, transparent); border-radius: 8px; padding: 6px; }
+.tc-focus-head { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
+.tc-focus-head h4 { margin: 0; font-size: 12px; text-transform: uppercase; color: var(--text-dim); }
+.tc-focus-sub { color: var(--text-dim); font-size: 11px; margin-bottom: 6px; }
+
+.tc-readouts { display: flex; flex-direction: column; gap: 6px; }
+.tc-rd {
+    background: color-mix(in srgb, var(--color-bg-card) 82%, transparent);
+    border: 1px solid color-mix(in srgb, var(--color-border-default) 70%, transparent);
+    border-left: 3px solid var(--rd, #888);
+    border-radius: 8px;
+    padding: 7px 9px;
+}
+.tc-rd-head { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; }
+.tc-rd-dot { width: 9px; height: 9px; border-radius: 50%; background: var(--rd, #888); flex: 0 0 auto; }
+.tc-rd-name { font-size: 12px; font-weight: 600; color: var(--color-text-primary); min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.tc-rd-tag { margin-left: auto; flex: 0 0 auto; font-size: 9px; font-weight: 700; letter-spacing: .5px; padding: 1px 5px; border-radius: 3px; background: var(--color-bg-elevated); color: var(--color-text-secondary); }
+.tc-rd-tag--ref { background: rgba(88,166,255,.16); color: #58a6ff; }
+.tc-rd-body { display: flex; align-items: center; gap: 10px; }
+.tc-rd-stats { display: flex; flex-direction: column; gap: 2px; min-width: 0; flex: 1; }
+.tc-rd-spd b, .tc-rd-rpm b { font-family: var(--font-mono); font-variant-numeric: tabular-nums; color: var(--color-text-primary); }
+.tc-rd-spd b { font-size: 22px; line-height: 1; }
+.tc-rd-rpm b { font-size: 14px; }
+.tc-rd-spd span, .tc-rd-rpm span { font-size: 10px; color: var(--color-text-muted); margin-left: 4px; }
+.tc-rd-gear, .tc-rd-steer { display: flex; flex-direction: column; align-items: center; gap: 1px; flex: 0 0 auto; }
+.tc-rd-gear-num { fill: var(--color-text-primary); font-family: var(--font-mono); font-size: 18px; font-weight: 700; }
+.tc-rd-cap { font-size: 9px; color: var(--color-text-muted); text-transform: uppercase; letter-spacing: .4px; }
+.tc-rd-pedals { display: flex; gap: 6px; margin-top: 7px; }
+.tc-rd-bar { position: relative; flex: 1; height: 14px; background: var(--color-bg-elevated); border-radius: 3px; overflow: hidden; }
+.tc-rd-bar-fill { position: absolute; top: 0; left: 0; bottom: 0; }
+.tc-rd-bar--thr .tc-rd-bar-fill { background: var(--throttle, #00d700); }
+.tc-rd-bar--brk .tc-rd-bar-fill { background: var(--brake, #e10600); }
+.tc-rd-bar-lbl { position: absolute; right: 4px; top: 0; line-height: 14px; font-size: 9px; font-family: var(--font-mono); color: var(--color-text-primary); }
+.tc-rd-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 6px; }
+.tc-rd-chip { font-size: 9px; padding: 1px 5px; border-radius: 3px; background: var(--color-bg-elevated); color: var(--color-text-secondary); }
+.tc-rd-chip--drs.is-on { background: rgba(0,208,255,.18); color: #00d0ff; }
+
+@media (max-width: 600px) {
+    .tc-focus { padding: 6px; border-radius: 6px; }
+}

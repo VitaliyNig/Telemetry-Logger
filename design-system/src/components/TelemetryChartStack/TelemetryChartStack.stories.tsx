@@ -1,5 +1,13 @@
+import { useState } from "react";
 import type { Meta, StoryObj } from "@storybook/react-vite";
-import { TelemetryChartStack, type ChartStackDriver, type ChartStackSample } from "./TelemetryChartStack";
+import { TelemetryChartStack, type ChartStackDriver, type ChartStackMetricKey, type ChartStackSample } from "./TelemetryChartStack";
+import {
+  SectorBadgesToolbar,
+  type SectorBadgesToolbarChannel,
+  type SectorBadgesToolbarChipMode,
+  type SectorBadgesToolbarSegment,
+  type SectorBadgesToolbarZoomRange,
+} from "../SectorBadgesToolbar/SectorBadgesToolbar";
 
 const meta: Meta<typeof TelemetryChartStack> = {
   title: "Telemetry/TelemetryChartStack",
@@ -130,4 +138,104 @@ export const NoSamples: Story = {
   args: {
     drivers: [],
   },
+};
+
+export const ZoomedSector: Story = {
+  args: {
+    drivers: twoDriverFixture,
+    sector2StartM: 1800,
+    sector3StartM: 3700,
+    zoomRange: { start: 1800, end: 2400 },
+  },
+};
+
+export const DiffChipMode: Story = {
+  args: {
+    drivers: twoDriverFixture,
+    sector2StartM: 1800,
+    sector3StartM: 3700,
+    chipMode: "diff",
+  },
+};
+
+export const HiddenMetrics: Story = {
+  args: {
+    drivers: twoDriverFixture,
+    sector2StartM: 1800,
+    sector3StartM: 3700,
+    hiddenMetrics: ["str", "gr", "rpm", "ers", "drs"] as ChartStackMetricKey[],
+  },
+};
+
+const TOOLBAR_SEGMENTS: SectorBadgesToolbarSegment[] = [
+  { sector: 1, start: 0, end: 1800, timeMs: 28400 },
+  { sector: 2, start: 1800, end: 3700, timeMs: 31200 },
+  { sector: 3, start: 3700, end: TRACK_LEN_M, timeMs: 26800 },
+];
+
+const TOOLBAR_CHANNELS: SectorBadgesToolbarChannel[] = [
+  { key: "delta", label: "Δ", active: true },
+  { key: "spd", label: "Speed", active: true },
+  { key: "thr", label: "Throttle", active: true },
+  { key: "brk", label: "Brake", active: true },
+  { key: "str", label: "Steering", active: false },
+  { key: "gr", label: "Gear", active: false },
+  { key: "rpm", label: "RPM", active: false },
+  { key: "ers", label: "ERS", active: false },
+  { key: "drs", label: "DRS", active: false },
+];
+
+/** Proves the retrofit: toolbar zoom/channel/chip-mode/height-scale controls genuinely
+ *  drive this same chart instance, sharing one piece of screen state — the same wiring
+ *  TelemetryCompareScreen will use. */
+function SyncedWithToolbarDemo() {
+  const [zoomRange, setZoomRange] = useState<SectorBadgesToolbarZoomRange | null>(null);
+  const [channels, setChannels] = useState<SectorBadgesToolbarChannel[]>(TOOLBAR_CHANNELS);
+  const [chipMode, setChipMode] = useState<SectorBadgesToolbarChipMode>("pair");
+  const [heightScale, setHeightScale] = useState(1.3);
+
+  const hiddenMetrics = channels.filter((c) => !c.active).map((c) => c.key) as ChartStackMetricKey[];
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 12 }}>
+      <SectorBadgesToolbar
+        deltaMode="cumulative"
+        onDeltaModeChange={() => {}}
+        split={3}
+        onSplitChange={() => {}}
+        segments={TOOLBAR_SEGMENTS}
+        zoomRange={zoomRange}
+        onZoomRangeChange={setZoomRange}
+        onZoomIn2x={() => {
+          const z0 = zoomRange?.start ?? 0;
+          const z1 = zoomRange?.end ?? TRACK_LEN_M;
+          const mid = (z0 + z1) / 2;
+          const span = (z1 - z0) / 4;
+          setZoomRange({ start: Math.max(0, mid - span), end: Math.min(TRACK_LEN_M, mid + span) });
+        }}
+        onZoomOut2x={() => setZoomRange(null)}
+        channels={channels}
+        onChannelToggle={(key) => setChannels((prev) => prev.map((c) => (c.key === key ? { ...c, active: !c.active } : c)))}
+        chipMode={chipMode}
+        onChipModeChange={setChipMode}
+        heightScale={heightScale}
+        onHeightScaleChange={setHeightScale}
+        insightsEnabled={false}
+        onInsightsEnabledChange={() => {}}
+      />
+      <TelemetryChartStack
+        drivers={twoDriverFixture}
+        sector2StartM={1800}
+        sector3StartM={3700}
+        zoomRange={zoomRange}
+        hiddenMetrics={hiddenMetrics}
+        chipMode={chipMode}
+        heightScale={heightScale}
+      />
+    </div>
+  );
+}
+
+export const SyncedWithToolbar: Story = {
+  render: () => <SyncedWithToolbarDemo />,
 };

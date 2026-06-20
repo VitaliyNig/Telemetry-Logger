@@ -1,4 +1,5 @@
 import { useMemo, useRef, useState, type CSSProperties, type MouseEvent as ReactMouseEvent, type ReactElement } from "react";
+import type { SectorBadgesToolbarChipMode, SectorBadgesToolbarZoomRange } from "../SectorBadgesToolbar/SectorBadgesToolbar";
 
 export type ChartStackMetricKey = "delta" | "spd" | "thr" | "brk" | "str" | "gr" | "rpm" | "ers" | "drs";
 
@@ -36,6 +37,20 @@ export interface TelemetryChartStackProps {
   drivers: ChartStackDriver[];
   sector2StartM?: number;
   sector3StartM?: number;
+  /** Clips the shared lapDistance X-domain; `null`/omitted shows the full lap. */
+  zoomRange?: SectorBadgesToolbarZoomRange | null;
+  /** Metric rows to omit from the stack. */
+  hiddenMetrics?: ChartStackMetricKey[];
+  /** "pair" shows one chip row per driver; "diff" collapses to a single cmp-vs-reference delta. */
+  chipMode?: SectorBadgesToolbarChipMode;
+  /** Scales every row's rendered height; defaults to the original page's 1.9. */
+  heightScale?: number;
+  /** Cursor distance driven by another synced view (3D map hover, transport scrub) — shown
+   *  only while the pointer isn't directly over this chart. */
+  hoverDistance?: number | null;
+  /** Fired as the pointer moves over the chart, with the lap distance under the cursor. */
+  onHover?: (distanceM: number) => void;
+  onHoverClear?: () => void;
   className?: string;
 }
 
@@ -62,7 +77,7 @@ const METRICS: MetricDef[] = [
 ];
 
 const ERS_MODE_TAGS = ["", "MED", "HOT", "OT"];
-const HEIGHT_SCALE = 1.9;
+const DEFAULT_HEIGHT_SCALE = 1.9;
 const W = 900;
 const PAD_T = 4;
 const PAD_B = 16;
@@ -71,8 +86,8 @@ function getMetricPriority(key: ChartStackMetricKey): "primary" | "secondary" {
   return key === "spd" || key === "thr" || key === "brk" || key === "str" ? "primary" : "secondary";
 }
 
-function effectiveHeight(metric: MetricDef): number {
-  const scaled = Math.max(18, Math.round(metric.height * HEIGHT_SCALE));
+function effectiveHeight(metric: MetricDef, heightScale: number): number {
+  const scaled = Math.max(18, Math.round(metric.height * heightScale));
   return getMetricPriority(metric.key) === "secondary" ? Math.max(18, Math.round(scaled * 0.75)) : scaled;
 }
 
@@ -273,6 +288,30 @@ function formatChipValue(metricKey: ChartStackMetricKey, sample: ResolvedSample 
   }
 }
 
+/** Mirrors `formatMetricDiff` — chip text for "diff" mode (cmp value minus reference value). */
+function formatMetricDiffValue(key: ChartStackMetricKey, dv: number): string {
+  const sign = dv >= 0 ? "+" : "";
+  switch (key) {
+    case "spd": return sign + Math.round(dv) + " km/h";
+    case "thr":
+    case "brk": return sign + Math.round(dv) + "%";
+    case "str": return sign + Math.round(dv) + "°";
+    case "rpm": return sign + Math.round(dv);
+    case "gr": return sign + Math.round(dv);
+    case "ers": return sign + Math.round(dv) + "%";
+    case "delta": return sign + dv.toFixed(3) + " s";
+    default: return sign + dv.toFixed(2);
+  }
+}
+
+/** Mirrors `drsTagFor`'s non-pair branch — a coloured tag conveying which side has DRS open. */
+function drsDiffTag(cmpOn: boolean, refOn: boolean): { text: string; tone: "gain" | "loss" | "equal" } | null {
+  if (!cmpOn && !refOn) return null;
+  if (cmpOn && !refOn) return { text: "DRS +", tone: "gain" };
+  if (!cmpOn && refOn) return { text: "DRS −", tone: "loss" };
+  return { text: "DRS", tone: "equal" };
+}
+
 interface HoverEntry {
   driver: ChartStackDriver;
   sample: ResolvedSample;
@@ -292,10 +331,12 @@ function MetricRow({
   dashIndexByCarIdx,
   deltaSeriesByCarIdx,
   range,
-  trackLen,
+  viewMin,
+  viewMax,
   sectorBoundaries,
   hover,
   hoverEntries,
+  chipMode,
 }: {
   metric: MetricDef;
   height: number;
@@ -304,14 +345,16 @@ function MetricRow({
   dashIndexByCarIdx: Map<number, number>;
   deltaSeriesByCarIdx: Map<number, { d: number; v: number }[]>;
   range: { min: number; max: number };
-  trackLen: number;
+  viewMin: number;
+  viewMax: number;
   sectorBoundaries: number[];
   hover: { pct: number; d: number } | null;
   hoverEntries: HoverEntry[];
+  chipMode: SectorBadgesToolbarChipMode;
 }) {
   const priority = getMetricPriority(metric.key);
   const plotH = height - PAD_T - PAD_B;
-  const x = (d: number) => (d / Math.max(1, trackLen)) * W;
+  const x = (d: number) => ((d - viewMin) / Math.max(1, viewMax - viewMin)) * W;
   const yFor = (v: number) => PAD_T + plotH - ((v - range.min) / Math.max(0.0001, range.max - range.min)) * plotH;
 
   const ticks = getHorizontalGridSpec(metric.key, range.min, range.max).filter(
@@ -386,7 +429,7 @@ function MetricRow({
       ) : null;
 
     const sectorLines = sectorBoundaries
-      .filter((b) => b > 0 && b < trackLen)
+      .filter((b) => b > viewMin && b < viewMax)
       .map((b, i) => <line key={i} className="tc-sector-line" x1={x(b)} x2={x(b)} y1={PAD_T} y2={PAD_T + plotH} />);
 
     body = (
@@ -410,6 +453,49 @@ function MetricRow({
   // cursor gets close enough that a left-anchored chip would run off the row.
   const chipOnRight = !hover || hover.pct > 0.82;
   const chipPositionStyle: CSSProperties = chipOnRight ? { right: 6 } : { left: `calc(${(hover?.pct ?? 0) * 100}% + 6px)` };
+
+  let chipHidden = !hover || hoverEntries.length === 0;
+  let chipContent: ReactElement | null = null;
+  if (!chipHidden && chipMode === "diff") {
+    const diffCurrent = hoverEntries.find((h) => !h.isReference) || null;
+    const diffReference = hoverEntries.find((h) => h.isReference) || null;
+    if (!diffCurrent || !diffReference) {
+      chipHidden = true;
+    } else if (metric.key === "drs") {
+      const tag = drsDiffTag(!!diffCurrent.sample.drs, !!diffReference.sample.drs);
+      if (!tag) chipHidden = true;
+      else chipContent = <span className={cx("tc-chip-drs", `tc-chip-drs--${tag.tone}`)}>{tag.text}</span>;
+    } else {
+      const dv = metric.key === "delta" ? diffCurrent.delta ?? 0 : sampleValue(diffCurrent.sample, metric.key) - sampleValue(diffReference.sample, metric.key);
+      const spdTag = metric.key === "spd" ? drsDiffTag(!!diffCurrent.sample.drs, !!diffReference.sample.drs) : null;
+      chipContent = (
+        <span className="tc-chip-row">
+          <span className="tc-chip-ref">Δ</span>
+          <span className="tc-chip-val">{formatMetricDiffValue(metric.key, dv)}</span>
+          {spdTag && <span className={cx("tc-chip-drs", `tc-chip-drs--${spdTag.tone}`)}>{spdTag.text}</span>}
+        </span>
+      );
+    }
+  } else if (!chipHidden) {
+    chipContent = (
+      <>
+        {hoverEntries.map((h) => {
+          const dv = metric.key === "delta" ? h.delta : null;
+          const text = formatChipValue(metric.key, h.sample, dv);
+          const tone = h.isReference ? "ref" : h.delta != null ? (h.delta < -0.01 ? "win" : h.delta > 0.01 ? "loss" : "ref") : "ref";
+          const showDrsTag = metric.key === "spd" && !!h.sample.drs;
+          return (
+            <span className="tc-chip-row" key={h.driver.carIdx}>
+              <span className="tc-chip-dot" style={{ background: h.driver.color }} />
+              <span className={cx("tc-chip-ref", `tc-chip-ref--${tone}`)}>{h.driver.label}</span>
+              <span className="tc-chip-val">{text}</span>
+              {showDrsTag && <span className="tc-chip-drs tc-chip-drs--equal">DRS</span>}
+            </span>
+          );
+        })}
+      </>
+    );
+  }
 
   return (
     <div className="tc-chart-row" data-metric={metric.key} data-priority={priority} style={{ "--tc-row-h": `${height}px` } as CSSProperties}>
@@ -448,21 +534,8 @@ function MetricRow({
           );
         })}
         <div className="tc-plot-title">{metric.plotTitle}</div>
-        <div className="tc-row-chip" data-metric={metric.key} hidden={!hover || hoverEntries.length === 0} style={{ top: chipTop, ...chipPositionStyle }}>
-          {hoverEntries.map((h) => {
-            const dv = metric.key === "delta" ? h.delta : null;
-            const text = formatChipValue(metric.key, h.sample, dv);
-            const tone = h.isReference ? "ref" : h.delta != null ? (h.delta < -0.01 ? "win" : h.delta > 0.01 ? "loss" : "ref") : "ref";
-            const showDrsTag = metric.key === "spd" && !!h.sample.drs;
-            return (
-              <span className="tc-chip-row" key={h.driver.carIdx}>
-                <span className="tc-chip-dot" style={{ background: h.driver.color }} />
-                <span className={cx("tc-chip-ref", `tc-chip-ref--${tone}`)}>{h.driver.label}</span>
-                <span className="tc-chip-val">{text}</span>
-                {showDrsTag && <span className="tc-chip-drs tc-chip-drs--equal">DRS</span>}
-              </span>
-            );
-          })}
+        <div className="tc-row-chip" data-metric={metric.key} hidden={chipHidden} style={{ top: chipTop, ...chipPositionStyle }}>
+          {chipContent}
         </div>
       </div>
     </div>
@@ -471,12 +544,27 @@ function MetricRow({
 
 /** Mirrors `drawChartStack`/`renderChartSvg` — the 9-row metric stack (Δ/Speed/Throttle/
  *  Brake/Steering/Gear/RPM/ERS/DRS) sharing one lapDistance X-domain, with a hover
- *  crosshair and per-row value chips. Zoom/pan, playback, keyboard shortcuts, the
- *  loss-zone insights panel and persisted UI prefs are app-level interaction layers,
- *  not visual surface — they're intentionally not ported here. */
-export function TelemetryChartStack({ drivers, sector2StartM, sector3StartM, className }: TelemetryChartStackProps) {
+ *  crosshair and per-row value chips. `zoomRange`/`hiddenMetrics`/`chipMode`/`heightScale`
+ *  mirror `compareState`, and `hoverDistance`/`onHover`/`onHoverClear` are the same bridge
+ *  `setDistance(d, source)` provides — so this chart, the sector toolbar, the loss-zone
+ *  panel, the focus panel and the 3D map can all share one piece of screen state. Drag-to-zoom,
+ *  wheel-zoom, the overview scrollbar and keyboard shortcuts are alternate input methods for
+ *  that same zoomRange — those gesture handlers themselves are not ported here. */
+export function TelemetryChartStack({
+  drivers,
+  sector2StartM,
+  sector3StartM,
+  zoomRange = null,
+  hiddenMetrics,
+  chipMode = "pair",
+  heightScale = DEFAULT_HEIGHT_SCALE,
+  hoverDistance = null,
+  onHover,
+  onHoverClear,
+  className,
+}: TelemetryChartStackProps) {
   const hoverLayerRef = useRef<HTMLDivElement>(null);
-  const [hover, setHover] = useState<{ pct: number; d: number } | null>(null);
+  const [internalHover, setInternalHover] = useState<{ pct: number; d: number } | null>(null);
 
   const reference = useMemo(() => drivers.find((d) => d.isReference) ?? drivers[0] ?? null, [drivers]);
 
@@ -485,6 +573,12 @@ export function TelemetryChartStack({ drivers, sector2StartM, sector3StartM, cla
     drivers.forEach((d) => d.samples.forEach((s) => { if (s.d > max) max = s.d; }));
     return max || 1;
   }, [drivers]);
+
+  const viewMin = zoomRange?.start ?? 0;
+  const viewMax = zoomRange?.end ?? trackLen;
+
+  const hiddenMetricSet = useMemo(() => new Set(hiddenMetrics ?? []), [hiddenMetrics]);
+  const visibleMetrics = useMemo(() => METRICS.filter((m) => !hiddenMetricSet.has(m.key)), [hiddenMetricSet]);
 
   const dashIndexByCarIdx = useMemo(() => {
     const seen = new Map<string, number>();
@@ -524,12 +618,25 @@ export function TelemetryChartStack({ drivers, sector2StartM, sector3StartM, cla
     if (!el) return;
     const rect = el.getBoundingClientRect();
     const pct = Math.max(0, Math.min(1, (e.clientX - rect.left) / Math.max(1, rect.width)));
-    setHover({ pct, d: pct * trackLen });
+    const d = viewMin + pct * (viewMax - viewMin);
+    setInternalHover({ pct, d });
+    onHover?.(d);
   }
 
   function handleMouseLeave() {
-    setHover(null);
+    setInternalHover(null);
+    onHoverClear?.();
   }
+
+  // The pointer hovering this chart always wins; otherwise fall back to whatever
+  // distance another synced view (3D map, transport scrub) last reported.
+  const hover = useMemo(() => {
+    if (internalHover) return internalHover;
+    if (hoverDistance == null) return null;
+    const span = Math.max(1, viewMax - viewMin);
+    const pct = Math.max(0, Math.min(1, (hoverDistance - viewMin) / span));
+    return { pct, d: hoverDistance };
+  }, [internalHover, hoverDistance, viewMin, viewMax]);
 
   const hoverEntries: HoverEntry[] = useMemo(() => {
     if (!hover || !reference) return [];
@@ -562,20 +669,22 @@ export function TelemetryChartStack({ drivers, sector2StartM, sector3StartM, cla
 
   return (
     <div className={cx("tc-charts", className)}>
-      {METRICS.map((metric) => (
+      {visibleMetrics.map((metric) => (
         <MetricRow
           key={metric.key}
           metric={metric}
-          height={effectiveHeight(metric)}
+          height={effectiveHeight(metric, heightScale)}
           drivers={drivers}
           referenceCarIdx={reference?.carIdx ?? null}
           dashIndexByCarIdx={dashIndexByCarIdx}
           deltaSeriesByCarIdx={deltaSeriesByCarIdx}
           range={plotRanges.get(metric.key) || { min: metric.min, max: metric.max }}
-          trackLen={trackLen}
+          viewMin={viewMin}
+          viewMax={viewMax}
           sectorBoundaries={sectorBoundaries}
           hover={hover}
           hoverEntries={hoverEntries}
+          chipMode={chipMode}
         />
       ))}
       <div className="tc-hover-layer" ref={hoverLayerRef} onMouseMove={handleMouseMove} onMouseLeave={handleMouseLeave}>

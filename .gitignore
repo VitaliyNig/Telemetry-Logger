@@ -4,6 +4,9 @@ publish-win/
 .vs/
 *.user
 *.suo
+
+# Node dependencies (root + design-system package)
+node_modules/
 appsettings.Development.local.json
 appsettings.user.json
 

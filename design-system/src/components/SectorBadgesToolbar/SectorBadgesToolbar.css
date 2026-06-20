@@ -1,0 +1,298 @@
+.tc-segmented {
+    display: inline-flex;
+    gap: 2px;
+    background: var(--color-bg-elevated);
+    border-radius: 6px;
+    padding: 3px;
+}
+
+.tc-seg-btn {
+    background: transparent;
+    color: var(--color-text-secondary);
+    border: none;
+    padding: 4px 10px;
+    font-size: 11px;
+    font-family: inherit;
+    cursor: pointer;
+    border-radius: 4px;
+    white-space: nowrap;
+    transition: all var(--motion-fast);
+}
+
+.tc-seg-btn:hover {
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--color-text-primary);
+}
+
+.tc-seg-btn.active {
+    background: var(--color-accent-primary);
+    color: #fff;
+    font-weight: 600;
+}
+
+/* Zoom actions */
+.tc-zoom-actions {
+    display: inline-flex;
+    gap: 4px;
+    flex-wrap: wrap;
+}
+
+.tc-zoom-btn {
+    background: var(--color-bg-elevated);
+    border: 1px solid transparent;
+    color: var(--color-text-secondary);
+    padding: 4px 10px;
+    font-size: 11px;
+    font-family: inherit;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all var(--motion-fast);
+}
+
+.tc-zoom-btn:hover {
+    border-color: var(--color-accent-border);
+    color: var(--color-text-primary);
+    background: var(--color-bg-card);
+}
+
+/* Sector groups (scrollable) */
+.tc-sector-groups {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+    max-width: 100%;
+    overflow-x: auto;
+    overflow-y: hidden;
+    scrollbar-width: thin;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+}
+.tc-sector-groups::-webkit-scrollbar { height: 6px; }
+.tc-sector-groups::-webkit-scrollbar-thumb {
+    background: var(--color-border-default);
+    border-radius: 999px;
+}
+
+.tc-sector-group {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    background: var(--color-bg-elevated);
+    border-radius: 999px;
+    padding: 3px 6px;
+    flex-shrink: 0;
+}
+
+.tc-sector-divider {
+    width: 1px;
+    align-self: stretch;
+    background: var(--color-border-muted);
+    opacity: 0.5;
+    flex-shrink: 0;
+}
+
+/* Sector time badges */
+.tc-badge {
+    background: transparent;
+    border: none;
+    color: var(--color-text-secondary);
+    padding: 3px 8px;
+    font-size: 10px;
+    font-family: var(--font-mono, 'Courier New', monospace);
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all var(--motion-fast);
+    white-space: nowrap;
+}
+
+.tc-badge:hover {
+    background: var(--color-bg-card-hover);
+    color: var(--color-text-primary);
+}
+
+.tc-badge strong {
+    color: var(--color-text-primary);
+    font-weight: 600;
+}
+
+.tc-badge-label-short { display: none; }
+
+/* ---- Compact side toolbar (under "Compare laps" cards) ---- */
+.tc-stb {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+.tc-stb-section {
+    background: var(--color-bg-surface);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md);
+    padding: 6px 8px 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    min-width: 0;
+}
+.tc-stb-label {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--color-text-muted);
+    line-height: 1;
+    user-select: none;
+}
+.tc-stb-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+    min-width: 0;
+}
+.tc-stb-mini {
+    font-size: 9px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--color-text-muted);
+    line-height: 1;
+    user-select: none;
+    min-width: 36px;
+}
+.tc-stb-toggle { min-width: 44px; text-align: center; }
+
+/* Icon-only segmented button (e.g. Size: Compact / Normal / Tall). */
+.tc-seg-btn--icon {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 3px 6px;
+    line-height: 0;
+}
+.tc-size-icon {
+    width: 14px;
+    height: 12px;
+    display: block;
+}
+.tc-size-icon rect {
+    fill: currentColor;
+    opacity: 0.55;
+    transition: opacity var(--motion-fast);
+}
+.tc-seg-btn--icon:hover .tc-size-icon rect { opacity: 0.85; }
+.tc-seg-btn--icon.active .tc-size-icon rect { opacity: 1; }
+
+/* Segmented control variants used inside the side toolbar */
+.tc-segmented--full {
+    display: flex;
+    width: 100%;
+}
+.tc-segmented--full .tc-seg-btn { flex: 1 1 0; text-align: center; }
+.tc-segmented--grow { flex: 1 1 auto; min-width: 0; }
+.tc-segmented--grow .tc-seg-btn { flex: 1 1 0; text-align: center; }
+
+/* Sector badges inside the narrow side column — one row per sector group. */
+.tc-stb-section .tc-sector-groups {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    padding-bottom: 0;
+    overflow: visible;
+}
+.tc-stb-section .tc-sector-group {
+    display: flex;
+    flex-wrap: wrap;
+    width: 100%;
+    padding: 3px 6px;
+    gap: 3px;
+}
+.tc-stb-section .tc-sector-divider { display: none; }
+.tc-stb-section .tc-badge { padding: 2px 6px; font-size: 10px; flex: 0 1 auto; }
+
+/* Channel chip list — wraps to multiple compact rows. */
+.tc-stb-section .tc-channel-list { gap: 3px; }
+.tc-stb-section .tc-channel {
+    padding: 2px 6px 2px 10px;
+    font-size: 10px;
+}
+.tc-stb-section .tc-channel::before { width: 3px; height: 12px; }
+
+/* Tighten segmented buttons inside compact rows. */
+.tc-stb-section .tc-segmented { padding: 2px; }
+.tc-stb-section .tc-seg-btn { padding: 3px 8px; font-size: 10px; }
+.tc-stb-section .tc-zoom-btn { padding: 3px 8px; font-size: 10px; flex: 1 1 auto; text-align: center; }
+.tc-stb-section .tc-zoom-actions { flex: 1 1 auto; min-width: 0; gap: 3px; }
+.tc-stb-section .tc-icon-btn { width: 24px; height: 24px; font-size: 13px; }
+
+/* Channel chip list (base) */
+.tc-channel-list {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px;
+    align-items: center;
+}
+
+.tc-channel {
+    position: relative;
+    background: transparent;
+    border: none;
+    color: var(--color-text-muted);
+    padding: 3px 8px 3px 12px;
+    font-size: 11px;
+    font-family: inherit;
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all var(--motion-fast);
+    white-space: nowrap;
+    overflow: hidden;
+}
+
+.tc-channel::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 3px;
+    height: 14px;
+    border-radius: 0 2px 2px 0;
+    background: transparent;
+    transition: background var(--motion-fast);
+}
+
+.tc-channel:hover {
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+}
+
+.tc-channel.active {
+    color: var(--color-text-primary);
+    background: var(--color-bg-elevated);
+}
+
+/* Metric color rails for active channels */
+.tc-channel[data-key="delta"].active::before { background: #a855f7; }
+.tc-channel[data-key="spd"].active::before   { background: #60a5fa; }
+.tc-channel[data-key="thr"].active::before   { background: #22c55e; }
+.tc-channel[data-key="brk"].active::before   { background: #ef4444; }
+.tc-channel[data-key="str"].active::before   { background: #c084fc; }
+.tc-channel[data-key="gr"].active::before    { background: #eab308; }
+.tc-channel[data-key="rpm"].active::before   { background: #f97316; }
+.tc-channel[data-key="ers"].active::before   { background: #38bdf8; }
+.tc-channel[data-key="drs"].active::before   { background: var(--drs, #00d4ff); }
+
+/* Insights panel sits as the trailing child inside .tc-stb when injected via `children`. */
+.tc-stb .tc-insights { padding: 6px 8px; }
+
+@media (max-width: 600px) {
+    .tc-sector-groups { gap: 6px; }
+    .tc-sector-group { gap: 4px; padding: 2px 4px; }
+    .tc-sector-divider { opacity: 0.55; }
+    .tc-badge-label-full { display: none; }
+    .tc-badge-label-short { display: inline; }
+    .tc-seg-btn { padding: 3px 8px; font-size: 10px; }
+    .tc-zoom-btn { padding: 3px 8px; font-size: 10px; }
+    .tc-badge { padding: 3px 6px; font-size: 10px; }
+    .tc-channel { padding: 3px 6px 3px 10px; font-size: 10px; }
+}

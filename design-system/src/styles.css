@@ -48,3 +48,12 @@
 @import "./components/HistoryEventsTable/HistoryEventsTable.css";
 @import "./components/HistoryLapChart/HistoryLapChart.css";
 @import "./components/TelemetryChartStack/TelemetryChartStack.css";
+@import "./components/TrackMap3D/TrackMap3D.css";
+@import "./components/CompareLapPicker/CompareLapPicker.css";
+@import "./components/SectorBadgesToolbar/SectorBadgesToolbar.css";
+@import "./components/TransportControls/TransportControls.css";
+@import "./components/CompareModeToggle/CompareModeToggle.css";
+@import "./components/FocusPanel/FocusPanel.css";
+@import "./components/MapDeltaOverlay/MapDeltaOverlay.css";
+@import "./components/TopLossZones/TopLossZones.css";
+@import "./components/TelemetryCompareScreen/TelemetryCompareScreen.css";

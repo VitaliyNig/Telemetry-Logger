@@ -1,0 +1,63 @@
+/* 3D track map (track3d.js) — square WebGL stage plus a one-line caption. */
+.tc-map3d {
+    position: relative;
+    width: 100%;
+    aspect-ratio: 1;
+    min-height: 200px;
+    border-radius: 4px;
+    overflow: hidden;
+    background: color-mix(in srgb, var(--color-bg-base) 60%, transparent);
+    touch-action: none;
+}
+.tc-map3d canvas { position: absolute; inset: 0; }
+.tc-map3d-caption {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 11px;
+    color: var(--color-text-muted);
+    letter-spacing: 0.2px;
+}
+.tc-map3d-hint { white-space: nowrap; }
+/* Three-position overlay selector: DRS | hide (eye-off) | SM. */
+.tc-map3d-seg {
+    display: inline-flex;
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm, 4px);
+    overflow: hidden;
+    flex-shrink: 0;
+}
+.tc-map3d-seg button {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 34px;
+    padding: 3px 9px;
+    border: none;
+    border-left: 1px solid var(--color-border-default);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.4px;
+    cursor: pointer;
+    transition: background var(--motion-fast, .15s), color var(--motion-fast, .15s);
+}
+.tc-map3d-seg button:first-child { border-left: none; }
+.tc-map3d-seg button:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
+.tc-map3d-seg button.active { background: var(--color-accent-primary); color: #fff; }
+.tc-map3d-seg button svg { display: block; }
+.tc-map3d-ctrls { display: inline-flex; align-items: center; gap: 8px; }
+.tc-map3d-follow {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 26px; height: 22px;
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    cursor: pointer;
+}
+.tc-map3d-follow:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
+.tc-map3d-follow.active { background: var(--color-accent-primary); color: #fff; border-color: var(--color-accent-primary); }
+.tc-map3d-follow svg { display: block; }

@@ -1,0 +1,39 @@
+.tc-transport { display: flex; align-items: center; gap: 10px; padding: 8px 6px 2px; margin-top: 4px; }
+.tc-tp-btn {
+    flex: 0 0 auto;
+    width: 30px; height: 26px;
+    border: 1px solid var(--color-border-default);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    border-radius: var(--radius-sm, 4px);
+    cursor: pointer;
+    font-size: 12px;
+    line-height: 1;
+}
+.tc-tp-btn:hover { background: var(--color-bg-card-hover); }
+.tc-tp-btn.is-playing { background: var(--color-accent-primary); color: #fff; border-color: var(--color-accent-primary); }
+.tc-tp-scrub { flex: 1; min-width: 0; accent-color: var(--color-accent-primary); }
+.tc-tp-pos { flex: 0 0 auto; font-family: var(--font-mono); font-size: 11px; color: var(--color-text-secondary); min-width: 56px; text-align: right; }
+.tc-tp-speed {
+    flex: 0 0 auto;
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm, 4px);
+    font-size: 11px;
+    padding: 3px 4px;
+}
+/* Marker sync toggle: Pos (same track position) | Gap (real elapsed-time gap). */
+.tc-tp-sync { display: inline-flex; flex: 0 0 auto; border: 1px solid var(--color-border-default); border-radius: var(--radius-sm, 4px); overflow: hidden; }
+.tc-tp-sync button {
+    border: none;
+    border-left: 1px solid var(--color-border-default);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    font-size: 11px; font-weight: 600;
+    padding: 3px 9px;
+    cursor: pointer;
+}
+.tc-tp-sync button:first-child { border-left: none; }
+.tc-tp-sync button:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
+.tc-tp-sync button.active { background: var(--color-accent-primary); color: #fff; }

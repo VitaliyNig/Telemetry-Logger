@@ -166,7 +166,38 @@
   wrapper there is easy to mistake for a viewport limitation, and chasing the viewport
   knob wastes a full rebuild cycle for nothing.
 
-## Status: porting complete
-All of wwwroot's UI surface is now extracted into `design-system/` (43 components).
-Future `/design-sync` runs are maintenance syncs (catching source edits) or redesign
-work, not porting — there is no remaining "NOT extracted" surface to track here.
+## Verification (fourth sync, completed 2026-06-19)
+- Added 9 components (43→52 total), all under `components/telemetry/`: CompareLapPicker,
+  CompareModeToggle, FocusPanel, MapDeltaOverlay, SectorBadgesToolbar, TopLossZones,
+  TrackMap3D, TransportControls, and the composed `TelemetryCompareScreen`. Together
+  with the existing TelemetryChartStack, this is the full Telemetry Compare page.
+- **Contract change**: `TelemetryChartStack` was retrofitted with controlled props (it
+  previously owned its own metric-visibility/zoom state internally) so
+  `TelemetryCompareScreen` and `SectorBadgesToolbar`/`TopLossZones` can drive it from
+  shared state. Verified via the new "Synced With Toolbar" story, which shows the
+  toolbar's channel selection correctly narrowing the chart stack's visible rows —
+  confirmed `match` at full resolution, not just sibling-trusted.
+- 6 new `cardMode: "column"` overrides (CompareLapPicker, CompareModeToggle,
+  MapDeltaOverlay, TopLossZones, TrackMap3D, TransportControls) for the same
+  [GRID_OVERFLOW] reason as prior syncs — fixed via override + targeted
+  `preview-rebuild.mjs`, no re-validation needed.
+- All 10 pending components graded from true screenshot comparisons: every story
+  across every component came back `match` (no `close`/`mismatch`, no notes). The two
+  most contract-sensitive components (TelemetryChartStack, TelemetryCompareScreen) were
+  graded from full-resolution raw PNG pairs rather than the comparison sheet thumbnails.
+- Canary spot-check (DebugConsole, TopSpeed, PitPredictor, LapTimesCard, FuelErs),
+  triggered by `reference_drift`, reconfirmed `match` — no regrading needed.
+- `conventions.md` re-validated against the 9 new/changed components (grepped for
+  `createContext|Provider|useContext` — zero matches) — not rewritten, still accurate.
+- Final driver run: `pendingGrade: []`, `canary: null`, `ok: true`. Atomic upload
+  (project was non-empty — pinned `projectId` from prior syncs) in 3 content chunks
+  (130 + 130 + 8 files, all under the 256-file cap) plus sentinel write/re-arm and
+  `_ds_sync.json` last. No deletes (`upload.deletePaths` was empty).
+
+## Status: Telemetry Compare page complete
+All of wwwroot's UI surface, including the full Telemetry Compare page (3D track map,
+lap picker, sector toolbar, transport controls, map delta overlay, focus panel, top
+loss zones, mode toggle, and the composed screen), is now extracted into
+`design-system/` (52 components). Future `/design-sync` runs are maintenance syncs
+(catching source edits) or redesign work — there is no remaining "NOT extracted"
+surface to track here.

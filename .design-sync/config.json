@@ -30,6 +30,12 @@
     "TelemetryChartStack": { "cardMode": "column", "viewport": "900x950" },
     "EventsCard": { "cardMode": "column" },
     "QualiStandings": { "cardMode": "column" },
-    "LapTimesCard": { "cardMode": "single", "primaryStory": "QualifyingWithSetupOpen" }
+    "LapTimesCard": { "cardMode": "single", "primaryStory": "QualifyingWithSetupOpen" },
+    "CompareLapPicker": { "cardMode": "column" },
+    "CompareModeToggle": { "cardMode": "column" },
+    "MapDeltaOverlay": { "cardMode": "column" },
+    "TopLossZones": { "cardMode": "column" },
+    "TrackMap3D": { "cardMode": "column" },
+    "TransportControls": { "cardMode": "column" }
   }
 }

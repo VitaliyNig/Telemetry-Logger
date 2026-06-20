@@ -174,3 +174,57 @@ export type {
   ChartStackSample,
   ChartStackDriver,
 } from "./components/TelemetryChartStack/TelemetryChartStack";
+
+export { TrackMap3D } from "./components/TrackMap3D/TrackMap3D";
+export type {
+  TrackMap3DProps,
+  TrackMap3DCenterlinePoint,
+  TrackMap3DGeometry,
+  TrackMap3DMotionSample,
+  TrackMap3DDriver,
+  TrackMap3DDominanceRun,
+  TrackMap3DOverlayMode,
+  TrackMap3DSyncMode,
+} from "./components/TrackMap3D/TrackMap3D";
+
+export { CompareLapPicker } from "./components/CompareLapPicker/CompareLapPicker";
+export type {
+  CompareLapPickerProps,
+  CompareLapPickerDriver,
+  CompareLapPickerLap,
+  CompareLapPickerSelection,
+} from "./components/CompareLapPicker/CompareLapPicker";
+
+export { SectorBadgesToolbar } from "./components/SectorBadgesToolbar/SectorBadgesToolbar";
+export type {
+  SectorBadgesToolbarProps,
+  SectorBadgesToolbarDeltaMode,
+  SectorBadgesToolbarSplit,
+  SectorBadgesToolbarChipMode,
+  SectorBadgesToolbarZoomRange,
+  SectorBadgesToolbarSegment,
+  SectorBadgesToolbarChannel,
+} from "./components/SectorBadgesToolbar/SectorBadgesToolbar";
+
+export { TransportControls } from "./components/TransportControls/TransportControls";
+export type { TransportControlsProps, TransportControlsSpeed } from "./components/TransportControls/TransportControls";
+
+export { CompareModeToggle } from "./components/CompareModeToggle/CompareModeToggle";
+export type { CompareModeToggleProps, CompareLayoutMode } from "./components/CompareModeToggle/CompareModeToggle";
+
+export { FocusPanel } from "./components/FocusPanel/FocusPanel";
+export type { FocusPanelProps, FocusPanelDriver, FocusPanelDriverSample } from "./components/FocusPanel/FocusPanel";
+
+export { MapDeltaOverlay } from "./components/MapDeltaOverlay/MapDeltaOverlay";
+export type { MapDeltaOverlayProps } from "./components/MapDeltaOverlay/MapDeltaOverlay";
+
+export { TopLossZones } from "./components/TopLossZones/TopLossZones";
+export type {
+  TopLossZonesProps,
+  TopLossZonesZone,
+  TopLossZonesFact,
+  TopLossZonesFactTone,
+} from "./components/TopLossZones/TopLossZones";
+
+export { TelemetryCompareScreen } from "./components/TelemetryCompareScreen/TelemetryCompareScreen";
+export type { TelemetryCompareScreenProps } from "./components/TelemetryCompareScreen/TelemetryCompareScreen";
