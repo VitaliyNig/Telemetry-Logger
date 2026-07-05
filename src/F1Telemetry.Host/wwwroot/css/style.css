@@ -418,13 +418,13 @@
 .history-folder-input-row input[type="text"] {
     flex: 1 1 280px;
     min-width: 200px;
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
 }
 
 .history-folder-resolved {
     color: var(--color-text-secondary);
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 11px;
     word-break: break-all;
 }
@@ -3549,7 +3549,7 @@
 }
 
 .history-folder-path {
-    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-family: var(--font-mono);
     font-size: 12px;
     color: var(--text-primary);
     background: var(--bg-tertiary);
@@ -4064,7 +4064,7 @@ input.history-folder-path:focus {
     background: rgba(155, 63, 245, 0.06);
 }
 .session-pick-name { font-weight: 600; }
-.session-pick-date { color: var(--text-dim); font-size: 11px; font-family: 'Courier New', monospace; }
+.session-pick-date { color: var(--text-dim); font-size: 11px; font-family: var(--font-mono); }
 
 .history-detail {
     display: flex;
@@ -4251,7 +4251,7 @@ input.history-folder-path:focus {
     border-radius: 4px;
     padding: 2px 4px;
     font-size: 11px;
-    font-family: 'Courier New', monospace;
+    font-family: var(--font-mono);
 }
 
 /* ---------- Lap Times page ---------- */
