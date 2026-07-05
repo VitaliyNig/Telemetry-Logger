@@ -161,7 +161,7 @@ export function HistoryEventsTable({
   const selectedCount = EVENT_CODES.reduce((acc, code) => acc + (codeFilter[code] === false ? 0 : 1), 0);
 
   return (
-    <div className={className}>
+    <div className={["ev-container", className].filter(Boolean).join(" ")}>
       <div className="ev-toolbar">
         <div className="ev-tools">
           <button

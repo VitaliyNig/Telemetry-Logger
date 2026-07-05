@@ -37,6 +37,12 @@ public sealed class LapTyreStore
 
         _lastLapNum[carIndex] = currentLapNum;
 
+        // A lap-number DECREASE is a flashback rewind, not a completed lap — resync only.
+        // Capturing here would overwrite an already-completed lap's snapshot with
+        // post-rewind state.
+        if (currentLapNum < prev)
+            return null;
+
         var completedLapIdx = currentLapNum - 2;
         if (completedLapIdx < 0)
             return null;

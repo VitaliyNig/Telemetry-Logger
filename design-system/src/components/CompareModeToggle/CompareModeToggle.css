@@ -21,13 +21,3 @@
 .tc-mode-toggle button:first-child { border-left: none; }
 .tc-mode-toggle button:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
 .tc-mode-toggle button.active { background: var(--color-accent-primary); color: #fff; }
-
-/* Top bar: the Charts/Map mode toggle (right-aligned). */
-.tc-topbar {
-    display: flex;
-    align-items: center;
-    justify-content: flex-end;
-    gap: 12px;
-    padding: 2px 4px 8px;
-}
-.tc-topbar .tc-mode-toggle { flex: 0 0 auto; }

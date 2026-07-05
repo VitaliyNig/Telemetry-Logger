@@ -487,7 +487,7 @@ td.lap-cell__tyre { cursor: default; }
 }
 
 @media (max-width: 600px) {
-    .lt-container { gap: 8px; padding: 0; }
+    .lt-container { padding: 0; }
     .lap-grid-wrap {
         max-height: calc(100vh - 180px);
         /* Simpler gradient on phone: just an inner box-shadow edge hint. */

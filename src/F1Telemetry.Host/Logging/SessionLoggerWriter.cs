@@ -20,14 +20,39 @@ public sealed class SessionLoggerWriter : BackgroundService
         _logger = logger;
     }
 
+    /// <summary>How often the drain loop wakes up while the queue is quiet to look for idle sessions.</summary>
+    private static readonly TimeSpan IdleCheckPeriod = TimeSpan.FromSeconds(60);
+
+    /// <summary>A session with no packets for this long gets an idle checkpoint written
+    /// (game closed / crashed without SEND). The session keeps recording if packets resume.</summary>
+    private static readonly TimeSpan IdleCheckpointAfter = TimeSpan.FromMinutes(2);
+
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         var reader = _sessionLogger.Reader;
 
         try
         {
-            while (await reader.WaitToReadAsync(stoppingToken).ConfigureAwait(false))
+            while (!stoppingToken.IsCancellationRequested)
             {
+                // Wait for data with a timeout: when the game stops sending (finish line in
+                // single player, Alt+F4, pause) nothing would otherwise wake this loop, and
+                // idle sessions would never be checkpointed.
+                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(stoppingToken);
+                timeoutCts.CancelAfter(IdleCheckPeriod);
+                bool hasData;
+                try
+                {
+                    hasData = await reader.WaitToReadAsync(timeoutCts.Token).ConfigureAwait(false);
+                }
+                catch (OperationCanceledException) when (!stoppingToken.IsCancellationRequested)
+                {
+                    _sessionLogger.CheckpointIdleSessions(IdleCheckpointAfter);
+                    continue;
+                }
+                if (!hasData)
+                    break; // channel completed
+
                 while (reader.TryRead(out var envelope))
                 {
                     try

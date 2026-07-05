@@ -37,6 +37,18 @@ public sealed class LapSample
     public byte Drs { get; set; }
     /// <summary>DRS allowed at this sample (0 no, 1 yes).</summary>
     public byte DrsAllowed { get; set; }
+    /// <summary>
+    /// Active-aero mode from CarTelemetry26: 0 = Corner, 1 = Straight (SM). This is the 2026
+    /// analogue of DRS — the Perf metric uses it instead of <see cref="Drs"/> for format 2026+.
+    /// Stays 0 in 2025 logs (no CarTelemetry26 packet).
+    /// </summary>
+    public byte Aero { get; set; }
+    /// <summary>
+    /// Overtake (Boost / manual-override) active at this sample, from CarTelemetry26
+    /// (0 no, 1 yes). The gap-based attack tool of the 2026 regs — reported in the Perf
+    /// tooltip as an informational share. Stays 0 in 2025 logs.
+    /// </summary>
+    public byte Ovt { get; set; }
     /// <summary>ERS deployed this lap (joules), cumulative value from game telemetry.</summary>
     public float ErsDepLapJ { get; set; }
     /// <summary>
@@ -82,6 +94,15 @@ public enum RaceFlag : byte
     Red = 4,
 }
 
+/// <summary>Frame reference into the "{slug}.samples" sidecar (schema v3): frame start offset + gzip payload length.</summary>
+public sealed class SampleRef
+{
+    /// <summary>Byte offset of the frame start (the 4-byte length prefix) in the sidecar file.</summary>
+    public long O { get; set; }
+    /// <summary>Length of the gzip member in bytes (excludes the 4-byte prefix).</summary>
+    public int L { get; set; }
+}
+
 /// <summary>One completed lap for one car. Samples/Motion are lazily set to null in RAM after a partial flush to disk.</summary>
 public sealed class DriverLap
 {
@@ -103,6 +124,11 @@ public sealed class DriverLap
     public RaceFlag? RaceFlag { get; set; }
     public List<LapSample>? Samples { get; set; }
     public List<MotionSample>? Motion { get; set; }
+    /// <summary>v3: where this lap's samples/motion live in the sidecar. Null in v2 logs (inline above).</summary>
+    public SampleRef? SRef { get; set; }
+    /// <summary>v3: per-lap ERS/DRS aggregate computed at lap completion. Null in v2 logs
+    /// (recomputed on read from inline samples) and when samples were unavailable.</summary>
+    public LapPerfData? Perf { get; set; }
 }
 
 /// <summary>All data for one car over the whole session.</summary>
@@ -120,11 +146,43 @@ public sealed class DriverSessionData
     public Dictionary<int, LapTyreSnapshotV2> TyreByLap { get; set; } = new();
     /// <summary>Per-lap setup snapshot, populated for the player car only (practice / time trial).</summary>
     public Dictionary<int, CarSetupData>? SetupByLap { get; set; }
+
+    /// <summary>Final-classification snapshot for this driver, backfilled when the game emits
+    /// the FinalClassification packet. Null in sessions that ended without one (practice,
+    /// quit mid-race, logs recorded before this field existed).</summary>
+    public DriverFinalResultV3? Final { get; set; }
+}
+
+/// <summary>Per-driver slice of the FinalClassification packet. In single player the game stops
+/// streaming LapData once the player crosses the line, so live per-lap position/gap data for
+/// cars finishing after the player is frozen at that moment — this snapshot carries the
+/// authoritative end-of-race result instead.</summary>
+public sealed class DriverFinalResultV3
+{
+    public byte Position { get; set; }
+    public byte NumLaps { get; set; }
+    public byte GridPosition { get; set; }
+    public byte Points { get; set; }
+    /// <summary>0=invalid,1=inactive,2=active,3=finished,4=DNF,5=DSQ,6=not classified,7=retired.</summary>
+    public byte ResultStatus { get; set; }
+    /// <summary>0=invalid,1=retired,2=finished,3=terminal damage,4=inactive,5=not enough laps,
+    /// 6=black flagged,7=red flagged,8=mechanical failure,9=session skipped,10=session simulated.</summary>
+    public byte ResultReason { get; set; }
+    public uint BestLapTimeInMs { get; set; }
+    /// <summary>Total race time in seconds, without penalties.</summary>
+    public double TotalRaceTimeS { get; set; }
+    public byte PenaltiesTimeS { get; set; }
+    public byte NumPenalties { get; set; }
+    public byte NumPitStops { get; set; }
 }
 
 /// <summary>Session log metadata.</summary>
 public sealed class SessionLogMetaV2
 {
+    /// <summary>0 (absent) or 2 = monolithic v2 file with inline samples; 3 = split storage
+    /// with a "{slug}.samples" sidecar (see docs/SESSION_LOG_V3.md).</summary>
+    public int SchemaVersion { get; set; }
+
     public int TrackId { get; set; }
     public string TrackName { get; set; } = "";
     public byte SessionType { get; set; }

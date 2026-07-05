@@ -649,25 +649,18 @@ UI намеренно «компактный»: верхняя toolbar — уз�
 
 ## 9. Debug-вкладка
 
-Доступна только при включённом Debug Mode. Структура из трёх блоков:
+Доступна только при включённом Debug Mode.
 
 ### 9.1 Packet stats + console (левая/правая колонка)
 - Total Packets (counter) + список «PacketName: count» (отсортирован по убыванию).
 - Console: live-поток `DebugPacket` с временной меткой и именем. Хранится до 2000
   записей; есть auto-scroll, Clear, Download Log, Reset.
 
-### 9.2 DRS Zones inspector
-Список всех известных трасс (агрегируется из обоих плагинов формата). Колонки:
-`Track / Status (has zones / —) / Zones / Coverage / Ranges / Action`.
-
-Текущая live-трасса подсвечивается, и для неё активна кнопка `Re-capture`. Эта кнопка
-зовёт `POST /api/debug/drs-zones/{trackId}/recapture`, удаляет запись из
-`wwwroot/data/drs-zones.json` и «перевзводит» автозахват на следующий чистый лап в
-practice / qualifying / time-trial. Race / sprint не используются для автозахвата — там
-DRS-флаг привязан к gap-условию, а не к зоне, поэтому из них нельзя достоверно
-восстановить географию.
-
-Полл — раз в 5 с пока вкладка открыта.
+> **DRS-зоны.** Ранее здесь был инспектор DRS Zones с автозахватом по кругам и кнопкой
+> `Re-capture`. Он удалён: зоны берутся напрямую из статических геометрий трасс
+> `wwwroot/data/track-geometry/{trackId}.json` (поля `drsZones` и `xModeZones`). По версии
+> игры выбирается нужный набор — DRS (формат ≤ 2025) или Straight Mode / active-aero
+> (`xModeZones`, формат 2026+). Их же рисует 3D-карта трассы.
 
 ---
 
@@ -710,8 +703,6 @@ DRS-флаг привязан к gap-условию, а не к зоне, поэ
 | GET   | `/api/debug/stats`                                      | Debug: счётчики      |
 | GET   | `/api/debug/log` / `…/download`                         | Debug: download log  |
 | POST  | `/api/debug/reset`                                      | Debug: reset stats   |
-| GET   | `/api/debug/drs-zones`                                  | Debug: DRS-таблица   |
-| POST  | `/api/debug/drs-zones/{trackId}/recapture`              | Debug: Re-capture    |
 | GET   | `/api/sessions`                                         | History: список уикэндов |
 | GET   | `/api/sessions/{folder}/{slug}`                         | History: детальный JSON |
 | GET   | `/api/sessions/{folder}/{slug}/laps`                    | (запасной путь, фронт чаще берёт laps из detail) |

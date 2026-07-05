@@ -9,9 +9,10 @@
         "--project",
         "src/F1Telemetry.Host",
         "--",
-        "--App:HistoryFolder=D:\\Telemetry-Logger\\publish-win\\Logs"
+        "--App:HistoryFolder=D:\\Telemetry-Logger\\publish-win\\Logs",
+        "--App:WebPort=5001"
       ],
-      "port": 5000
+      "port": 5001
     },
     {
       "name": "telemetry-published",

@@ -72,6 +72,49 @@
         });
         document.body.classList.toggle('on-live-tab', tabId === 'live');
         if (tabId === 'history') loadHistorySessions();
+        // Keep the URL in sync (replaceState: tab hops shouldn't spam browser history).
+        // HistoryDetail owns the richer #history/{folder}/{slug}/{subtab} form.
+        if (!window.__routeApplying && location.hash !== '#' + tabId) {
+            history.replaceState(null, '', '#' + tabId);
+        }
+    }
+
+    // --- Hash routing ---
+    // #live | #history | #settings | #debug | #history/{folder}/{slug}[/{subtab}]
+    // Deep links restore History detail on load; back/forward navigate between grid and detail.
+    function applyRoute() {
+        var h = location.hash || '#live';
+        var m = h.match(/^#history\/([^/]+)\/([^/]+)(?:\/([^/]+))?$/);
+        if (m && window.HistoryDetail && window.HistoryDetail.openRoute) {
+            window.__routeApplying = true;
+            try {
+                // Only switch when needed: open()'s own hash push echoes back through here,
+                // and re-running switchTab would re-fetch the session grid for nothing.
+                var histBtn = tabNav.querySelector('.tab-btn[data-tab="history"]');
+                if (!histBtn || !histBtn.classList.contains('active')) switchTab('history');
+                window.HistoryDetail.openRoute(
+                    decodeURIComponent(m[1]),
+                    decodeURIComponent(m[2]),
+                    m[3] ? decodeURIComponent(m[3]) : null);
+            } finally {
+                window.__routeApplying = false;
+            }
+            return;
+        }
+        // A detail link with HistoryDetail unavailable (script failed?) still lands on the
+        // History grid rather than silently bouncing to Live.
+        var tab = h.indexOf('#history') === 0 ? 'history' : h.slice(1);
+        if (['live', 'history', 'settings', 'debug'].indexOf(tab) === -1) tab = 'live';
+        switchTab(tab);
+    }
+
+    window.addEventListener('hashchange', applyRoute);
+    // Initial route only after ALL scripts ran: HistoryDetail is defined in a script that
+    // loads after app.js, and a bare setTimeout can fire before it finishes downloading.
+    if (document.readyState === 'loading') {
+        document.addEventListener('DOMContentLoaded', applyRoute);
+    } else {
+        applyRoute();
     }
 
     var initialActiveTab = tabNav.querySelector('.tab-btn.active');
@@ -99,8 +142,9 @@
         var container = document.getElementById('historySessionList');
         if (!container) return;
 
-        // Hide the detail view when returning to the list.
-        if (window.HistoryDetail) window.HistoryDetail.close();
+        // Hide the detail view when returning to the list — unless a detail deep-link is
+        // being applied right now (applyRoute activates the tab first, then opens detail).
+        if (window.HistoryDetail && !window.__routeApplying) window.HistoryDetail.close();
 
         ensureHistoryToolbar();
         // Sync the toolbar's folder display in case Settings changed the persisted root.
@@ -666,10 +710,8 @@
         if (enabled) {
             debugTabBtn.classList.remove('hidden');
             initSignalR();
-            drsCapFetchStatus();
         } else {
             debugTabBtn.classList.add('hidden');
-            drsCapStopPolling();
             var activeTab = tabNav.querySelector('.tab-btn.active');
             if (activeTab && activeTab.dataset.tab === 'debug') {
                 switchTab('live');
@@ -959,116 +1001,6 @@
                 console.error('Failed to reset:', err);
             });
     });
-
-    // --- Debug: DRS zones inspector ---
-    var drsZonesTbody = document.getElementById('drsZonesTbody');
-    var drsZonesCurrent = document.getElementById('drsZonesCurrent');
-    var btnDrsZonesRefresh = document.getElementById('btnDrsZonesRefresh');
-    var drsZonesPollTimer = null;
-    var DRS_ZONES_POLL_MS = 5000;
-
-    function drsCapFetchStatus() {
-        if (!drsZonesTbody) return;
-        return fetch('/api/debug/drs-zones')
-            .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('http ' + r.status)); })
-            .then(renderDrsZonesView)
-            .catch(function (err) {
-                drsZonesTbody.innerHTML = '<tr><td colspan="6" class="muted">Failed to load: ' + escapeHtml(String(err && err.message ? err.message : err)) + '</td></tr>';
-            })
-            .finally(function () {
-                if (debugMode) drsCapStartPolling();
-            });
-    }
-
-    function drsCapStartPolling() {
-        if (drsZonesPollTimer != null) return;
-        drsZonesPollTimer = window.setInterval(drsCapFetchStatus, DRS_ZONES_POLL_MS);
-    }
-
-    function drsCapStopPolling() {
-        if (drsZonesPollTimer == null) return;
-        window.clearInterval(drsZonesPollTimer);
-        drsZonesPollTimer = null;
-    }
-
-    function renderDrsZonesView(data) {
-        if (!drsZonesTbody) return;
-        var currentId = data && data.currentTrackId != null ? Number(data.currentTrackId) : null;
-        var currentName = data && data.currentTrackName ? String(data.currentTrackName) : null;
-
-        if (drsZonesCurrent) {
-            if (currentId == null) {
-                drsZonesCurrent.textContent = 'No live session.';
-                drsZonesCurrent.classList.remove('drs-zones-current--live');
-            } else {
-                drsZonesCurrent.textContent = 'Live: ' + currentName + ' (track ' + currentId + ')';
-                drsZonesCurrent.classList.add('drs-zones-current--live');
-            }
-        }
-
-        var tracks = (data && Array.isArray(data.tracks)) ? data.tracks : [];
-        if (tracks.length === 0) {
-            drsZonesTbody.innerHTML = '<tr><td colspan="6" class="muted">No track data.</td></tr>';
-            return;
-        }
-
-        var rows = tracks.map(function (t) {
-            var isCurrent = currentId != null && Number(t.trackId) === currentId;
-            var rowCls = 'drs-zone-row' + (isCurrent ? ' drs-zone-row--current' : '');
-            var statusCls = t.hasZones ? 'drs-zones-status drs-zones-status--has' : 'drs-zones-status drs-zones-status--missing';
-            var statusText = t.hasZones ? 'has zones' : '—';
-            var coverageText = t.hasZones ? Math.round((t.coverage || 0) * 100) + '%' : '—';
-            var rangesText = t.hasZones ? formatDrsRanges(t.zones) : '—';
-            // Re-capture button is enabled only when this row matches the live session, so a
-            // user can't accidentally wipe a track they're not currently driving.
-            var btn = '<button type="button" class="btn btn-small btn-danger drs-zone-recapture"'
-                + ' data-track-id="' + Number(t.trackId) + '"'
-                + (isCurrent ? '' : ' disabled')
-                + (isCurrent ? ' title="Wipe entry and re-arm capture for the next clean lap"' : ' title="Drive this track in P/Q/TT first"')
-                + '>Re-capture</button>';
-            return '<tr class="' + rowCls + '">'
-                + '<td>' + escapeHtml(String(t.trackName || '')) + ' <span class="drs-zone-id">' + Number(t.trackId) + '</span></td>'
-                + '<td><span class="' + statusCls + '">' + statusText + '</span></td>'
-                + '<td>' + (t.hasZones ? Number(t.zoneCount) : '—') + '</td>'
-                + '<td>' + coverageText + '</td>'
-                + '<td class="drs-zone-ranges">' + rangesText + '</td>'
-                + '<td>' + btn + '</td>'
-                + '</tr>';
-        }).join('');
-        drsZonesTbody.innerHTML = rows;
-    }
-
-    function formatDrsRanges(zones) {
-        if (!zones || !zones.length) return '—';
-        return zones.map(function (z) {
-            var s = Number(z[0]);
-            var e = Number(z[1]);
-            return '[' + s.toFixed(3) + '–' + e.toFixed(3) + ']';
-        }).join(' ');
-    }
-
-    if (drsZonesTbody) {
-        drsZonesTbody.addEventListener('click', function (e) {
-            var btn = e.target.closest('.drs-zone-recapture');
-            if (!btn || btn.disabled) return;
-            var trackId = Number(btn.dataset.trackId);
-            if (!Number.isFinite(trackId)) return;
-            if (!confirm('Wipe DRS zones for track ' + trackId + ' and re-arm capture?')) return;
-            btn.disabled = true;
-            fetch('/api/debug/drs-zones/' + trackId + '/recapture', { method: 'POST' })
-                .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error('http ' + r.status)); })
-                .then(function () { return drsCapFetchStatus(); })
-                .catch(function (err) {
-                    console.error('Re-capture failed:', err);
-                    btn.disabled = false;
-                    alert('Re-capture failed: ' + (err && err.message ? err.message : err));
-                });
-        });
-    }
-
-    if (btnDrsZonesRefresh) {
-        btnDrsZonesRefresh.addEventListener('click', function () { drsCapFetchStatus(); });
-    }
 
     // --- Helpers ---
     function formatNumber(n) {

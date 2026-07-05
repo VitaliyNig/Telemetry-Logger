@@ -3,160 +3,210 @@
     font-size: 13px;
     padding: 8px 0;
 }
-.tyreset-groups {
+
+/* empty state (shared look with Pit Stop Predictor) — fills its container and centres both axes */
+.widget-empty { flex: 1; min-height: 0; padding: 24px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px; }
+.widget-empty-icon { width: 44px; height: 44px; border-radius: 50%; border: 1.5px solid #2c343f; display: flex; align-items: center; justify-content: center; opacity: .7; }
+.widget-empty-dash { width: 14px; height: 2px; border-radius: 2px; background: #3d4651; }
+.widget-empty-title { font: 600 13px var(--font-sans, inherit); color: #8d97a5; }
+.widget-empty-sub { font: 400 11px var(--font-sans, inherit); color: #5a6472; margin-top: -7px; }
+
+/* Card layout: fitted block pinned, pool scrolls */
+.ts-card {
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    min-height: 0;
+}
+
+/* Fitted summary block */
+.ts-fitted {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    border-radius: var(--radius-md);
+    background: rgba(0,166,255,0.10);
+    border: 1px solid rgba(0,166,255,0.30);
+}
+.ts-fitted-left {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+}
+.ts-fitted-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--accent-blue);
+}
+.ts-fitted-name {
+    align-self: flex-start;
+    padding: 3px 11px;
+    border-radius: 5px;
+    font-size: 13px;
+    font-weight: 700;
+}
+.ts-fitted-right {
+    margin-left: auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 18px;
+}
+.ts-fitted-stat { text-align: right; }
+.ts-fitted-val {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--color-text-primary);
+}
+.ts-fitted-cap {
+    display: block;
+    margin-top: 4px;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--color-text-dim);
+}
+
+/* Scrollable pool of grouped sets */
+.ts-pool {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
     overflow-y: auto;
 }
-.deck-row {
+.ts-group {
     display: flex;
     flex-direction: column;
-    gap: 8px;
 }
-.deck-row-header {
+.ts-group-head {
     display: flex;
     align-items: center;
-    gap: 8px;
-    font-size: 10px;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 1px;
-    color: var(--color-text-muted);
+    gap: 7px;
+    padding: 10px 2px 5px;
 }
-.deck-row-count {
-    font-family: var(--font-mono);
-    font-size: 10px;
-    color: var(--color-text-dim);
-    background: var(--color-bg-elevated);
-    padding: 1px 6px;
-    border-radius: 999px;
+.ts-group-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    flex: none;
 }
-.deck-row-chips {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 8px;
-}
-.tyre-chip {
-    position: relative;
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 1px;
-    width: 78px;
-    padding: 8px 10px 10px;
-    border-radius: var(--radius-md);
-    background: var(--color-bg-elevated);
-    border: 1px solid var(--color-border-muted);
-    cursor: default;
-    overflow: hidden;
-}
-.tyre-chip.fitted {
-    border: 2px solid var(--accent-blue);
-    box-shadow:
-        0 0 0 2px rgba(0,166,255,0.15),
-        0 0 16px rgba(0,166,255,0.12),
-        inset 0 0 20px rgba(0,166,255,0.06);
-}
-.chip-side-bar {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    width: 4px;
-    background: rgba(255,255,255,0.05);
-    pointer-events: none;
-    z-index: 0;
-    overflow: hidden;
-}
-.chip-side-bar-l {
-    left: 0;
-    border-radius: var(--radius-md) 0 0 var(--radius-md);
-}
-.chip-side-bar-r {
-    right: 0;
-    border-radius: 0 var(--radius-md) var(--radius-md) 0;
-}
-.chip-side-fill {
-    position: absolute;
-    bottom: 0;
-    left: 0;
-    right: 0;
-    transition: height 0.4s ease, background 0.3s;
-}
-.chip-badge, .chip-delta, .chip-laps, .chip-grip-label, .chip-grip-value {
-    position: relative;
-    z-index: 1;
-}
-.chip-badge {
-    width: 34px;
-    height: 34px;
-    border-radius: 50%;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 10px;
-    font-weight: 800;
-    font-family: var(--font-mono);
-    margin-bottom: 2px;
-}
-.chip-badge.compound-soft       { background: #ff3333; color: #fff; }
-.chip-badge.compound-super-soft { background: #9B3CC4; color: #fff; }
-.chip-badge.compound-medium     { background: #ffd700; color: #111; }
-.chip-badge.compound-hard       { background: #e0e0e0; color: #111; }
-.chip-badge.compound-inter      { background: #00cc00; color: #111; }
-.chip-badge.compound-wet        { background: #00a6ff; color: #111; }
-.chip-badge.compound-unknown    { background: #444; color: #aaa; }
-.chip-oncar {
-    position: absolute;
-    top: 0;
-    right: 0;
-    z-index: 2;
-    width: 26px;
-    height: 26px;
-    background: var(--accent-blue);
-    color: #fff;
-    font-size: 8px;
-    font-weight: 800;
-    letter-spacing: 0.5px;
-    line-height: 1;
-    font-family: var(--font-mono);
-    clip-path: polygon(100% 0, 100% 100%, 0 0);
-    display: flex;
-    align-items: flex-start;
-    justify-content: flex-end;
-    padding: 2px 3px 0 0;
-    pointer-events: none;
-}
-.chip-delta {
-    font-size: 17px;
-    font-weight: 800;
-    font-family: var(--font-mono);
-    line-height: 1.1;
-    margin-top: 2px;
-}
-.chip-delta.pos { color: var(--semantic-red); }
-.chip-delta.neg { color: var(--accent-green); }
-.chip-delta.zero { color: var(--color-text-muted); }
-.chip-laps {
+.ts-group-name {
     font-size: 11px;
-    color: var(--color-text-secondary);
-    font-family: var(--font-mono);
-    line-height: 1.1;
-    margin-top: 1px;
-}
-.chip-grip-label {
-    font-size: 8px;
     font-weight: 700;
-    text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: var(--color-text-dim);
-    line-height: 1;
-    margin-top: 3px;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
 }
-.chip-grip-value {
-    font-size: 12px;
-    font-weight: 700;
+.ts-group-count {
+    margin-left: auto;
     font-family: var(--font-mono);
-    line-height: 1.1;
+    font-size: 10px;
+    color: var(--color-text-dim);
+    background: var(--color-bg-elevated);
+    border-radius: 999px;
+    padding: 1px 7px;
+}
+
+/* Individual set row */
+.ts-set-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 6px 8px 12px;
+    border-top: 1px solid var(--color-border-muted);
+}
+.ts-set-row--fitted { background: rgba(0,166,255,0.12); }
+.ts-row-accent {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+}
+.ts-wear {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex: 1;
+    min-width: 0;
+}
+.ts-wear-track {
+    flex: 1;
+    height: 6px;
+    min-width: 30px;
+    border-radius: 3px;
+    background: var(--color-bg-elevated);
+    overflow: hidden;
+}
+.ts-wear-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease, background 0.3s;
+}
+.ts-wear-pct {
+    width: 34px;
+    flex: none;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+}
+.ts-delta {
+    width: 56px;
+    flex: none;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 700;
     font-variant-numeric: tabular-nums;
 }
+.ts-delta--slower { color: var(--semantic-red); }
+.ts-delta--faster { color: var(--accent-green); }
+.ts-delta--zero   { color: var(--color-text-muted); }
+.ts-life {
+    width: 28px;
+    flex: none;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+}
+.ts-grip {
+    width: 36px;
+    flex: none;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.ts-grip--na { color: var(--color-text-dim); }
+
+/* Compound colours (reworked tyre-sets) */
+.ts-fitted-name.compound-soft       { background: #ff3333; color: #fff; }
+.ts-fitted-name.compound-super-soft { background: #9B3CC4; color: #fff; }
+.ts-fitted-name.compound-medium     { background: #ffd700; color: #111; }
+.ts-fitted-name.compound-hard       { background: #e0e0e0; color: #111; }
+.ts-fitted-name.compound-inter      { background: #00cc00; color: #111; }
+.ts-fitted-name.compound-wet        { background: #00a6ff; color: #111; }
+.ts-fitted-name.compound-unknown    { background: #444;    color: #aaa; }
+.ts-group-dot.compound-soft,        .ts-row-accent.compound-soft       { background: #ff3333; }
+.ts-group-dot.compound-super-soft,  .ts-row-accent.compound-super-soft { background: #9B3CC4; }
+.ts-group-dot.compound-medium,      .ts-row-accent.compound-medium     { background: #ffd700; }
+.ts-group-dot.compound-hard,        .ts-row-accent.compound-hard       { background: #e0e0e0; }
+.ts-group-dot.compound-inter,       .ts-row-accent.compound-inter      { background: #00cc00; }
+.ts-group-dot.compound-wet,         .ts-row-accent.compound-wet        { background: #00a6ff; }
+.ts-group-dot.compound-unknown,     .ts-row-accent.compound-unknown    { background: #444; }

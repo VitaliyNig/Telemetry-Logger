@@ -42,6 +42,7 @@
     --brake: var(--semantic-red);
     --ers: #ffd700;
     --drs: #00d0ff;
+    --boost: #ff3fd8; /* 2026 Overtake/Boost (manual override) — Car Status deploy chip, compare Boost row */
     --danger: var(--semantic-red);
     --warning: #ff8c00;
     --safe: #00d700;
@@ -49,6 +50,13 @@
     /* Ad hoc panel / form surfaces (used e.g. telemetry compare map chips) */
     --border-color: var(--color-border-default);
     --panel-bg: var(--color-bg-card);
+
+    /* Shared sub-card surface: the inset tiles/sections inside widgets
+       (Session tiles, Car Telemetry instrument tiles, Fuel & ERS sections,
+       Lap Data blocks) and the widget header all share this so they read as
+       one consistent surface. Tuned to match the widget header overlay. */
+    --widget-subcard-bg: rgba(255, 255, 255, 0.03);
+    --widget-subcard-border: var(--color-border-default);
     --text-main: var(--color-text-primary);
     --bg-input: #12141a;
 
@@ -66,8 +74,8 @@
     --radius-lg: 10px;
 
     /* Typography */
-    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
-    --font-mono: 'Consolas', 'Monaco', 'Courier New', monospace;
+    --font-sans: 'Onest', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+    --font-mono: 'JetBrains Mono', 'Consolas', 'Monaco', 'Courier New', monospace;
 
     /* Motion */
     --motion-fast: 0.15s ease;

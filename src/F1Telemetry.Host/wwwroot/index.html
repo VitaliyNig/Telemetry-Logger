@@ -5,6 +5,9 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Telemetry Logger</title>
     <link rel="icon" href="/logo.svg" type="image/svg+xml">
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Onest:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600;700&display=swap">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack.min.css">
     <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/gridstack@10.3.1/dist/gridstack-extra.min.css">
     <link rel="stylesheet" href="/css/tokens.css">
@@ -118,6 +121,7 @@
                 <div class="history-detail-layout">
                     <nav class="history-sidenav" role="tablist">
                         <button class="history-sidenav-item active" data-sub="laptimes">Lap Times</button>
+                        <button class="history-sidenav-item" data-sub="results" hidden>Results</button>
                         <button class="history-sidenav-item" data-sub="positions" hidden>Lap Chart</button>
                         <button class="history-sidenav-item" data-sub="compare">Telemetry Compare</button>
                         <button class="history-sidenav-item" data-sub="events">Events</button>
@@ -288,46 +292,23 @@
                 </div>
             </div>
 
-            <div class="debug-section drs-zones-section">
-                <div class="drs-zones-header">
-                    <h3>DRS Zones</h3>
-                    <span class="drs-zones-current" id="drsZonesCurrent">No live session.</span>
-                    <button class="btn btn-small btn-secondary" id="btnDrsZonesRefresh" type="button">Refresh</button>
-                </div>
-                <p class="drs-zones-hint">Per-track snapshot of <code>wwwroot/data/drs-zones.json</code>. Auto-capture only runs in practice / qualifying / time trial (race / sprint use a gap-gated DRS flag, so they can't produce reliable zones). Hit Re-capture on the active track to wipe its entry and re-arm capture for the next clean lap.</p>
-                <div class="drs-zones-table-wrap">
-                    <table class="drs-zones-table">
-                        <thead>
-                            <tr>
-                                <th>Track</th>
-                                <th>Status</th>
-                                <th>Zones</th>
-                                <th>Coverage</th>
-                                <th class="drs-zones-zones-col">Ranges</th>
-                                <th></th>
-                            </tr>
-                        </thead>
-                        <tbody id="drsZonesTbody">
-                            <tr><td colspan="6" class="muted">Loading…</td></tr>
-                        </tbody>
-                    </table>
-                </div>
-            </div>
-
         </section>
     </main>
 
     <!-- Widget HTML Templates (hidden, cloned by JS) -->
     <template id="tpl-session">
-        <div class="card"><h2 class="widget-title">Session</h2>
+        <div class="card session-card"><h2 class="widget-title">Session</h2>
         <div class="session-grid">
-            <div class="stat-box" data-session-field="track"><span class="stat-label">Track</span><span class="stat-value stat-value-track"><img id="trackFlag" class="track-flag" src="" alt="" hidden><span id="trackName">--</span></span></div>
-            <div class="stat-box" data-session-field="session"><span class="stat-label">Session</span><span class="stat-value" id="sessionType">--</span></div>
-            <div class="stat-box" data-session-field="weather"><span class="stat-label">Weather</span><span class="stat-value" id="weather">--</span></div>
-            <div class="stat-box" data-session-field="trackTemp"><span class="stat-label">Track Temp</span><span class="stat-value" id="trackTemp">--</span></div>
-            <div class="stat-box" data-session-field="airTemp"><span class="stat-label">Air Temp</span><span class="stat-value" id="airTemp">--</span></div>
-            <div class="stat-box" data-session-field="progress"><span class="stat-label" id="sessionProgressLabel">Time</span><span class="stat-value" id="sessionProgressValue">--</span></div>
-            <div class="stat-box" data-session-field="flags"><span class="stat-label">Flags</span><span class="stat-value flag-rect" id="flagIndicator" data-flag="none">--</span></div>
+            <div class="stat-box session-tile session-tile-track" data-session-field="track"><span class="session-tile-head"><span class="session-tile-grip" title="Drag to reorder" aria-hidden="true">⠿</span><span class="stat-label">Track</span></span><span class="stat-value stat-value-track"><img id="trackFlag" class="track-flag" src="" alt="" hidden><span id="trackName">--</span></span></div>
+            <div class="stat-box session-tile" data-session-field="session"><span class="session-tile-head"><span class="session-tile-grip" title="Drag to reorder" aria-hidden="true">⠿</span><span class="stat-label">Session</span></span><span class="stat-value" id="sessionType">--</span></div>
+            <div class="stat-box session-tile" data-session-field="weather"><span class="session-tile-head"><span class="session-tile-grip" title="Drag to reorder" aria-hidden="true">⠿</span><span class="stat-label">Weather</span></span><span class="stat-value" id="weather">--</span></div>
+            <div class="stat-box session-tile session-tile-temp" data-session-field="trackTemp"><span class="session-tile-head"><span class="session-tile-grip" title="Drag to reorder" aria-hidden="true">⠿</span><span class="stat-label">Track Temp</span></span><span class="stat-value session-temp" id="trackTemp">--</span></div>
+            <div class="stat-box session-tile session-tile-temp" data-session-field="airTemp"><span class="session-tile-head"><span class="session-tile-grip" title="Drag to reorder" aria-hidden="true">⠿</span><span class="stat-label">Air Temp</span></span><span class="stat-value session-temp" id="airTemp">--</span></div>
+            <div class="stat-box session-tile session-tile-progress" data-session-field="progress"><span class="session-tile-head"><span class="session-tile-grip" title="Drag to reorder" aria-hidden="true">⠿</span><span class="stat-label" id="sessionProgressLabel">Time</span></span><span class="stat-value" id="sessionProgressValue">--</span><span class="session-progress-track"><span class="session-progress-fill" id="sessionProgressBar"></span></span></div>
+            <div class="stat-box session-tile" data-session-field="pitLimit"><span class="session-tile-head"><span class="session-tile-grip" title="Drag to reorder" aria-hidden="true">⠿</span><span class="stat-label">Pit Limit</span></span><span class="stat-value" id="pitLimit">--</span></div>
+            <div class="stat-box session-tile" data-session-field="aiLevel"><span class="session-tile-head"><span class="session-tile-grip" title="Drag to reorder" aria-hidden="true">⠿</span><span class="stat-label">AI Level</span></span><span class="stat-value" id="aiLevel">--</span></div>
+            <div class="stat-box session-tile" data-session-field="equalCars"><span class="session-tile-head"><span class="session-tile-grip" title="Drag to reorder" aria-hidden="true">⠿</span><span class="stat-label">Equal Cars</span></span><span class="stat-value" id="equalCars">--</span></div>
+            <div class="stat-box session-tile session-flags-box" data-session-field="flags"><span class="session-tile-head"><span class="session-tile-grip" title="Drag to reorder" aria-hidden="true">⠿</span><span class="stat-label">Flags</span></span><span class="stat-value flag-rect" id="flagIndicator" data-flag="none">--</span></div>
         </div></div>
     </template>
 
@@ -404,120 +385,61 @@
     </template>
 
     <template id="tpl-tyreSets">
-        <div class="card"><h2 class="widget-title">Available Tyre Sets</h2>
-        <div class="tyreset-fitted"><span class="fitted-label">Fitted:</span><span class="fitted-value" id="fittedCompound">--</span></div>
-        <div class="tyreset-groups" id="tyreSetGroups"><div class="tyreset-placeholder">Waiting for tyre set data...</div></div></div>
+        <div class="card ts-card"><h2 class="widget-title">Available Tyre Sets</h2>
+        <div class="ts-fitted" id="tyreSetFitted" hidden></div>
+        <div class="ts-pool" id="tyreSetGroups"><div class="widget-empty"><div class="widget-empty-icon"><span class="widget-empty-dash"></span></div><div class="widget-empty-title">No tyre sets available</div><div class="widget-empty-sub">Waiting for telemetry</div></div></div></div>
     </template>
 
     <template id="tpl-pitPredictor">
-        <div class="card"><h2 class="widget-title">Pit Stop Predictor</h2>
-        <div class="pitstop-config"><span class="stat-label">Pit Time (s)</span><input type="number" id="pitTimeInput" class="pit-time-input" step="0.1" min="15" max="40" value="23.0"><button class="btn btn-small btn-primary" id="btnSavePitTime">Save</button><span class="pit-save-status" id="pitSaveStatus"></span></div>
-        <div class="pitstop-prediction">
-            <div class="pit-result"><span class="stat-label">Predicted Position</span><span class="stat-value big" id="pitPredPos">--</span></div>
-            <div class="pit-gaps">
-                <div class="pit-gap-item"><span class="pit-gap-label">Car Ahead</span><span class="pit-gap-driver" id="pitAheadName">--</span><span class="pit-gap-value" id="pitAheadGap">--</span></div>
-                <div class="pit-gap-item"><span class="pit-gap-label">Car Behind</span><span class="pit-gap-driver" id="pitBehindName">--</span><span class="pit-gap-value" id="pitBehindGap">--</span></div>
-            </div>
-        </div></div>
+        <div class="card pp-card"><h2 class="widget-title">Pit Stop Predictor</h2>
+        <div class="pp" id="pitPredictorBody"></div></div>
     </template>
 
-    <template id="tpl-telemetry26">
-        <!-- F1 26 Systems widget. Renders Active Aero + Boost (Overtake) state from
-             PacketCarTelemetry2Data (added in packet format 2026, id 16). For format-2025
-             sessions every field stays 0 and the widget reports an "Awaiting 2026 telemetry"
-             placeholder — keep it pinned to the 2026 dashboard preset to hide it from 2025
-             layouts entirely. -->
-        <div class="card t26-card">
-            <h2 class="widget-title">F1 26 Systems</h2>
-            <div class="t26-grid" id="t26Grid">
-                <!-- Active Aero tile -->
-                <section class="t26-tile" id="t26AeroTile" data-state="idle">
-                    <header class="t26-tile-head">
-                        <span class="t26-tile-label">ACTIVE AERO</span>
-                        <span class="t26-tile-status" id="t26AeroStatus">—</span>
-                    </header>
-                    <div class="t26-mode-row">
-                        <div class="t26-mode-pill" id="t26AeroModePill">
-                            <span class="t26-mode-icon" id="t26AeroModeIcon">◐</span>
-                            <span class="t26-mode-text" id="t26AeroMode">—</span>
-                        </div>
-                    </div>
-                    <div class="t26-meta">
-                        <span class="t26-meta-label">Next zone</span>
-                        <span class="t26-meta-value" id="t26AeroDist">—</span>
-                    </div>
-                </section>
-
-                <!-- Boost (Overtake) tile -->
-                <section class="t26-tile" id="t26BoostTile" data-state="idle">
-                    <header class="t26-tile-head">
-                        <span class="t26-tile-label">BOOST</span>
-                        <span class="t26-tile-status" id="t26BoostStatus">—</span>
-                    </header>
-                    <div class="t26-mode-row">
-                        <div class="t26-mode-pill" id="t26BoostPill">
-                            <span class="t26-mode-icon" id="t26BoostIcon">⚡</span>
-                            <span class="t26-mode-text" id="t26BoostMode">—</span>
-                        </div>
-                    </div>
-                    <div class="t26-meta">
-                        <span class="t26-meta-label">Activates in</span>
-                        <span class="t26-meta-value" id="t26BoostDist">—</span>
-                    </div>
-                </section>
-            </div>
-
-            <!-- Bottom row: regs marker + wrong-way warning. Both hidden when not applicable. -->
-            <div class="t26-flags">
-                <span class="t26-badge" id="t26RegsBadge" hidden title="Car is running 2026 regulations spec">2026 REGS</span>
-                <span class="t26-warn" id="t26WrongWayBadge" hidden title="Car is driving the wrong way around the circuit">⚠ WRONG WAY</span>
-                <span class="t26-placeholder" id="t26Placeholder">Awaiting 2026 telemetry…</span>
-            </div>
-        </div>
+    <template id="tpl-trackMap">
+        <div class="card tm-card"><h2 class="widget-title">Track Map</h2>
+        <div class="tm-host" id="trackMapHost"><div class="widget-empty"><div class="widget-empty-icon"><span class="widget-empty-dash"></span></div><div class="widget-empty-title">No track data</div><div class="widget-empty-sub">Waiting for telemetry</div></div></div></div>
     </template>
 
     <template id="tpl-fuelErs">
-        <div class="card cs-card"><h2 class="widget-title">Fuel &amp; ERS</h2>
-        <div class="cs-grid">
-            <section class="cs-section cs-fuel">
-                <header class="cs-section-head">
-                    <span class="cs-section-label">FUEL</span>
-                    <span class="cs-badge" id="csFuelMix" data-mix="0">--</span>
-                </header>
-                <div class="cs-fuel-delta" id="csFuelDeltaBox" hidden>
-                    <span class="cs-micro-label">Δ vs target</span>
-                    <span class="cs-big-value" id="csFuelDelta">--</span>
-                </div>
-                <div class="cs-fuel-metrics">
-                    <div class="cs-stat">
+        <div class="card cs-card" id="csCard" data-reg="2025">
+            <h2 class="widget-title">Fuel &amp; ERS</h2>
+            <div class="cs-grid">
+                <section class="cs-section cs-fuel">
+                    <header class="cs-section-head">
+                        <span class="cs-section-label">Fuel</span>
+                        <span class="cs-badge" id="csFuelMix">--</span>
+                    </header>
+                    <div class="cs-fuel-delta" id="csFuelDeltaBox" hidden>
+                        <div class="cs-delta-row">
+                            <span class="cs-big-value" id="csFuelDelta">--</span>
+                            <span class="cs-micro-label">laps vs target</span>
+                        </div>
+                        <div class="cs-verdict" id="csFuelVerdict">--</div>
+                    </div>
+                    <div class="cs-fuel-row">
                         <span class="cs-micro-label">In tank</span>
                         <span class="cs-value" id="csFuelTank">--</span>
                     </div>
-                    <div class="cs-stat">
-                        <span class="cs-micro-label">Laps</span>
-                        <span class="cs-value" id="csFuelLaps">--</span>
+                </section>
+                <section class="cs-section cs-ers" id="csErsSection">
+                    <header class="cs-section-head">
+                        <span class="cs-section-label" id="csErsLabel">ERS</span>
+                        <span class="cs-badge" id="csErsMode" data-mode="0">--</span>
+                    </header>
+                    <div class="cs-ers-row">
+                        <div class="cs-row-head"><span class="cs-micro-label">Store</span><span class="cs-bar-value" id="csErsStoreVal">--</span></div>
+                        <div class="cs-bar cs-bar-store"><div class="cs-bar-fill" id="csErsStoreBar"></div></div>
                     </div>
-                </div>
-            </section>
-            <section class="cs-section cs-ers">
-                <header class="cs-section-head">
-                    <span class="cs-section-label">ERS</span>
-                    <span class="cs-badge" id="csErsMode" data-mode="0">--</span>
-                </header>
-                <div class="cs-ers-row">
-                    <div class="cs-row-head"><span class="cs-micro-label">Store</span><span class="cs-bar-value" id="csErsStoreVal">--</span></div>
-                    <div class="cs-bar cs-bar-store"><div class="cs-bar-fill" id="csErsStoreBar"></div></div>
-                </div>
-                <div class="cs-ers-row">
-                    <div class="cs-row-head"><span class="cs-micro-label">Deploy / lap</span><span class="cs-bar-value" id="csErsDeployVal">--</span></div>
-                    <div class="cs-bar cs-bar-thin"><div class="cs-bar-fill cs-bar-deploy" id="csErsDeployBar"></div></div>
-                </div>
-                <div class="cs-ers-row">
-                    <div class="cs-row-head"><span class="cs-micro-label">Harvest / lap</span><span class="cs-bar-value" id="csErsHarvestVal">--</span></div>
-                    <div class="cs-bar cs-bar-thin"><div class="cs-bar-fill cs-bar-harvest" id="csErsHarvestBar"></div></div>
-                </div>
-            </section>
-        </div>
+                    <div class="cs-ers-row">
+                        <div class="cs-row-head"><span class="cs-micro-label" id="csErsDeployLabel">Deploy / lap</span><span class="cs-deploy-chip" id="csErsDeployChip" hidden></span><span class="cs-bar-value" id="csErsDeployVal">--</span></div>
+                        <div class="cs-bar cs-bar-thin"><div class="cs-bar-fill cs-bar-deploy" id="csErsDeployBar"></div></div>
+                    </div>
+                    <div class="cs-ers-row" id="csErsHarvestRow">
+                        <div class="cs-row-head"><span class="cs-micro-label" id="csErsHarvestLabel">Harvest / lap</span><span class="cs-harvest-note" id="csErsHarvestNote"></span><span class="cs-bar-value" id="csErsHarvestVal">--</span></div>
+                        <div class="cs-bar cs-bar-thin"><div class="cs-bar-fill cs-bar-harvest" id="csErsHarvestBar"></div></div>
+                    </div>
+                </section>
+            </div>
         </div>
     </template>
 
@@ -562,12 +484,12 @@
     <template id="tpl-damage">
         <div class="card"><h2 class="widget-title">Damage</h2>
         <div class="damage-grid">
-            <div class="damage-item"><span class="damage-label">FL Wing</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFL"></div></div></div>
-            <div class="damage-item"><span class="damage-label">FR Wing</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFR"></div></div></div>
-            <div class="damage-item"><span class="damage-label">Rear Wing</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgRear"></div></div></div>
-            <div class="damage-item"><span class="damage-label">Floor</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFloor"></div></div></div>
-            <div class="damage-item"><span class="damage-label">Engine</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgEngine"></div></div></div>
-            <div class="damage-item"><span class="damage-label">Gearbox</span><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgGearbox"></div></div></div>
+            <div class="damage-item"><div class="damage-head"><span class="damage-label">FL Wing</span><span class="damage-value" id="dmgFLVal">--</span></div><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFL"></div></div></div>
+            <div class="damage-item"><div class="damage-head"><span class="damage-label">FR Wing</span><span class="damage-value" id="dmgFRVal">--</span></div><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFR"></div></div></div>
+            <div class="damage-item"><div class="damage-head"><span class="damage-label">Rear Wing</span><span class="damage-value" id="dmgRearVal">--</span></div><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgRear"></div></div></div>
+            <div class="damage-item"><div class="damage-head"><span class="damage-label">Floor</span><span class="damage-value" id="dmgFloorVal">--</span></div><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgFloor"></div></div></div>
+            <div class="damage-item"><div class="damage-head"><span class="damage-label">Engine</span><span class="damage-value" id="dmgEngineVal">--</span></div><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgEngine"></div></div></div>
+            <div class="damage-item"><div class="damage-head"><span class="damage-label">Gearbox</span><span class="damage-value" id="dmgGearboxVal">--</span></div><div class="damage-bar-bg"><div class="damage-bar-fill" id="dmgGearbox"></div></div></div>
         </div></div>
     </template>
 
@@ -582,9 +504,9 @@
     </template>
 
     <template id="tpl-weather">
-        <div class="card"><h2 class="widget-title">Weather Forecast</h2>
+        <div class="card weather-card"><h2 class="widget-title">Weather Forecast</h2>
         <div class="weather-forecast" id="weatherForecastContent">
-            <div class="weather-placeholder">Waiting for session data...</div>
+            <div class="widget-empty"><div class="widget-empty-icon"><span class="widget-empty-dash"></span></div><div class="widget-empty-title">No forecast data available</div><div class="widget-empty-sub">Waiting for session data</div></div>
         </div></div>
     </template>
 
@@ -705,6 +627,7 @@
     <script src="/js/lib/three.min.js"></script>
     <script src="/js/lib/OrbitControls.js"></script>
     <script src="/js/track3d.js"></script>
+    <script src="/js/trackMapWidget.js"></script>
     <script src="/js/telemetryCompare.js"></script>
 </body>
 </html>

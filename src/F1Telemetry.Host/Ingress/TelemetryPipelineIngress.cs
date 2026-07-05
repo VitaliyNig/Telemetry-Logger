@@ -28,8 +28,6 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
     private readonly SessionLogger _sessionLogger;
     private readonly DebugPacketTracker _tracker;
     private readonly IngressDiagnosticsTracker _diag;
-    private readonly AutoDrsZoneCaptureService _autoDrsCapture;
-    private readonly DrsZoneStore _drsZoneStore;
     private readonly IHubContext<TelemetryHub, ITelemetryClient> _hubContext;
     private readonly IOptionsMonitor<AppSettings> _appSettings;
     private readonly ILogger<TelemetryPipelineIngress> _logger;
@@ -43,8 +41,6 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         SessionLogger sessionLogger,
         DebugPacketTracker tracker,
         IngressDiagnosticsTracker diag,
-        AutoDrsZoneCaptureService autoDrsCapture,
-        DrsZoneStore drsZoneStore,
         IHubContext<TelemetryHub, ITelemetryClient> hubContext,
         IOptionsMonitor<AppSettings> appSettings,
         ILogger<TelemetryPipelineIngress> logger)
@@ -57,8 +53,6 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
         _sessionLogger = sessionLogger;
         _tracker = tracker;
         _diag = diag;
-        _autoDrsCapture = autoDrsCapture;
-        _drsZoneStore = drsZoneStore;
         _hubContext = hubContext;
         _appSettings = appSettings;
         _logger = logger;
@@ -93,6 +87,12 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
     // raw rate would be ~840 Hz and dominate CPU/GC when Debug Mode is on.
     private const long DebugBroadcastMinIntervalTicks = TimeSpan.TicksPerMillisecond * 200;
     private long _lastDebugBroadcastTicks;
+
+    // Live Track Map car positions, coalesced to ~10 Hz. Motion is 60 Hz and its full
+    // payload is deliberately excluded from ShouldBroadcastLive; the widget only needs
+    // [x,y,z] per car, so this compact side-channel costs ~1/40 of a raw Motion stream.
+    private const long CarPositionsMinIntervalTicks = TimeSpan.TicksPerMillisecond * 100;
+    private long _lastCarPositionsTicks;
 
     /// <summary>
     /// Fire-and-forget a SignalR broadcast so the UDP receive loop never blocks on it.
@@ -183,43 +183,6 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
             _diag.RecordEnqueued(header.PacketId);
         }
 
-        // Format 2026 ships DRS zones in SessionPacket. When present, persist them once per
-        // track — auto-capture (lap-driven) becomes the fallback for 2025 sessions only.
-        if (deserialized is SessionPacket sp && sp.NumDrsZones > 0)
-        {
-            var zones = new List<DrsZoneRange>(sp.NumDrsZones);
-            var n = Math.Min(sp.NumDrsZones, (byte)sp.DrsZones.Length);
-            for (var z = 0; z < n; z++)
-            {
-                var dz = sp.DrsZones[z];
-                if (dz == null) continue;
-                if (dz.ZoneEnd <= dz.ZoneStart) continue; // ignore malformed entries
-                zones.Add(new DrsZoneRange(dz.ZoneStart, dz.ZoneEnd));
-            }
-            if (zones.Count > 0 && _autoDrsCapture.TryAcceptFromSessionPacket(sp.TrackId, zones))
-            {
-                var trackId = (int)sp.TrackId;
-                _ = Task.Run(async () =>
-                {
-                    try
-                    {
-                        await _drsZoneStore.SaveAsync(trackId, zones);
-                        _autoDrsCapture.MarkSaved(trackId);
-                        _logger.LogInformation(
-                            "Saved DRS zones from SessionPacket for track {TrackId}: {Zones}",
-                            trackId,
-                            string.Join(", ", zones.Select(z => $"[{z.Start:F3},{z.End:F3}]")));
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogError(ex, "Saving DRS zones from SessionPacket failed for track {TrackId}", trackId);
-                        // Re-arm so the next session/restart can retry.
-                        _autoDrsCapture.Forget(trackId);
-                    }
-                });
-            }
-        }
-
         if (header.PacketId == (byte)F1PacketId.LapData && deserialized is LapDataPacket lapDataPacket)
         {
             var carIdx = header.PlayerCarIndex;
@@ -229,46 +192,6 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
                 var currentLapNum = playerLap.CurrentLapNum;
                 var session = _state.Get<SessionPacket>((byte)F1PacketId.Session);
                 var sessionType = session?.SessionType ?? 0;
-
-                // Auto-capture DRS zones when no data exists for the current track.
-                // We use m_drs (CarTelemetry) instead of m_drsAllowed (CarStatus) because
-                // m_drs reflects the actual DRS zone boundaries, whereas m_drsAllowed only
-                // turns on after the detection line (so captured zones would be truncated).
-                var carTelemetry = _state.Get<CarTelemetry25Packet>((byte)F1PacketId.CarTelemetry25);
-                if (session != null && carTelemetry != null && carIdx < carTelemetry.CarTelemetry25Data.Length)
-                {
-                    var drs = carTelemetry.CarTelemetry25Data[carIdx].Drs;
-                    if (_autoDrsCapture.OnPlayerLapData(
-                        sessionType,
-                        session.TrackId,
-                        session.TrackLength,
-                        currentLapNum,
-                        playerLap.CurrentLapInvalid,
-                        playerLap.LapDistance,
-                        drs))
-                    {
-                        if (_autoDrsCapture.TryTakeCompleted(out var capturedTrackId, out var zones))
-                        {
-                            _ = Task.Run(async () =>
-                            {
-                                try
-                                {
-                                    await _drsZoneStore.SaveAsync(capturedTrackId, zones);
-                                    _autoDrsCapture.MarkSaved(capturedTrackId);
-                                    _logger.LogInformation(
-                                        "Auto-saved DRS zones for track {TrackId}: {Zones}",
-                                        capturedTrackId,
-                                        string.Join(", ", zones.Select(z => $"[{z.Start:F3},{z.End:F3}]")));
-                                }
-                                catch (Exception ex)
-                                {
-                                    _logger.LogError(ex, "Auto DRS zone save failed for track {TrackId}", capturedTrackId);
-                                    _autoDrsCapture.MarkResolved(capturedTrackId);
-                                }
-                            });
-                        }
-                    }
-                }
 
                 if (IsSetupSnapshotSession(sessionType))
                 {
@@ -296,6 +219,23 @@ public sealed class TelemetryPipelineIngress : ITelemetryIngress
                             "tyre snapshot");
                     }
                 }
+            }
+        }
+
+        if (header.PacketId == (byte)F1PacketId.Motion && deserialized is MotionPacket motionPacket)
+        {
+            var nowTicks = DateTime.UtcNow.Ticks;
+            var prev = Interlocked.Read(ref _lastCarPositionsTicks);
+            if (nowTicks - prev >= CarPositionsMinIntervalTicks &&
+                Interlocked.CompareExchange(ref _lastCarPositionsTicks, nowTicks, prev) == prev)
+            {
+                var cars = motionPacket.CarMotionData;
+                var positions = new float[cars.Length][];
+                for (var i = 0; i < cars.Length; i++)
+                    positions[i] = [cars[i].WorldPositionX, cars[i].WorldPositionY, cars[i].WorldPositionZ];
+                FireAndForgetBroadcast(
+                    _hubContext.Clients.All.ReceiveCarPositions(positions),
+                    "car positions");
             }
         }
 

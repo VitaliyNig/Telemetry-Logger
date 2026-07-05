@@ -24,7 +24,18 @@ public sealed class HistoryReader
         Converters = { new FiniteSingleJsonConverter(), new FiniteDoubleJsonConverter() },
     };
 
-    private sealed record CachedSession(long Mtime, SessionLogDataV2 Data);
+    private sealed record CachedSession(long Mtime, SessionLogDataV2 Data)
+    {
+        // Monotonic LRU stamp, bumped on every cache hit. long writes are atomic; an
+        // occasionally stale read only risks evicting a slightly-less-recent entry.
+        public long LastUsed { get; set; }
+    }
+
+    // Parsed sessions are large (tens of MB); without a bound, browsing History pins every
+    // session ever opened in the heap for the process lifetime. 8 entries comfortably covers
+    // the UI's working set (Lap Times → Positions → Compare flips between 2-3 sessions).
+    private const int MaxCachedSessions = 8;
+    private static long _useCounter;
 
     private readonly ConcurrentDictionary<string, CachedSession> _cache = new();
     private readonly ProtocolRegistry _registry;
@@ -34,12 +45,25 @@ public sealed class HistoryReader
         _registry = registry;
     }
 
+    /// <summary>
+    /// Returns <paramref name="name"/> when it is a plain leaf name (no separators, not a
+    /// relative segment like "." / ".."), otherwise null. Path.GetFileName alone is not
+    /// enough: it passes ".." through unchanged, which would climb out of the History root.
+    /// </summary>
+    public static string? SafeLeafName(string? name)
+    {
+        if (string.IsNullOrEmpty(name)) return null;
+        if (name != Path.GetFileName(name)) return null;
+        if (name == "." || name == "..") return null;
+        return name;
+    }
+
     /// <summary>Resolves "{folder}/{slug}" to an absolute file path under the configured History root, rejecting traversal.</summary>
     public static string? ResolvePath(string folder, string slug)
     {
-        var safeFolder = Path.GetFileName(folder);
-        var safeSlug = Path.GetFileName(slug);
-        if (string.IsNullOrEmpty(safeFolder) || string.IsNullOrEmpty(safeSlug))
+        var safeFolder = SafeLeafName(folder);
+        var safeSlug = SafeLeafName(slug);
+        if (safeFolder == null || safeSlug == null)
             return null;
 
         var path = Path.Combine(HistoryRoot.Path, safeFolder, safeSlug + ".json");
@@ -55,7 +79,10 @@ public sealed class HistoryReader
         var key = path;
 
         if (_cache.TryGetValue(key, out var cached) && cached.Mtime == mtime)
+        {
+            cached.LastUsed = Interlocked.Increment(ref _useCounter);
             return cached.Data;
+        }
 
         using var stream = File.OpenRead(path);
         var data = JsonSerializer.Deserialize<SessionLogDataV2>(stream, JsonOptions);
@@ -63,8 +90,70 @@ public sealed class HistoryReader
 
         EnrichLiveryColors(data);
 
-        _cache[key] = new CachedSession(mtime, data);
+        _cache[key] = new CachedSession(mtime, data) { LastUsed = Interlocked.Increment(ref _useCounter) };
+        EvictIfOverCap();
         return data;
+    }
+
+    /// <summary>
+    /// Returns one lap's samples+motion regardless of schema: inline lists for v2 logs,
+    /// a targeted sidecar frame read for v3 (see docs/SESSION_LOG_V3.md). Both null when
+    /// the lap has no recorded samples or the sidecar frame is missing/corrupt.
+    /// </summary>
+    public (List<LapSample>? Samples, List<MotionSample>? Motion) LoadLapBuffers(string folder, string slug, DriverLap lap)
+    {
+        if (lap.Samples != null || lap.Motion != null)
+            return (lap.Samples, lap.Motion);
+        if (lap.SRef == null)
+            return (null, null);
+
+        var path = ResolvePath(folder, slug);
+        if (path == null) return (null, null);
+
+        var blob = SampleSidecar.ReadAt(SampleSidecar.PathFor(path), lap.SRef);
+        return (blob?.Samples, blob?.Motion);
+    }
+
+    /// <summary>
+    /// Deep-copies one driver's session data with samples/motion hydrated inline (from the
+    /// sidecar for v3 logs), for ghost export. The copy keeps the exported payload in the
+    /// v2-compatible inline shape and protects the cached graph from mutation. Serialization
+    /// round-trip clone is deliberate: exports are rare and the summaries are small.
+    /// </summary>
+    public DriverSessionData? LoadDriverWithSamples(string folder, string slug, int carIdx)
+    {
+        var data = Load(folder, slug);
+        if (data?.Drivers == null || !data.Drivers.TryGetValue(carIdx, out var driver))
+            return null;
+
+        var clone = JsonSerializer.Deserialize<DriverSessionData>(
+            JsonSerializer.SerializeToUtf8Bytes(driver, JsonOptions), JsonOptions);
+        if (clone == null) return null;
+
+        foreach (var lap in clone.Laps)
+        {
+            if (lap.Samples != null || lap.SRef == null) continue;
+            var (samples, motion) = LoadLapBuffers(folder, slug, lap);
+            lap.Samples = samples;
+            lap.Motion = motion;
+            lap.SRef = null; // inline payload; refs are meaningless outside this folder
+        }
+        return clone;
+    }
+
+    /// <summary>Drops least-recently-used entries until the cache is back under the cap.</summary>
+    private void EvictIfOverCap()
+    {
+        while (_cache.Count > MaxCachedSessions)
+        {
+            string? oldestKey = null;
+            long oldestUsed = long.MaxValue;
+            foreach (var (k, v) in _cache)
+            {
+                if (v.LastUsed < oldestUsed) { oldestUsed = v.LastUsed; oldestKey = k; }
+            }
+            if (oldestKey == null || !_cache.TryRemove(oldestKey, out _)) break;
+        }
     }
 
     /// <summary>

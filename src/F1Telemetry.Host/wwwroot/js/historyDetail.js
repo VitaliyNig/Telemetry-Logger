@@ -78,6 +78,30 @@
 
     // ---------- public API ----------
 
+    /** Canonical deep-link for the current detail state: #history/{folder}/{slug}/{subtab}. */
+    function historyHash() {
+        return '#history/' + encodeURIComponent(state.folder)
+            + '/' + encodeURIComponent(state.slug)
+            + '/' + encodeURIComponent(state.subTab || 'laptimes');
+    }
+
+    /**
+     * Route-driven open (hashchange / initial load). Idempotent: when the requested session
+     * is already on screen only the sub-tab is synced, so the hashchange that open() itself
+     * triggers never causes a second fetch.
+     */
+    function openRoute(folder, slug, subTab) {
+        var sub = subTab || state.subTab || 'laptimes';
+        var detail = document.getElementById('historyDetailView');
+        var visible = detail && !detail.hidden;
+        if (visible && state.folder === folder && state.slug === slug) {
+            if (state.subTab !== sub) switchSubTab(sub);
+            return;
+        }
+        state.subTab = sub;
+        open(folder, slug, null);
+    }
+
     function open(folder, slug, weekendName) {
         state.folder = folder;
         state.slug = slug;
@@ -97,6 +121,11 @@
         updateHistorySubTabsVisibility();
         switchSubTab(state.subTab || 'laptimes');
 
+        // Deep link. A real hash push (not replaceState) so browser Back returns to the grid.
+        if (!window.__routeApplying && location.hash !== historyHash()) {
+            location.hash = historyHash();
+        }
+
         fetch('/api/sessions/' + encodeURIComponent(folder) + '/' + encodeURIComponent(slug))
             .then(function (r) {
                 if (!r.ok) throw new Error('fetch failed: ' + r.status);
@@ -104,6 +133,10 @@
             })
             .then(function (data) {
                 state.session = data;
+                // Deep-linked opens don't know the weekend display name; fill it from meta.
+                if (!weekendName && data.meta && data.meta.trackName) {
+                    setBreadcrumb(data.meta.trackName, slug);
+                }
                 updateHistorySubTabsVisibility();
                 // Default driver selection: player car only, best valid lap.
                 var playerIdx = data.meta ? data.meta.playerCarIndex : null;
@@ -129,6 +162,10 @@
         closeEventsFilterPanel();
         disconnectPosChartResize();
         state.session = null;
+        // Drop the detail deep-link. replaceState: no hashchange, the UI is already closed.
+        if (!window.__routeApplying && location.hash.indexOf('#history/') === 0) {
+            history.replaceState(null, '', '#history');
+        }
     }
 
     // ---------- sub-tab switching ----------
@@ -139,6 +176,10 @@
         tabs.forEach(function (t) {
             t.classList.toggle('active', t.dataset.sub === id);
         });
+        // Keep the deep-link current. replaceState so sub-tab hops don't spam browser history.
+        if (!window.__routeApplying && state.folder && location.hash.indexOf('#history/') === 0) {
+            history.replaceState(null, '', historyHash());
+        }
         renderCurrentSubTab();
     }
 
@@ -147,6 +188,12 @@
         if (!body) return;
         if (state.subTab !== 'positions') disconnectPosChartResize();
         if (state.subTab !== 'events') closeEventsFilterPanel();
+        // The Charts/Map mode toggle lives in the breadcrumb header but only applies
+        // to the Compare tab — clear it whenever another sub-tab takes over.
+        if (state.subTab !== 'compare') {
+            var modeSlot = document.getElementById('historyHeaderModeSlot');
+            if (modeSlot) modeSlot.innerHTML = '';
+        }
         if (!state.session) {
             disconnectPosChartResize();
             body.innerHTML = '<div class="history-empty"><p>Loading session…</p></div>';
@@ -154,6 +201,7 @@
         }
         switch (state.subTab) {
             case 'laptimes':  renderLapTimes(body); break;
+            case 'results':   renderResults(body); break;
             case 'positions': renderPositions(body); break;
             case 'compare':   renderTelemetryCompare(body); break;
             case 'events':    renderEvents(body); break;
@@ -206,12 +254,34 @@
 
     function updateHistorySubTabsVisibility() {
         var posTab = document.querySelector('.history-sidenav-item[data-sub="positions"]');
-        if (!posTab) return;
-        var show = isRaceSession();
-        posTab.hidden = !show;
-        if (!show && state.subTab === 'positions') {
-            switchSubTab('laptimes');
+        if (posTab) {
+            var show = isRaceSession();
+            posTab.hidden = !show;
+            if (!show && state.subTab === 'positions') {
+                switchSubTab('laptimes');
+            }
         }
+        var resTab = document.querySelector('.history-sidenav-item[data-sub="results"]');
+        if (resTab) {
+            var showRes = sessionHasFinalData();
+            resTab.hidden = !showRes;
+            if (!showRes && state.subTab === 'results') {
+                switchSubTab('laptimes');
+            }
+        }
+    }
+
+    /** True when at least one driver has a final-classification entry (per-driver `final`
+     *  backfill or the raw FinalClassification packet snapshot). */
+    function sessionHasFinalData() {
+        var sess = state.session;
+        if (!sess) return false;
+        var drivers = sess.drivers || {};
+        var keys = Object.keys(drivers);
+        for (var i = 0; i < keys.length; i++) {
+            if (finalEntryFor(sess, Number(keys[i]))) return true;
+        }
+        return false;
     }
 
     function renderLapTimes(body) {
@@ -749,13 +819,18 @@
             ? Math.max(0, Math.min(100, Math.round(p.drsUsagePct)))
             : 0;
 
+        var boostLabel = p.straightMode ? 'SM usage ' : 'DRS usage ';
         var title = 'Performance ' + perfPct + '%'
             + ' · ERS usage ' + ersPct + '%'
-            + ' · DRS usage ' + drsPct + '%'
+            + ' · ' + boostLabel + drsPct + '%'
             + (p.drsZoneBased ? ' (track zones)' : ' (whole-lap fallback)');
         // Harvest efficiency (only emitted for format 2026+ sessions, where the game ships
         // m_ersHarvestLimitPerLap). Surfaces as an extra tooltip line so the perf badge
         // stays single-number while strategists get the harvest-cap detail on hover.
+        // Overtake (Boost) share — informational, 2026 sessions only (null otherwise).
+        if (typeof p.overtakeUsagePct === 'number') {
+            title += ' · Overtake ' + p.overtakeUsagePct + '%';
+        }
         if (typeof p.harvEfficiencyPct === 'number') {
             title += ' · Harvest ' + p.harvEfficiencyPct + '%';
             if (typeof p.harvUsedMJ === 'number' && typeof p.harvCapMJ === 'number') {
@@ -1027,6 +1102,154 @@
         html += '</tbody></table></div></div>';
         return html;
     }
+
+    // ---------- Results (final classification) ----------
+
+    /** m_resultStatus display names (0/1/2 never make it through finalEntryFor's filter). */
+    var RESULT_STATUS_NAMES = {
+        3: 'Finished', 4: 'DNF', 5: 'DSQ', 6: 'Not classified', 7: 'Retired',
+    };
+
+    /** m_resultReason display names (FinalClassification packet). */
+    var RESULT_REASON_NAMES = {
+        1: 'Retired', 2: 'Finished', 3: 'Terminal damage', 4: 'Inactive',
+        5: 'Not enough laps completed', 6: 'Black flagged', 7: 'Red flagged',
+        8: 'Mechanical failure', 9: 'Session skipped', 10: 'Session simulated',
+    };
+
+    /** "23:45.678" / "1:23:45.678" for total race time in seconds. */
+    function formatRaceTimeS(totalS) {
+        if (!totalS || totalS <= 0) return '—';
+        var ms = Math.round(totalS * 1000);
+        var h = Math.floor(ms / 3600000);
+        var m = Math.floor((ms % 3600000) / 60000);
+        var s = ((ms % 60000) / 1000).toFixed(3);
+        return (h > 0 ? h + ':' + String(m).padStart(2, '0') : String(m))
+            + ':' + s.padStart(6, '0');
+    }
+
+    function renderResults(body) {
+        var sess = state.session;
+        var drivers = (sess && sess.drivers) || {};
+        var isRace = resolveSessionCategory(sess.meta) === 'race';
+
+        var rows = Object.keys(drivers).map(function (k) {
+            var carIdx = Number(k);
+            return { carIdx: carIdx, driver: drivers[k], cls: finalEntryFor(sess, carIdx) };
+        }).filter(function (r) { return r.cls != null; });
+
+        if (!rows.length) {
+            body.innerHTML = '<div class="history-empty"><p>No final classification recorded for this session.</p></div>';
+            return;
+        }
+
+        rows.sort(function (a, b) { return sortDriversByFinalPosition(sess, a.carIdx, b.carIdx); });
+
+        // Winner reference for the Time/Gap column (race only). Official time = race time + penalties.
+        var winner = rows.find(function (r) { return isFinishedResultStatus(r.cls.resultStatus); });
+        var winnerOfficialS = winner ? Number(winner.cls.totalRaceTime) + Number(winner.cls.penaltiesTime || 0) : 0;
+        var winnerLaps = winner ? Number(winner.cls.numLaps) : 0;
+
+        // Purple highlight for the fastest race lap among classified drivers.
+        var bestLapMs = Infinity;
+        rows.forEach(function (r) {
+            var bl = Number(r.cls.bestLapTimeInMs);
+            if (bl > 0 && bl < bestLapMs) bestLapMs = bl;
+        });
+
+        var html = '<div class="res-container"><div class="lt-virtual-table-wrap">'
+            + '<table class="lt-virtual-table res-table">'
+            + '<thead><tr>'
+            + '<th class="lt-virtual-th lt-virtual-th--pos">Pos</th>'
+            + '<th>Driver</th>'
+            + (isRace ? '<th class="lt-virtual-th lt-virtual-th--delta">Grid</th>' : '')
+            + '<th class="lt-virtual-th">Laps</th>'
+            + '<th class="lt-virtual-th lt-virtual-th--time">Best Lap</th>'
+            + (isRace
+                ? '<th class="lt-virtual-th lt-virtual-th--time">Time / Gap</th>'
+                  + '<th class="lt-virtual-th">Stops</th>'
+                  + '<th class="lt-virtual-th">Pen</th>'
+                  + '<th class="lt-virtual-th">Pts</th>'
+                : '')
+            + '<th class="res-th--status">Status</th>'
+            + '</tr></thead><tbody>';
+
+        rows.forEach(function (r, idx) {
+            var c = r.cls;
+            var d = r.driver;
+            var teamColor = (typeof teamAccentColor === 'function')
+                ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6';
+            var rs = Number(c.resultStatus);
+            var finished = isFinishedResultStatus(rs);
+
+            // Grid delta: ▲ gained, ▼ lost.
+            var gridHtml = '';
+            if (isRace) {
+                var grid = Number(c.gridPosition);
+                var deltaPos = grid > 0 ? grid - Number(c.position) : 0;
+                var arrow = deltaPos > 0 ? ' <span class="delta-up">▲' + deltaPos + '</span>'
+                          : deltaPos < 0 ? ' <span class="delta-down">▼' + (-deltaPos) + '</span>'
+                          : '';
+                gridHtml = '<td class="lt-virtual-cell lt-virtual-cell--delta">' + (grid > 0 ? grid : '—') + arrow + '</td>';
+            }
+
+            // Time / Gap: winner absolute, lead-lap finishers +gap, lapped +N lap(s), non-finishers —.
+            var timeHtml = '';
+            if (isRace) {
+                var timeText = '—';
+                if (finished) {
+                    var officialS = Number(c.totalRaceTime) + Number(c.penaltiesTime || 0);
+                    if (winner && r.carIdx === winner.carIdx) {
+                        timeText = formatRaceTimeS(officialS);
+                    } else if (winner && Number(c.numLaps) === winnerLaps && officialS > winnerOfficialS) {
+                        timeText = '+' + (officialS - winnerOfficialS).toFixed(3);
+                    } else if (winner && Number(c.numLaps) < winnerLaps) {
+                        var down = winnerLaps - Number(c.numLaps);
+                        timeText = '+' + down + ' lap' + (down === 1 ? '' : 's');
+                    } else {
+                        timeText = formatRaceTimeS(officialS);
+                    }
+                }
+                timeHtml = '<td class="lt-virtual-cell lt-virtual-cell--time">' + timeText + '</td>';
+            }
+
+            var blMs = Number(c.bestLapTimeInMs);
+            var bestLapCls = 'lt-virtual-cell lt-virtual-cell--time'
+                + (blMs > 0 && blMs === bestLapMs ? ' res-best-lap--overall' : '');
+
+            var statusText = RESULT_STATUS_NAMES[rs] || ('Status ' + rs);
+            var reason = Number(c.resultReason);
+            if (!finished && reason > 0 && reason !== 2 && RESULT_REASON_NAMES[reason]) {
+                statusText += ' — ' + RESULT_REASON_NAMES[reason];
+            }
+
+            var penHtml = isRace
+                ? '<td class="lt-virtual-cell">'
+                  + (Number(c.penaltiesTime) > 0 ? '+' + Number(c.penaltiesTime) + 's' : '—')
+                  + '</td>'
+                : '';
+
+            var rowCls = 'lt-virtual-row' + (idx === 0 && finished ? ' lt-virtual-row--leader' : '')
+                + (!finished ? ' res-row--dnf' : '');
+
+            html += '<tr class="' + rowCls + '" style="border-left-color:' + teamColor + '">'
+                + '<td class="lt-virtual-cell lt-virtual-cell--pos"><span class="lt-virtual-pos">' + Number(c.position) + '</span></td>'
+                + '<td class="lt-virtual-cell lt-virtual-cell--driver">' + escapeHtml(d.name) + '</td>'
+                + gridHtml
+                + '<td class="lt-virtual-cell">' + (Number(c.numLaps) > 0 ? Number(c.numLaps) : '—') + '</td>'
+                + '<td class="' + bestLapCls + '">' + formatLapTime(blMs) + '</td>'
+                + timeHtml
+                + (isRace ? '<td class="lt-virtual-cell">' + (Number(c.numPitStops) || 0) + '</td>' : '')
+                + penHtml
+                + (isRace ? '<td class="lt-virtual-cell">' + (Number(c.points) || 0) + '</td>' : '')
+                + '<td class="lt-virtual-cell res-cell--status">' + escapeHtml(statusText) + '</td>'
+                + '</tr>';
+        });
+
+        html += '</tbody></table></div></div>';
+        body.innerHTML = html;
+    }
+
     // ---------- Phase D: Lap Chart ----------
 
     function ensurePositionsDriverSelections(sess) {
@@ -1555,6 +1778,34 @@
         return null;
     }
 
+    /**
+     * Final-classification entry for one car, normalized to the raw packet field names.
+     * Prefers the per-driver `final` snapshot the logger backfills (v3.1+); falls back to
+     * the raw FinalClassification packet for older logs. Null when neither has data.
+     */
+    function finalEntryFor(sess, carIdx) {
+        var d = sess && sess.drivers && sess.drivers[carIdx];
+        var f = d && d.final;
+        if (f && f.position > 0) {
+            return {
+                position: f.position,
+                numLaps: f.numLaps,
+                gridPosition: f.gridPosition,
+                points: f.points,
+                numPitStops: f.numPitStops,
+                resultStatus: f.resultStatus,
+                resultReason: f.resultReason,
+                bestLapTimeInMs: f.bestLapTimeInMs,
+                totalRaceTime: f.totalRaceTimeS,
+                penaltiesTime: f.penaltiesTimeS,
+                numPenalties: f.numPenalties,
+            };
+        }
+        var cls = getClassificationEntry(sess, carIdx);
+        if (cls && Number(cls.position) > 0 && Number(cls.resultStatus) > 0) return cls;
+        return null;
+    }
+
     function driverLastNameUpper(name) {
         var raw = String(name || '').trim();
         if (!raw) return 'UNKNOWN';
@@ -1708,6 +1959,50 @@
         else if (rf === 4) parts.push('<span class="lap-tag lap-tag--rf" title="Red Flag">RF</span>');
         if (!parts.length) return '';
         return '<span class="tc-lap-tag-list">' + parts.join('') + '</span>';
+    }
+
+    // Tyre chip for a compare lap card: compound colour dot + short letter (S/M/H/I/W) and,
+    // when present, the tyre age in laps. Uses the same compound tables as the lap-times grid
+    // (defined in telemetry.js). Returns '' when the lap has no compound data.
+    function compareTyreChipHtml(lap) {
+        if (!lap || lap.compoundVisual == null) return '';
+        var visual = lap.compoundVisual;
+        var name = (typeof VISUAL_COMPOUNDS !== 'undefined' && VISUAL_COMPOUNDS[visual]) || '';
+        if (!name) return '';
+        var actual = (typeof ACTUAL_COMPOUNDS !== 'undefined' && ACTUAL_COMPOUNDS[visual]) || '';
+        var color = (typeof COMPOUND_DOT_COLORS !== 'undefined' && COMPOUND_DOT_COLORS[visual]) || '#888';
+        var letter = name.charAt(0).toUpperCase();
+        var hasAge = lap.tyreAge != null;
+        var title = name + (actual ? ' (' + actual + ')' : '')
+            + (hasAge ? ' · ' + lap.tyreAge + ' lap' + (lap.tyreAge === 1 ? '' : 's') + ' old' : '');
+        return '<span class="tc-lap-card-tyre" title="' + escapeHtml(title) + '">'
+            + '<span class="tc-tyre-dot" style="background:' + color + '"></span>'
+            + '<span class="tc-tyre-letter">' + escapeHtml(letter) + '</span>'
+            + (hasAge ? '<span class="tc-tyre-age">' + lap.tyreAge + '</span>' : '')
+            + '</span>';
+    }
+
+    // 3-letter driver code for the compare card badge. Prefers a bracketed tag (e.g. "[VER]"),
+    // otherwise the first three letters of the surname ("Max Verstappen" → "VER"), falling back
+    // to the first three alphanumerics of a single-token gamertag.
+    function driverBadgeCode(name) {
+        var raw = String(name || '').trim();
+        if (!raw) return '—';
+        var bracket = raw.match(/\[([A-Za-z0-9]{2,4})\]/);
+        if (bracket) return bracket[1].toUpperCase().slice(0, 3);
+        var parts = raw.split(/\s+/).filter(Boolean);
+        var base = parts.length >= 2 ? parts[parts.length - 1] : raw;
+        var code = base.replace(/[^A-Za-z0-9]/g, '').slice(0, 3).toUpperCase();
+        return code || '—';
+    }
+
+    // Picks black or white text for a coloured badge by relative luminance, so light team
+    // colours (silver/white) stay readable.
+    function readableTextColor(hex) {
+        var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(String(hex || ''));
+        if (!m) return '#fff';
+        var lum = (0.2126 * parseInt(m[1], 16) + 0.7152 * parseInt(m[2], 16) + 0.0722 * parseInt(m[3], 16)) / 255;
+        return lum > 0.62 ? '#0d1117' : '#fff';
     }
 
     function renderTelemetryCompare(body) {
@@ -1906,6 +2201,7 @@
         var events = sess.events || [];
 
         body.innerHTML = ''
+            + '<div class="ev-container">'
             + '<div class="ev-toolbar">'
             +   '<div class="ev-tools">'
             +     '<button class="event-filter-toggle ev-filter-toggle" id="evFilterBtn" title="Filter events" aria-label="Filter events">'
@@ -1919,6 +2215,7 @@
             +   '<table class="ev-table"><thead>'
             +     '<tr><th class="ev-col-time">Time</th><th class="ev-col-lap">Lap</th><th class="ev-col-event">Event</th><th class="ev-col-driver">Driver</th><th class="ev-col-details">Details</th></tr>'
             +   '</thead><tbody id="evTbody"></tbody></table>'
+            + '</div>'
             + '</div>';
 
         closeEventsFilterPanel();
@@ -2061,15 +2358,39 @@
         var actions = document.createElement('span');
         actions.className = 'history-actions';
         actions.innerHTML = ''
-            + '<button type="button" class="history-action-btn" data-act="export">Export Driver…</button>'
-            + '<button type="button" class="history-action-btn" data-act="import">Import Ghost…</button>';
+            + '<span class="history-mode-slot" id="historyHeaderModeSlot"></span>'
+            + '<span class="history-actions-menu-wrap">'
+            +   '<button type="button" class="history-action-btn" data-act="menu" aria-haspopup="menu" aria-expanded="false">Actions ▾</button>'
+            +   '<div class="history-actions-menu" role="menu" hidden>'
+            +     '<button type="button" class="history-actions-menu-item" role="menuitem" data-act="export">Export Driver…</button>'
+            +     '<button type="button" class="history-actions-menu-item" role="menuitem" data-act="ghosts">Ghosts…</button>'
+            +   '</div>'
+            + '</span>';
         bc.appendChild(spacer);
         bc.appendChild(actions);
-        actions.addEventListener('click', function (e) {
-            var btn = e.target.closest('.history-action-btn');
-            if (!btn) return;
-            if (btn.dataset.act === 'export') openExportModal();
-            else if (btn.dataset.act === 'import') openImportModal();
+        var menuBtn = actions.querySelector('[data-act="menu"]');
+        var menu = actions.querySelector('.history-actions-menu');
+        function closeMenu() {
+            menu.hidden = true;
+            menuBtn.setAttribute('aria-expanded', 'false');
+        }
+        menuBtn.addEventListener('click', function () {
+            var opening = menu.hidden;
+            menu.hidden = !opening;
+            menuBtn.setAttribute('aria-expanded', opening ? 'true' : 'false');
+        });
+        document.addEventListener('click', function (e) {
+            if (!menu.hidden && !actions.contains(e.target)) closeMenu();
+        });
+        document.addEventListener('keydown', function (e) {
+            if (e.key === 'Escape' && !menu.hidden) closeMenu();
+        });
+        menu.addEventListener('click', function (e) {
+            var item = e.target.closest('.history-actions-menu-item');
+            if (!item) return;
+            closeMenu();
+            if (item.dataset.act === 'export') openExportModal();
+            else if (item.dataset.act === 'ghosts') openGhostsModal();
         });
     }
 
@@ -2109,17 +2430,57 @@
     function openExportModal() {
         var drivers = state.session && state.session.drivers;
         if (!drivers) return;
-        var rows = Object.keys(drivers).map(function (k) {
+        var playerIdx = state.session.meta ? state.session.meta.playerCarIndex : null;
+
+        // Build a sortable list: the player first (pre-selected export target), then
+        // drivers with laps, then lapless drivers (can't be exported) pinned last.
+        var list = Object.keys(drivers).map(function (k) {
             var d = drivers[k];
-            var color = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6';
-            return '<label class="export-row">'
-                + '<input type="radio" name="exportDriver" value="' + k + '"/>'
-                + '<span class="driver-dot" style="background:' + color + '"></span>'
-                + escapeHtml(d.name) + ' (' + d.lapCount + ' laps)'
+            var isPlayer = playerIdx != null && Number(k) === Number(playerIdx);
+            return {
+                key: k,
+                name: d.name || ('Car #' + k),
+                laps: d.lapCount || 0,
+                color: (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6',
+                isPlayer: isPlayer,
+            };
+        });
+        list.sort(function (a, b) {
+            if (a.isPlayer !== b.isPlayer) return a.isPlayer ? -1 : 1;
+            var aHas = a.laps > 0, bHas = b.laps > 0;
+            if (aHas !== bHas) return aHas ? -1 : 1;
+            return a.name.localeCompare(b.name);
+        });
+
+        function card(d) {
+            var noLaps = d.laps === 0;
+            var cls = 'export-card'
+                + (d.isPlayer ? ' export-card--you' : '')
+                + (noLaps ? ' export-card--disabled' : '');
+            return '<label class="' + cls + '" data-name="' + escapeHtml(d.name.toLowerCase()) + '">'
+                + '<input type="radio" name="exportDriver" value="' + d.key + '"'
+                +   (d.isPlayer && !noLaps ? ' checked' : '') + (noLaps ? ' disabled' : '') + '/>'
+                + '<span class="export-card-dot" style="background:' + d.color + '"></span>'
+                + '<span class="export-card-body">'
+                +   '<span class="export-card-name">' + escapeHtml(d.name) + '</span>'
+                +   '<span class="export-card-meta">' + (noLaps ? 'no laps' : d.laps + ' lap' + (d.laps === 1 ? '' : 's')) + '</span>'
+                + '</span>'
+                + (d.isPlayer ? '<span class="export-card-badge">YOU</span>' : '')
+                + '<span class="export-card-check" aria-hidden="true">✓</span>'
                 + '</label>';
-        }).join('');
-        openModal('Export Driver', rows, function (overlay) {
-            var sel = overlay.querySelector('input[name="exportDriver"]:checked');
+        }
+
+        var body = ''
+            + '<div class="export-panel">'
+            +   '<input type="text" class="export-search" id="exportSearch" placeholder="Search driver…" autocomplete="off" spellcheck="false" />'
+            +   '<div class="export-grid" role="radiogroup" aria-label="Driver to export">'
+            +     list.map(card).join('')
+            +   '</div>'
+            +   '<p class="export-empty" id="exportEmpty" hidden>No drivers match.</p>'
+            + '</div>';
+
+        var overlay = openModal('Export Driver', body, function (ov) {
+            var sel = ov.querySelector('input[name="exportDriver"]:checked');
             if (!sel) throw new Error('pick a driver');
             var url = '/api/sessions/' + encodeURIComponent(state.folder)
                 + '/' + encodeURIComponent(state.slug)
@@ -2131,38 +2492,170 @@
             a.click();
             a.remove();
         });
+        overlay.classList.add('history-modal-overlay--export');
+        overlay.querySelector('.history-modal-confirm').textContent = 'Export';
+
+        // Live name filter. Empty state shows when nothing matches.
+        var search = overlay.querySelector('#exportSearch');
+        var empty = overlay.querySelector('#exportEmpty');
+        var cards = Array.prototype.slice.call(overlay.querySelectorAll('.export-card'));
+        search.addEventListener('input', function () {
+            var q = search.value.trim().toLowerCase();
+            var shown = 0;
+            cards.forEach(function (c) {
+                var match = !q || c.dataset.name.indexOf(q) !== -1;
+                c.hidden = !match;
+                if (match) shown++;
+            });
+            empty.hidden = shown > 0;
+        });
+        // Autofocus so the user can type immediately.
+        window.setTimeout(function () { try { search.focus(); } catch (e) { /* ignore */ } }, 0);
     }
 
-    function openImportModal() {
-        var body = '<p style="margin-top:0">Pick a ghost JSON exported from another session. Track must match.</p>'
-            + '<input type="file" id="ghostFile" accept=".json" />';
-        openModal('Import Ghost', body, function (overlay) {
-            var fileInput = overlay.querySelector('#ghostFile');
-            if (!fileInput.files || fileInput.files.length === 0) throw new Error('pick a file');
-            var file = fileInput.files[0];
+    /** Slots a ghost driver into the compare state under a synthetic carIdx (100+). */
+    function addGhostToCompare(driver) {
+        var ghostKey = 100 + Math.floor(Math.random() * 100);
+        state.session.drivers[ghostKey] = Object.assign({}, driver, {
+            name: '[G] ' + driver.name,
+        });
+        state.driverSelection.set(ghostKey, {
+            lap: fastestValidLap(driver.laps),
+            ghost: true,
+        });
+        renderCurrentSubTab();
+    }
+
+    // Ghost manager: lists the ghosts persisted under the weekend's _ghosts/ folder
+    // (Add = slot into Telemetry Compare, Delete = remove the file), plus file import.
+    // Everything acts immediately inside the modal; the footer is just a Close button.
+    function openGhostsModal() {
+        var body = ''
+            + '<div class="ghost-section-title">Saved ghosts</div>'
+            + '<div class="ghost-list"><p class="ghost-list-note">Loading saved ghosts…</p></div>'
+            + '<div class="ghost-section-title">Import from file</div>'
+            + '<p class="ghost-import-hint">Ghost JSON exported from another session — track must match.</p>'
+            + '<div class="ghost-import-row">'
+            +   '<label class="ghost-file-label">'
+            +     '<input type="file" id="ghostFile" accept=".json" hidden />'
+            +     '<span class="ghost-file-btn">Choose file…</span>'
+            +     '<span class="ghost-file-name">no file selected</span>'
+            +   '</label>'
+            +   '<button type="button" class="history-action-btn" id="ghostImportBtn" disabled>Import</button>'
+            + '</div>'
+            + '<p class="ghost-import-status" id="ghostImportStatus" hidden></p>';
+        var overlay = openModal('Ghosts', body, null);
+
+        // No confirm action — the footer collapses to a single Close button.
+        overlay.querySelector('.history-modal-cancel').hidden = true;
+        overlay.querySelector('.history-modal-confirm').textContent = 'Close';
+
+        var ghostFileInput = overlay.querySelector('#ghostFile');
+        var ghostFileName = overlay.querySelector('.ghost-file-name');
+        var importBtn = overlay.querySelector('#ghostImportBtn');
+        var importStatus = overlay.querySelector('#ghostImportStatus');
+        ghostFileInput.addEventListener('change', function () {
+            var has = ghostFileInput.files && ghostFileInput.files.length > 0;
+            importBtn.disabled = !has;
+            importStatus.hidden = true;
+            ghostFileName.textContent = has ? ghostFileInput.files[0].name : 'no file selected';
+            ghostFileName.classList.toggle('ghost-file-name-set', has);
+        });
+        importBtn.addEventListener('click', function () {
+            if (!ghostFileInput.files || ghostFileInput.files.length === 0) return;
+            var file = ghostFileInput.files[0];
             var url = '/api/history/import?folder=' + encodeURIComponent(state.folder)
                 + '&slug=' + encodeURIComponent(state.slug);
-            return file.arrayBuffer().then(function (buf) {
+            importBtn.disabled = true;
+            file.arrayBuffer().then(function (buf) {
                 return fetch(url, {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: buf,
                 });
             }).then(function (r) {
-                if (!r.ok) return r.json().then(function (j) { throw new Error(j.error || r.statusText); });
+                if (!r.ok) return r.json().catch(function () { return {}; }).then(function (j) {
+                    throw new Error(j.error || r.statusText);
+                });
                 return r.json();
             }).then(function (res) {
-                // Slot the ghost driver into state.session.drivers under a synthetic carIdx.
-                var ghostKey = 100 + Math.floor(Math.random() * 100);
-                state.session.drivers[ghostKey] = Object.assign({}, res.driver, {
-                    name: '[G] ' + res.driver.name,
-                });
-                state.driverSelection.set(ghostKey, {
-                    lap: fastestValidLap(res.driver.laps),
-                    ghost: true,
-                });
-                renderCurrentSubTab();
+                addGhostToCompare(res.driver);
+                importStatus.textContent = 'Imported "' + (res.driver && res.driver.name || file.name) + '" — added to Telemetry Compare.';
+                importStatus.classList.remove('ghost-import-status-error');
+                importStatus.hidden = false;
+                ghostFileInput.value = '';
+                ghostFileName.textContent = 'no file selected';
+                ghostFileName.classList.remove('ghost-file-name-set');
+            }).catch(function (err) {
+                importBtn.disabled = false;
+                importStatus.textContent = String(err.message || err);
+                importStatus.classList.add('ghost-import-status-error');
+                importStatus.hidden = false;
             });
+        });
+
+        var list = overlay.querySelector('.ghost-list');
+        var base = '/api/sessions/' + encodeURIComponent(state.folder)
+            + '/' + encodeURIComponent(state.slug) + '/ghosts';
+        var ghostsByFile = {};
+
+        fetch(base)
+            .then(function (r) { return r.json(); })
+            .then(function (ghosts) {
+                if (!Array.isArray(ghosts) || ghosts.length === 0) {
+                    list.innerHTML = '<p class="ghost-list-note">No saved ghosts for this track yet.</p>';
+                    return;
+                }
+                list.innerHTML = ghosts.map(function (g) {
+                    ghostsByFile[g.fileName] = g;
+                    var d = g.driver || {};
+                    var name = d.name || g.fileName;
+                    var color = (typeof teamAccentColor === 'function')
+                        ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6';
+                    var metaParts = [];
+                    if (g.sourceSlug) metaParts.push(g.sourceSlug);
+                    if (d.laps && d.laps.length) metaParts.push(d.laps.length + ' laps');
+                    var meta = metaParts.length
+                        ? '<span class="ghost-row-src">' + escapeHtml(metaParts.join(' · ')) + '</span>' : '';
+                    return '<div class="ghost-row" data-file="' + escapeHtml(g.fileName) + '">'
+                        + '<span class="driver-dot" style="background:' + color + '"></span>'
+                        + '<span class="ghost-row-name">' + escapeHtml(name) + meta + '</span>'
+                        + '<button type="button" class="history-action-btn" data-ghost-act="add">Add</button>'
+                        + '<button type="button" class="history-action-btn ghost-btn-danger" data-ghost-act="delete">Delete</button>'
+                        + '</div>';
+                }).join('');
+            })
+            .catch(function () {
+                list.innerHTML = '<p class="ghost-list-note">Failed to load saved ghosts.</p>';
+            });
+
+        list.addEventListener('click', function (e) {
+            var btn = e.target.closest('[data-ghost-act]');
+            if (!btn) return;
+            var row = btn.closest('.ghost-row');
+            var fileName = row.dataset.file;
+            if (btn.dataset.ghostAct === 'add') {
+                var g = ghostsByFile[fileName];
+                if (!g) return;
+                addGhostToCompare(g.driver);
+                btn.textContent = 'Added';
+                btn.disabled = true;
+            } else if (btn.dataset.ghostAct === 'delete') {
+                if (!confirm('Delete saved ghost "' + fileName + '"? This removes the file from _ghosts/.')) return;
+                btn.disabled = true;
+                fetch(base + '/' + encodeURIComponent(fileName), { method: 'DELETE' })
+                    .then(function (r) {
+                        if (!r.ok) return r.json().catch(function () { return {}; }).then(function (j) {
+                            throw new Error(j.error || ('HTTP ' + r.status));
+                        });
+                        row.remove();
+                    })
+                    .catch(function (err) {
+                        btn.disabled = false;
+                        list.insertAdjacentHTML('beforeend',
+                            '<div class="history-modal-error">' + escapeHtml(String(err.message || err)) + '</div>');
+                    });
+            }
         });
     }
 
@@ -2237,9 +2730,12 @@
 
             function isLapDuplicate(carIdx, lapNum) {
                 var dup = false;
-                state.driverSelection.forEach(function (sel) {
+                state.driverSelection.forEach(function (sel, key) {
                     if (dup || !sel || sel.lap == null) return;
-                    var src = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : carIdx);
+                    // Fall back to the selection's own map key — falling back to the
+                    // candidate carIdx made any keyed selection (no sourceCarIdx) match
+                    // every driver, hiding that lap number for the whole grid.
+                    var src = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : key);
                     if (src === Number(carIdx) && Number(sel.lap) === Number(lapNum)) dup = true;
                 });
                 return dup;
@@ -2333,7 +2829,27 @@
                     if (opts.drivers[sourceCarIdx]) selected.push({ key: Number(carIdx), sourceCarIdx: sourceCarIdx, sel: sel });
                 });
                 selected.sort(function (a, b) { return a.sourceCarIdx - b.sourceCarIdx || a.sel.lap - b.sel.lap; });
-                var cards = '<div class="driver-picker-header">Compare laps</div><div class="tc-lap-card-list">';
+                // Line style per lap = team occurrence order among visible laps — first
+                // teammate solid, second dashed, third+ dotted. Mirrors the chart's dash
+                // index so the card's left indicator matches the line drawn on the charts.
+                // Counted in driverSelection insertion order (not the card display order, which
+                // is sorted by car) so the indicator lines up with the chart line.
+                var dashByKey = {};
+                (function () {
+                    var seen = {};
+                    state.driverSelection.forEach(function (sel, key) {
+                        if (!sel || sel.hidden) return;
+                        var src = Number(sel.sourceCarIdx != null ? sel.sourceCarIdx : key);
+                        var drv = opts.drivers[src];
+                        var tid = drv && drv.teamId != null ? String(drv.teamId) : ('_' + key);
+                        var occ = seen[tid] || 0; seen[tid] = occ + 1;
+                        dashByKey[Number(key)] = occ === 0 ? 'solid' : (occ === 1 ? 'dashed' : 'dotted');
+                    });
+                })();
+                var cards = '<div class="driver-picker-header tc-lap-card-header">'
+                    + '<span>Compare laps</span>'
+                    + '<span class="tc-lap-card-count">' + selected.length + '/' + MAX_COMPARE_TOTAL + '</span>'
+                    + '</div><div class="tc-lap-card-list">';
                 selected.forEach(function (item) {
                     var d = opts.drivers[item.sourceCarIdx];
                     var teamColor = (typeof teamAccentColor === 'function') ? teamAccentColor(d.teamId, d.liveryColorHex) : '#9aa0a6';
@@ -2342,18 +2858,28 @@
                     var driverLaps = d.laps || [];
                     var lapInfo = driverLaps.find(function (ll) { return Number(ll.lapNum) === Number(item.sel.lap); });
                     var tagsCard = compareLapTagsHtml(lapInfo, driverLaps);
-                    cards += '<div class="tc-lap-card ' + (isHidden ? 'is-muted' : '') + '" data-car="' + item.key + '" style="--tc-card-color:' + teamColor + '">'
+                    var lineStyle = dashByKey[item.key] || 'solid';
+                    var fullName = d.name || ('Car ' + item.sourceCarIdx);
+                    var badgeCode = driverBadgeCode(fullName);
+                    var badgeText = readableTextColor(teamColor);
+                    var lapTimeTxt = (lapInfo && lapInfo.lapTimeMs) ? formatLapTime(lapInfo.lapTimeMs) : '—';
+                    cards += '<div class="tc-lap-card ' + (isHidden ? 'is-muted ' : '') + (isRef ? 'is-ref' : '') + '" data-car="' + item.key + '" data-line-style="' + lineStyle + '" style="--tc-card-color:' + teamColor + '">'
+                        + '<span class="tc-lap-card-badge" style="background:' + teamColor + ';color:' + badgeText + '" title="' + escapeHtml(fullName) + '">' + escapeHtml(badgeCode) + '</span>'
                         + '<div class="tc-lap-card-info">'
                         +   '<div class="tc-lap-card-name-row">'
-                        +     '<span class="tc-lap-card-name" title="' + escapeHtml(d.name || ('Car ' + item.sourceCarIdx)) + '">' + escapeHtml(shortDriverName(d.name || ('Car ' + item.sourceCarIdx))) + '</span>'
+                        +     '<span class="tc-lap-card-lap">Lap ' + item.sel.lap + '</span>'
+                        +     compareTyreChipHtml(lapInfo)
                         +     tagsCard
-                        +     (isRef ? '<span class="driver-ref-badge">REF</span>' : '')
                         +   '</div>'
-                        +   '<span class="tc-lap-card-lap">Lap ' + item.sel.lap + '</span>'
+                        +   '<div class="tc-lap-card-meta">'
+                        +     '<span class="tc-lap-card-time' + (lapTimeTxt === '—' ? ' tc-lap-card-time--none' : '') + '">' + lapTimeTxt + '</span>'
+                        +   '</div>'
                         + '</div>'
                         + '<div class="tc-lap-card-actions">'
-                        +   (isRef ? '' : '<button type="button" class="tc-lap-card-ref" data-act="set-ref" data-car="' + item.key + '" title="Set as reference lap">REF</button>')
-                        +   '<button type="button" class="tc-lap-card-vis" data-act="vis" data-car="' + item.key + '" title="Show/hide lap">👁</button>'
+                        +   (isRef
+                            ? '<span class="tc-lap-card-ref is-active" title="Reference lap">REF</span>'
+                            : '<button type="button" class="tc-lap-card-ref" data-act="set-ref" data-car="' + item.key + '" title="Set as reference lap">SET REF</button>')
+                        +   '<button type="button" class="tc-lap-card-vis" data-act="vis" data-car="' + item.key + '" title="Show/hide lap" aria-pressed="' + (isHidden ? 'true' : 'false') + '">' + (isHidden ? '🚫' : '👁') + '</button>'
                         +   '<button type="button" class="tc-lap-card-remove" data-act="remove" data-car="' + item.key + '" title="Remove lap">×</button>'
                         + '</div>'
                         + '</div>';
@@ -2489,6 +3015,26 @@
         if (state.lapSamplesCache.has(key)) {
             return Promise.resolve(state.lapSamplesCache.get(key));
         }
+        // Ghost drivers live under synthetic carIdx (100+) that the server doesn't know;
+        // their imported payload carries samples inline. Serve those locally, with the same
+        // pit-lane clipping the /lap-samples endpoint applies (negative D = pit lane).
+        var localDriver = state.session && state.session.drivers && state.session.drivers[carIdx];
+        if (localDriver && localDriver.laps) {
+            var localLap = localDriver.laps.find(function (l) { return l.lapNum === lap; });
+            if (localLap && localLap.samples) {
+                var trackLen = (state.session.meta && state.session.meta.trackLengthM) || 0;
+                var maxD = trackLen > 0 ? trackLen + 50 : Infinity;
+                var inD = function (p) { return p.d >= 0 && p.d <= maxD; };
+                var local = {
+                    carIdx: carIdx,
+                    lap: lap,
+                    samples: localLap.samples.filter(inD),
+                    motion: (localLap.motion || []).filter(inD),
+                };
+                state.lapSamplesCache.set(key, local);
+                return Promise.resolve(local);
+            }
+        }
         var url = '/api/sessions/' + encodeURIComponent(state.folder) + '/'
                 + encodeURIComponent(state.slug) + '/lap-samples?carIdx=' + carIdx + '&lap=' + lap;
         return fetch(url)
@@ -2572,6 +3118,7 @@
     // ---------- expose ----------
     window.HistoryDetail = {
         open: open,
+        openRoute: openRoute,
         close: close,
         get state() { return state; },
         DriverPicker: DriverPicker,

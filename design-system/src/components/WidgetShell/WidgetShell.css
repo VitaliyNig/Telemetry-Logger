@@ -65,3 +65,11 @@
     container-type: inline-size;
     padding: clamp(8px, 2cqi, 12px);
 }
+
+/* Mirror the app: the card fills the widget body so flex children (e.g. centred
+   empty states) can stretch and centre regardless of widget size. */
+.widget-body > .card {
+    box-sizing: border-box;
+    height: 100%;
+    overflow: auto;
+}

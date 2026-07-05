@@ -271,16 +271,17 @@
     background: var(--color-bg-elevated);
 }
 
-/* Metric color rails for active channels */
-.tc-channel[data-key="delta"].active::before { background: #a855f7; }
-.tc-channel[data-key="spd"].active::before   { background: #60a5fa; }
-.tc-channel[data-key="thr"].active::before   { background: #22c55e; }
-.tc-channel[data-key="brk"].active::before   { background: #ef4444; }
-.tc-channel[data-key="str"].active::before   { background: #c084fc; }
-.tc-channel[data-key="gr"].active::before    { background: #eab308; }
-.tc-channel[data-key="rpm"].active::before   { background: #f97316; }
-.tc-channel[data-key="ers"].active::before   { background: #38bdf8; }
-.tc-channel[data-key="drs"].active::before   { background: var(--drs, #00d4ff); }
+/* Muted channel rails for active channels — mirrors TelemetryChartStack: identity
+   hue softened toward neutral grey so the picker reads calm alongside the plots. */
+.tc-channel[data-key="delta"].active::before { background: color-mix(in srgb, #a855f7 68%, #8b9096); }
+.tc-channel[data-key="spd"].active::before   { background: color-mix(in srgb, #60a5fa 68%, #8b9096); }
+.tc-channel[data-key="thr"].active::before   { background: color-mix(in srgb, #22c55e 66%, #8b9096); }
+.tc-channel[data-key="brk"].active::before   { background: color-mix(in srgb, #ef4444 70%, #8b9096); }
+.tc-channel[data-key="str"].active::before   { background: color-mix(in srgb, #c084fc 66%, #8b9096); }
+.tc-channel[data-key="gr"].active::before    { background: color-mix(in srgb, #eab308 62%, #8b9096); }
+.tc-channel[data-key="rpm"].active::before   { background: color-mix(in srgb, #f97316 68%, #8b9096); }
+.tc-channel[data-key="ers"].active::before   { background: color-mix(in srgb, #38bdf8 62%, #8b9096); }
+.tc-channel[data-key="drs"].active::before   { background: color-mix(in srgb, var(--drs, #00d4ff) 66%, #8b9096); }
 
 /* Insights panel sits as the trailing child inside .tc-stb when injected via `children`. */
 .tc-stb .tc-insights { padding: 6px 8px; }

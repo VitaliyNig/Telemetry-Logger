@@ -31,8 +31,12 @@ function rainClass(rain: number) {
 export function Weather({ samples, forecastAccuracy, className }: WeatherProps) {
   if (samples.length === 0) {
     return (
-      <div className={["card", className ?? ""].filter(Boolean).join(" ")}>
-        <div className="weather-placeholder">No forecast data available</div>
+      <div className={["card", "weather-card", className ?? ""].filter(Boolean).join(" ")}>
+        <div className="widget-empty">
+          <div className="widget-empty-icon"><span className="widget-empty-dash" /></div>
+          <div className="widget-empty-title">No forecast data available</div>
+          <div className="widget-empty-sub">Waiting for session data</div>
+        </div>
       </div>
     );
   }

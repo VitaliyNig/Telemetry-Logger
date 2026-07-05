@@ -76,7 +76,7 @@ export { FuelErs } from "./components/FuelErs/FuelErs";
 export type { FuelErsProps } from "./components/FuelErs/FuelErs";
 
 export { PitPredictor } from "./components/PitPredictor/PitPredictor";
-export type { PitPredictorProps, PitPredictorCar } from "./components/PitPredictor/PitPredictor";
+export type { PitPredictorProps, PitPredictorTrafficCar, PitPredictorDamage } from "./components/PitPredictor/PitPredictor";
 
 export { Session } from "./components/Session/Session";
 export type { SessionProps, TempTrend, FlagColor } from "./components/Session/Session";

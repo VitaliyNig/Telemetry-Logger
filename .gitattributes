@@ -1,0 +1,13 @@
+# Normalize line endings: text files are stored with LF in the repo; Git checks them
+# out per-platform. Fixes the constant "LF will be replaced by CRLF" warnings.
+* text=auto
+
+# Visual Studio expects CRLF in solution files.
+*.sln text eol=crlf
+
+# Binary assets — never touch line endings.
+*.png binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.xlsx binary

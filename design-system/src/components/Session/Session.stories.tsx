@@ -7,7 +7,7 @@ const meta: Meta<typeof Session> = {
   component: Session,
   decorators: [
     (Story) => (
-      <div style={{ width: 420, height: 220, border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-md)", background: "var(--color-bg-card)", overflow: "hidden" }}>
+      <div style={{ width: 440, border: "1px solid var(--color-border-default)", borderRadius: "var(--radius-md)", background: "var(--color-bg-card)", overflow: "hidden" }}>
         <WidgetShell title="Session" widgetId="session">
           <Story />
         </WidgetShell>
@@ -22,7 +22,7 @@ type Story = StoryObj<typeof Session>;
 // Real Session packet from the Singapore race: trackId 12 (Singapore -> SG
 // flag), sessionType 15 (Race), weather 5 (Storm), 24C track / 25C air,
 // totalLaps 31 (F1 25's off-by-one — includes the cooldown lap), player
-// (carIdx 2) on lap 31. Trends are derived/rolling-window data, not present
+// (carIdx 2) on lap 16. Trends are derived/rolling-window data, not present
 // in a single packet snapshot, so these are representative.
 export const Default: Story = {
   args: {
@@ -35,7 +35,8 @@ export const Default: Story = {
     airTemp: 25,
     airTempTrend: { arrow: "—", cls: "temp-trend-stable", delta: 0 },
     progressLabel: "Laps",
-    progressValue: "31/31",
+    progressValue: "16/31",
+    progressPct: 52,
     flagLabel: "GREEN",
     flagColor: "green",
   },
@@ -53,6 +54,7 @@ export const QualifyingDry: Story = {
     airTempTrend: { arrow: "", cls: "", delta: 0 },
     progressLabel: "Time",
     progressValue: "2:33",
+    progressPct: 83,
     flagLabel: "--",
     flagColor: "none",
   },
@@ -70,7 +72,19 @@ export const SafetyCar: Story = {
     airTempTrend: { arrow: "▼", cls: "temp-trend-down", delta: -1 },
     progressLabel: "Laps",
     progressValue: "12/31",
+    progressPct: 39,
     flagLabel: "SC",
     flagColor: "yellow",
+  },
+};
+
+// All optional fields shown (Pit Limit / AI Level / Equal Cars) — hidden by
+// default in the live widget, surfaced via the "Visible fields" settings panel.
+export const AllFields: Story = {
+  args: {
+    ...Default.args,
+    pitLimit: "80 km/h",
+    aiLevel: "95",
+    equalCars: "Off",
   },
 };

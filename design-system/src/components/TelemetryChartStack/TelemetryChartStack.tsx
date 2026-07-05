@@ -401,8 +401,10 @@ function MetricRow({
       });
     }
 
-    const lines: ReactElement[] = [];
-    let compareSeriesCount = 0;
+    // Two visual roles: the reference lap is the thick anchor drawn beneath
+    // everything; every compare lap gets the same thinner stroke on top.
+    const refLines: ReactElement[] = [];
+    const cmpLines: ReactElement[] = [];
     drivers.forEach((d) => {
       let values: { d: number; v: number }[];
       if (metric.key === "delta") {
@@ -415,12 +417,12 @@ function MetricRow({
       const pts = values.map((pt) => `${x(pt.d)},${yFor(pt.v)}`).join(" ");
       const dashIdx = dashIndexByCarIdx.get(d.carIdx) || 0;
       const dashClass = dashIdx === 0 ? "tc-line--solid" : dashIdx === 1 ? "tc-line--dashed" : "tc-line--dotted";
-      let roleClass = "tc-line-extra";
-      if (d.carIdx === referenceCarIdx) roleClass = "tc-line-ref";
-      else if (compareSeriesCount === 0) roleClass = "tc-line-current";
-      lines.push(<polyline key={d.carIdx} className={cx("tc-line", roleClass, dashClass)} stroke={d.color} points={pts} />);
-      if (d.carIdx !== referenceCarIdx) compareSeriesCount++;
+      const isRef = d.carIdx === referenceCarIdx;
+      const roleClass = isRef ? "tc-line-ref" : "tc-line-cmp";
+      const poly = <polyline key={d.carIdx} className={cx("tc-line", roleClass, dashClass)} stroke={d.color} points={pts} />;
+      (isRef ? refLines : cmpLines).push(poly);
     });
+    const lines = [...refLines, ...cmpLines];
 
     const baseY = yFor(0);
     const baseline =

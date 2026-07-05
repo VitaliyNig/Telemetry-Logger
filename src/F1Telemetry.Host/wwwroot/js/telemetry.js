@@ -6,6 +6,14 @@
 // Если в будущем 2027 переопределит существующий id (например, заменит трассу под тем
 // же номером), потребуется разделить лукапы по PacketFormat.
 
+// Participant names come from the game and, in online sessions, are other players'
+// nicknames — untrusted input. Always route them through escapeHtml before innerHTML.
+function escapeHtml(s) {
+    return String(s == null ? "" : s)
+        .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+}
+
 // Track IDs — m_trackId (int8, -1 = неизвестно). 42 = Madrid (добавлено в формате 2026).
 const TRACK_NAMES = {
     0: "Melbourne",
@@ -151,31 +159,82 @@ function getCompoundWearRate(actualCompoundId) {
     return v != null ? v : null;
 }
 
-/* Per-compound temperature zones (°C), derived from F1 25 vehicle-package
- * compound physics (TemperatureGrip spline in .vcmpd):
+/* Per-compound temperature zones (°C), derived from the F1 25 / F1 26 / F2
+ * vehicle-package physics (TemperatureGrip spline in .vcmpd, converted K→°C):
  *   T < cold           → undercool   (blue,   grip < 99%)
  *   cold ≤ T < pLo     → warming up  (green,  grip ≥ 99%)
- *   pLo ≤ T ≤ pHi      → perfect     (purple, grip = 100%)
+ *   pLo ≤ T ≤ pHi      → perfect     (purple, grip ≥ 99.9%)
  *   pHi < T ≤ hot      → overheat    (yellow, grip ≥ 99%)
  *   T > hot            → critical    (red,    grip < 99%)
+ *
+ * The table is picked per session by m_formula (see getCompoundTempTable):
+ * F1 25 ("F1 Modern", formula 0) and F1 26 (formula 13) reuse compound ids
+ * 16..22/7/8 but have different physics, so the formula — not the id —
+ * disambiguates them. F2 (formula 2) has its own ids 11..15; the F2 2024 and
+ * 2025 packages are byte-identical, so a single F2 table covers both years.
  */
-const ACTUAL_COMPOUND_TEMP = {
-    20: { cold: 70, perfectLow: 100, perfectHigh: 110, hot: 130 },  // C1
-    19: { cold: 60, perfectLow: 100, perfectHigh: 100, hot: 130 },  // C2
-    18: { cold: 60, perfectLow: 90,  perfectHigh: 100, hot: 120 },  // C3
-    17: { cold: 50, perfectLow: 80,  perfectHigh: 90,  hot: 120 },  // C4
+const ACTUAL_COMPOUND_TEMP_F1_25 = {
+    20: { cold: 70, perfectLow: 90,  perfectHigh: 110, hot: 130 },  // C1
+    19: { cold: 60, perfectLow: 90,  perfectHigh: 110, hot: 130 },  // C2
+    18: { cold: 60, perfectLow: 80,  perfectHigh: 100, hot: 120 },  // C3
+    17: { cold: 50, perfectLow: 80,  perfectHigh: 100, hot: 120 },  // C4
     16: { cold: 40, perfectLow: 70,  perfectHigh: 90,  hot: 110 },  // C5
-    22: { cold: 40, perfectLow: 70,  perfectHigh: 80,  hot: 100 },  // C6
-    7:  { cold: 20, perfectLow: 60,  perfectHigh: 70,  hot: 90  },  // Inter
-    8:  { cold: 20, perfectLow: 50,  perfectHigh: 60,  hot: 80  },  // Wet
-    // F2 2024/2025 (identical) — actualTyreCompound 11..15
-    14: { cold: 70, perfectLow: 100, perfectHigh: 110, hot: 130 },  // F2 Hard
-    13: { cold: 60, perfectLow: 90,  perfectHigh: 100, hot: 120 },  // F2 Medium
-    12: { cold: 50, perfectLow: 80,  perfectHigh: 90,  hot: 120 },  // F2 Soft
-    11: { cold: 40, perfectLow: 70,  perfectHigh: 80,  hot: 110 },  // F2 SuperSoft
-    15: { cold: 20, perfectLow: 50,  perfectHigh: 60,  hot: 80  },  // F2 Wet
+    22: { cold: 40, perfectLow: 60,  perfectHigh: 80,  hot: 100 },  // C6
+    7:  { cold: 20, perfectLow: 50,  perfectHigh: 70,  hot: 90  },  // Inter
+    8:  { cold: 20, perfectLow: 40,  perfectHigh: 60,  hot: 80  },  // Wet
+};
+const ACTUAL_COMPOUND_TEMP_F1_26 = {
+    20: { cold: 70, perfectLow: 90,  perfectHigh: 110, hot: 130 },  // C1
+    19: { cold: 60, perfectLow: 90,  perfectHigh: 110, hot: 120 },  // C2
+    18: { cold: 60, perfectLow: 80,  perfectHigh: 100, hot: 120 },  // C3
+    17: { cold: 50, perfectLow: 80,  perfectHigh: 100, hot: 110 },  // C4
+    16: { cold: 40, perfectLow: 70,  perfectHigh: 90,  hot: 110 },  // C5
+    22: { cold: 40, perfectLow: 60,  perfectHigh: 80,  hot: 110 },  // C6
+    7:  { cold: 20, perfectLow: 50,  perfectHigh: 70,  hot: 100 },  // Inter
+    8:  { cold: 20, perfectLow: 50,  perfectHigh: 90,  hot: 120 },  // Wet
+};
+// F2 2024/2025 (identical packages) — actualTyreCompound 11..15.
+const ACTUAL_COMPOUND_TEMP_F2 = {
+    14: { cold: 70, perfectLow: 90,  perfectHigh: 120, hot: 130 },  // Hard
+    13: { cold: 60, perfectLow: 80,  perfectHigh: 110, hot: 120 },  // Medium
+    12: { cold: 50, perfectLow: 70,  perfectHigh: 100, hot: 120 },  // Soft
+    11: { cold: 40, perfectLow: 60,  perfectHigh: 90,  hot: 110 },  // SuperSoft
+    15: { cold: 20, perfectLow: 40,  perfectHigh: 60,  hot: 80  },  // Wet
 };
 const ACTUAL_COMPOUND_TEMP_DEFAULT = { cold: 60, perfectLow: 90, perfectHigh: 100, hot: 120 };
+
+/* Carcass (inner) temperature zones (°C), from the .vcmpd TemperatureGripCarcas
+ * spline — the tyre core runs cooler and peaks in a narrower band than the
+ * surface, so the widget colours the inner-temperature readout with these
+ * tables instead of the surface ones. Same per-formula selection as above. */
+const ACTUAL_COMPOUND_CARCAS_TEMP_F1_25 = {
+    20: { cold: 95, perfectLow: 105, perfectHigh: 105, hot: 125 },  // C1
+    19: { cold: 85, perfectLow: 95,  perfectHigh: 95,  hot: 115 },  // C2
+    18: { cold: 75, perfectLow: 85,  perfectHigh: 95,  hot: 115 },  // C3
+    17: { cold: 75, perfectLow: 85,  perfectHigh: 85,  hot: 105 },  // C4
+    16: { cold: 65, perfectLow: 75,  perfectHigh: 85,  hot: 105 },  // C5
+    22: { cold: 55, perfectLow: 75,  perfectHigh: 75,  hot: 95  },  // C6
+    7:  { cold: 55, perfectLow: 65,  perfectHigh: 75,  hot: 95  },  // Inter
+    8:  { cold: 45, perfectLow: 55,  perfectHigh: 65,  hot: 85  },  // Wet
+};
+const ACTUAL_COMPOUND_CARCAS_TEMP_F1_26 = {
+    20: { cold: 85, perfectLow: 95,  perfectHigh: 105, hot: 125 },  // C1
+    19: { cold: 85, perfectLow: 95,  perfectHigh: 95,  hot: 115 },  // C2
+    18: { cold: 75, perfectLow: 85,  perfectHigh: 95,  hot: 115 },  // C3
+    17: { cold: 75, perfectLow: 85,  perfectHigh: 85,  hot: 105 },  // C4
+    16: { cold: 65, perfectLow: 75,  perfectHigh: 85,  hot: 105 },  // C5
+    22: { cold: 65, perfectLow: 75,  perfectHigh: 75,  hot: 95  },  // C6
+    7:  { cold: 55, perfectLow: 65,  perfectHigh: 75,  hot: 95  },  // Inter
+    8:  { cold: 45, perfectLow: 55,  perfectHigh: 65,  hot: 85  },  // Wet
+};
+const ACTUAL_COMPOUND_CARCAS_TEMP_F2 = {
+    14: { cold: 75, perfectLow: 85,  perfectHigh: 105, hot: 125 },  // Hard
+    13: { cold: 65, perfectLow: 85,  perfectHigh: 105, hot: 115 },  // Medium
+    12: { cold: 65, perfectLow: 85,  perfectHigh: 95,  hot: 115 },  // Soft
+    11: { cold: 55, perfectLow: 75,  perfectHigh: 85,  hot: 105 },  // SuperSoft
+    15: { cold: 25, perfectLow: 45,  perfectHigh: 65,  hot: 85  },  // Wet
+};
+const ACTUAL_COMPOUND_CARCAS_TEMP_DEFAULT = { cold: 75, perfectLow: 85, perfectHigh: 95, hot: 115 };
 
 /* Surface-temperature thresholds where blistering starts (°C).
  * From .vcmpd Min/MaxBlisteringTemperature. min = onset, max = severe damage.
@@ -190,14 +249,17 @@ const COMPOUND_BLISTER_TEMP_C = {
 };
 
 /* Tyre-temperature considered "released from pits" / fully active (°C).
- * From .vcmpd PitReleaseTemperature.
- *   - F1 wets (8): not defined in source.
- *   - F2 (11..15): tyre warmers banned in F2 since 2020 — cars leave the pits
- *     on cold tyres, so PitReleaseTemperature is 0 K by design, not missing.
- *     Intentionally omitted here.
+ * From .vcmpd PitReleaseTemperature, selected per session by m_formula.
+ *   - F1 wets (8): not defined in source (0 K).
+ *   - F1 26 raises the Intermediate pit-release from 60°C to 70°C.
+ *   - F2: tyre warmers banned since 2020 — cars leave the pits on cold tyres
+ *     (PitReleaseTemperature 0 K by design), so F2 has no entry at all.
  */
-const COMPOUND_PIT_RELEASE_TEMP_C = {
+const COMPOUND_PIT_RELEASE_TEMP_C_F1_25 = {
     20: 70, 19: 70, 18: 70, 17: 70, 16: 70, 22: 70, 7: 60,
+};
+const COMPOUND_PIT_RELEASE_TEMP_C_F1_26 = {
+    20: 70, 19: 70, 18: 70, 17: 70, 16: 70, 22: 70, 7: 70,
 };
 
 /* Grip multiplier vs wear% (0..1), sampled at 0/25/50/75/100% from
@@ -228,16 +290,49 @@ const TEMP_COLORS = {
     critical: "#ef4444",
 };
 
-function getCompoundTempRange(actualCompoundId) {
-    return ACTUAL_COMPOUND_TEMP[actualCompoundId] || ACTUAL_COMPOUND_TEMP_DEFAULT;
+/** Compound-temperature table for the active series, chosen via m_formula.
+ *  Unknown formula (e.g. before the first Session packet) falls back to F1 25. */
+function getCompoundTempTable(formula) {
+    if (formula === FORMULA_F1_26) return ACTUAL_COMPOUND_TEMP_F1_26;
+    if (formula === FORMULA_F2) return ACTUAL_COMPOUND_TEMP_F2;
+    return ACTUAL_COMPOUND_TEMP_F1_25;
+}
+
+function getCompoundTempRange(actualCompoundId, formula = currentFormula) {
+    // Compound ids are disjoint between F1 (16..22/7/8) and F2 (11..15), so the
+    // cross-table fallbacks recover the right window even if the formula is not
+    // yet known when the first telemetry arrives.
+    return getCompoundTempTable(formula)[actualCompoundId]
+        || ACTUAL_COMPOUND_TEMP_F1_25[actualCompoundId]
+        || ACTUAL_COMPOUND_TEMP_F2[actualCompoundId]
+        || ACTUAL_COMPOUND_TEMP_DEFAULT;
+}
+
+/** Carcass (inner) temperature table for the active series, chosen via m_formula. */
+function getCompoundCarcasTempTable(formula) {
+    if (formula === FORMULA_F1_26) return ACTUAL_COMPOUND_CARCAS_TEMP_F1_26;
+    if (formula === FORMULA_F2) return ACTUAL_COMPOUND_CARCAS_TEMP_F2;
+    return ACTUAL_COMPOUND_CARCAS_TEMP_F1_25;
+}
+
+function getCompoundCarcasRange(actualCompoundId, formula = currentFormula) {
+    return getCompoundCarcasTempTable(formula)[actualCompoundId]
+        || ACTUAL_COMPOUND_CARCAS_TEMP_F1_25[actualCompoundId]
+        || ACTUAL_COMPOUND_CARCAS_TEMP_F2[actualCompoundId]
+        || ACTUAL_COMPOUND_CARCAS_TEMP_DEFAULT;
 }
 
 function getCompoundBlisterTemp(actualCompoundId) {
     return COMPOUND_BLISTER_TEMP_C[actualCompoundId] || null;
 }
 
-function getCompoundPitReleaseTemp(actualCompoundId) {
-    const v = COMPOUND_PIT_RELEASE_TEMP_C[actualCompoundId];
+function getCompoundPitReleaseTemp(actualCompoundId, formula = currentFormula) {
+    // F2 never warms tyres before release, so it has no table (always null).
+    if (formula === FORMULA_F2) return null;
+    const table = formula === FORMULA_F1_26
+        ? COMPOUND_PIT_RELEASE_TEMP_C_F1_26
+        : COMPOUND_PIT_RELEASE_TEMP_C_F1_25;
+    const v = table[actualCompoundId];
     return v != null ? v : null;
 }
 
@@ -256,7 +351,7 @@ function getCompoundExpectedGrip(actualCompoundId, wearPct) {
 
 /** Tooltip line for a compound badge: optimal temp window + blister threshold. */
 function getCompoundBadgeTooltip(actualCompoundId) {
-    const r = ACTUAL_COMPOUND_TEMP[actualCompoundId];
+    const r = getCompoundTempRange(actualCompoundId);
     const b = getCompoundBlisterTemp(actualCompoundId);
     const parts = [];
     if (r) parts.push(`Optimal ${r.perfectLow}–${r.perfectHigh}°C (≥99% from ${r.cold} to ${r.hot})`);
@@ -573,9 +668,9 @@ const SESSION_FIELDS = [
     { id: "trackTemp", name: "Track Temp" },
     { id: "airTemp", name: "Air Temp" },
     { id: "progress", name: "Time / Laps" },
-    { id: "pitLimit", name: "Pit Limit" },
-    { id: "aiLevel", name: "AI Level" },
-    { id: "equalCars", name: "Equal Cars" },
+    { id: "pitLimit", name: "Pit Limit", defaultHidden: true },
+    { id: "aiLevel", name: "AI Level", defaultHidden: true },
+    { id: "equalCars", name: "Equal Cars", defaultHidden: true },
     { id: "flags", name: "Flags" },
 ];
 const SESSION_FIELD_VIS_KEY = "f1telemetry_session_fields_v1";
@@ -586,13 +681,15 @@ let _sessionSettingsPanel = null;
 
 function loadSessionFieldVisibility() {
     const defaults = {};
-    for (const f of SESSION_FIELDS) defaults[f.id] = true;
+    for (const f of SESSION_FIELDS) defaults[f.id] = !f.defaultHidden;
     try {
         const raw = localStorage.getItem(SESSION_FIELD_VIS_KEY);
         if (raw) {
             const saved = JSON.parse(raw);
+            // Apply the saved value as-is so both shows (true) and hides (false)
+            // persist — defaults differ per field (some start hidden).
             for (const f of SESSION_FIELDS) {
-                if (saved[f.id] === false) defaults[f.id] = false;
+                if (typeof saved[f.id] === "boolean") defaults[f.id] = saved[f.id];
             }
         }
     } catch (_) { /* ignore */ }
@@ -648,6 +745,64 @@ function applySessionFieldOrder() {
     });
 }
 
+/** Move `fromId` to `toId`'s slot in the persisted order, then re-apply to the DOM. */
+function reorderSessionField(fromId, toId) {
+    if (!fromId || !toId || fromId === toId) return;
+    const from = sessionFieldOrder.indexOf(fromId);
+    const to = sessionFieldOrder.indexOf(toId);
+    if (from < 0 || to < 0) return;
+    sessionFieldOrder.splice(from, 1);
+    sessionFieldOrder.splice(to, 0, fromId);
+    saveSessionFieldOrder();
+    applySessionFieldOrder();
+}
+
+let _sessionDragId = null;
+
+/** Drag-to-reorder Session tiles by their grip. Scoped to the tiles so it never
+    triggers the GridStack widget move (which is bound to .widget-drag-handle). */
+function wireSessionDragDrop() {
+    document.querySelectorAll(".session-grid").forEach(grid => {
+        if (grid.dataset.dndBound === "1") return;
+        grid.dataset.dndBound = "1";
+        grid.querySelectorAll(":scope > [data-session-field]").forEach(tile => {
+            const grip = tile.querySelector(".session-tile-grip");
+            if (grip) {
+                // Only a grip press arms the native drag; released after drag ends.
+                grip.addEventListener("mousedown", () => { tile.draggable = true; });
+                grip.addEventListener("mouseup", () => { tile.draggable = false; });
+            }
+            tile.addEventListener("dragstart", (e) => {
+                _sessionDragId = tile.dataset.sessionField;
+                e.dataTransfer.effectAllowed = "move";
+                try { e.dataTransfer.setData("text/plain", _sessionDragId); } catch (_) { /* ignore */ }
+                tile.classList.add("session-tile-dragging");
+            });
+            tile.addEventListener("dragend", () => {
+                tile.draggable = false;
+                tile.classList.remove("session-tile-dragging");
+                _sessionDragId = null;
+                grid.querySelectorAll(".session-drop-target").forEach(t => t.classList.remove("session-drop-target"));
+            });
+            tile.addEventListener("dragover", (e) => {
+                if (!_sessionDragId) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                if (tile.dataset.sessionField !== _sessionDragId) tile.classList.add("session-drop-target");
+            });
+            tile.addEventListener("dragleave", () => {
+                tile.classList.remove("session-drop-target");
+            });
+            tile.addEventListener("drop", (e) => {
+                if (!_sessionDragId) return;
+                e.preventDefault();
+                tile.classList.remove("session-drop-target");
+                reorderSessionField(_sessionDragId, tile.dataset.sessionField);
+            });
+        });
+    });
+}
+
 function closeSessionSettingsPanel() {
     if (_sessionSettingsPanel) {
         _sessionSettingsPanel.remove();
@@ -658,6 +813,7 @@ function closeSessionSettingsPanel() {
 function initSessionSettings() {
     applySessionFieldOrder();
     applySessionFieldVisibility();
+    wireSessionDragDrop();
 
     const btn = document.getElementById("btnSessionSettings");
     if (!btn || btn.dataset.bound === "1") return;
@@ -692,18 +848,13 @@ function renderSessionSettingsPanel(panel) {
     let html = '<div class="event-filter-actions">'
         + '<button class="event-filter-action-btn" data-ss-action="all">All</button>'
         + '<button class="event-filter-action-btn" data-ss-action="none">None</button></div>';
-    sessionFieldOrder.forEach((id, i) => {
+    sessionFieldOrder.forEach((id) => {
         const checked = sessionFieldVisibility[id] !== false ? "checked" : "";
-        const upDisabled = i === 0 ? "disabled" : "";
-        const downDisabled = i === sessionFieldOrder.length - 1 ? "disabled" : "";
         html += `<div class="event-filter-item session-settings-row">
             <label class="session-settings-label"><input type="checkbox" data-session-field-id="${id}" ${checked}>${nameById.get(id) || id}</label>
-            <div class="session-settings-order">
-                <button class="session-settings-arrow" data-ss-move="up" data-ss-id="${id}" ${upDisabled} aria-label="Move up">▲</button>
-                <button class="session-settings-arrow" data-ss-move="down" data-ss-id="${id}" ${downDisabled} aria-label="Move down">▼</button>
-            </div>
         </div>`;
     });
+    html += '<div class="session-settings-hint">Drag tiles by ⠿ to reorder.</div>';
     panel.innerHTML = html;
 
     panel.querySelectorAll("input[data-session-field-id]").forEach(cb => {
@@ -711,20 +862,6 @@ function renderSessionSettingsPanel(panel) {
             sessionFieldVisibility[cb.dataset.sessionFieldId] = cb.checked;
             saveSessionFieldVisibility();
             applySessionFieldVisibility();
-        });
-    });
-
-    panel.querySelectorAll("button[data-ss-move]").forEach(b => {
-        b.addEventListener("click", () => {
-            const id = b.dataset.ssId;
-            const dir = b.dataset.ssMove === "up" ? -1 : 1;
-            const i = sessionFieldOrder.indexOf(id);
-            const j = i + dir;
-            if (i < 0 || j < 0 || j >= sessionFieldOrder.length) return;
-            [sessionFieldOrder[i], sessionFieldOrder[j]] = [sessionFieldOrder[j], sessionFieldOrder[i]];
-            saveSessionFieldOrder();
-            applySessionFieldOrder();
-            renderSessionSettingsPanel(panel);
         });
     });
 
@@ -739,124 +876,6 @@ function renderSessionSettingsPanel(panel) {
         saveSessionFieldVisibility();
         applySessionFieldVisibility();
         renderSessionSettingsPanel(panel);
-    });
-}
-
-let _pitTimesPanel = null;
-let _pitTimesPanelDocCloseBound = false;
-
-function closePitTimesPanel() {
-    if (_pitTimesPanel) {
-        _pitTimesPanel.remove();
-        _pitTimesPanel = null;
-    }
-}
-
-function syncMainPitInputFromTrack() {
-    const pitInput = el("pitTimeInput");
-    if (!pitInput || typeof getPitTimeForTrack !== "function" || typeof currentTrackId === "undefined") return;
-    pitInput.value = getPitTimeForTrack(currentTrackId).toFixed(1);
-}
-
-async function saveAllPitTimesFromPanel(panel, statusEl) {
-    const inputs = [...panel.querySelectorAll("input[data-track-id]")];
-    let ok = 0;
-    let fail = 0;
-    for (const inp of inputs) {
-        const tid = inp.dataset.trackId;
-        const val = parseFloat(inp.value);
-        if (!Number.isFinite(val) || val <= 0) continue;
-        const trackName = TRACK_NAMES[Number(tid)] || `Track ${tid}`;
-        try {
-            const resp = await fetch(`/api/pit-times/${tid}`, {
-                method: "PUT",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ trackName, pitTimeSec: val }),
-            });
-            if (resp.ok) {
-                pitTimesData[tid] = { trackName, pitTimeSec: val };
-                ok++;
-            } else {
-                fail++;
-            }
-        } catch (_) {
-            fail++;
-        }
-    }
-    if (statusEl) {
-        if (fail === 0 && ok > 0) statusEl.textContent = "Saved";
-        else if (ok > 0 && fail > 0) statusEl.textContent = "Partial save";
-        else if (ok === 0 && fail > 0) statusEl.textContent = "Save failed";
-        else statusEl.textContent = "";
-        setTimeout(() => { statusEl.textContent = ""; }, 2800);
-    }
-    syncMainPitInputFromTrack();
-    if (typeof updatePitPredictor === "function") updatePitPredictor();
-}
-
-function initPitTimesPanel() {
-    const btn = document.getElementById("btnPitTimesSettings");
-    if (!btn || btn.dataset.pitTimesWired === "1") return;
-    btn.dataset.pitTimesWired = "1";
-
-    btn.addEventListener("click", async (e) => {
-        e.stopPropagation();
-        if (_pitTimesPanel) {
-            closePitTimesPanel();
-            return;
-        }
-
-        try {
-            await loadPitTimes();
-        } catch (_) { /* ignore */ }
-
-        const panel = document.createElement("div");
-        panel.className = "pit-times-panel";
-        _pitTimesPanel = panel;
-
-        const trackIds = Object.keys(TRACK_NAMES).map(Number).sort((a, b) => a - b);
-        let html = '<div class="pit-times-panel-header">Pit lane loss (seconds)</div>'
-            + '<div class="pit-times-list">';
-        for (const id of trackIds) {
-            const name = TRACK_NAMES[id];
-            const sec = getPitTimeForTrack(id);
-            const curCls = id === currentTrackId ? " pit-times-row-current" : "";
-            const escTitle = name.replace(/&/g, "&amp;").replace(/"/g, "&quot;");
-            html += `<div class="pit-times-row${curCls}"><span class="pit-times-track" title="${escTitle}">${name}</span>`
-                + `<input type="number" class="pit-times-input" data-track-id="${id}" step="0.1" min="12" max="50" value="${sec.toFixed(1)}"></div>`;
-        }
-        html += "</div>";
-        html += "<div class=\"pit-times-footer\"><span class=\"pit-times-save-status\" id=\"pitTimesBulkStatus\"></span>"
-            + "<button type=\"button\" class=\"btn btn-small btn-primary\" id=\"btnPitTimesSaveAll\">Save all</button></div>";
-        panel.innerHTML = html;
-
-        document.body.appendChild(panel);
-
-        const rect = btn.getBoundingClientRect();
-        panel.style.top = (rect.bottom + 4) + "px";
-        const pw = panel.offsetWidth;
-        let left = Math.max(4, rect.right - pw);
-        if (left + pw > window.innerWidth - 4) left = window.innerWidth - pw - 4;
-        panel.style.left = left + "px";
-
-        panel.addEventListener("click", (ev) => ev.stopPropagation());
-
-        panel.querySelector("#btnPitTimesSaveAll")?.addEventListener("click", async () => {
-            const st = panel.querySelector("#pitTimesBulkStatus");
-            if (st) st.textContent = "…";
-            await saveAllPitTimesFromPanel(panel, st);
-        });
-
-        if (!_pitTimesPanelDocCloseBound) {
-            _pitTimesPanelDocCloseBound = true;
-            document.addEventListener("click", (ev) => {
-                if (!_pitTimesPanel) return;
-                const b = document.getElementById("btnPitTimesSettings");
-                if (b && (ev.target === b || b.contains(ev.target))) return;
-                if (_pitTimesPanel.contains(ev.target)) return;
-                closePitTimesPanel();
-            });
-        }
     });
 }
 
@@ -880,13 +899,14 @@ function openTyreInfo(anchor) {
 
     if (anchor.dataset.legend === "tyreSets") {
         panel.innerHTML =
-            `<div class="tip-section"><div class="tip-title">Tyre chip</div>` +
-            `<div class="tip-row"><span class="tl-swatch tl-swatch-circle" style="background:#ff3333"></span><span><b>Wear %</b> · circle colour = compound</span></div>` +
-            `<div class="tip-row"><span class="tl-swatch tl-swatch-bars"></span><span><b>Side bars</b> = freshness (100 − wear) · green→orange→red</span></div>` +
-            `<div class="tip-row"><span class="tl-swatch tl-swatch-ribbon"></span><span><b>Corner ribbon</b> = currently fitted</span></div>` +
-            `<div class="tip-row"><span class="tl-text" style="color:var(--accent-green)">−0.2s</span><span><b>Δ</b> vs fitted lap pace</span></div>` +
-            `<div class="tip-row"><span class="tl-text">8L</span><span><b>Laps</b> remaining at expected wear</span></div>` +
+            `<div class="tip-section"><div class="tip-title">Set row</div>` +
+            `<div class="tip-row"><span class="tl-swatch tl-swatch-wearbar"></span><span><b>Wear bar</b> + % · fills & reddens as the tyre wears</span></div>` +
+            `<div class="tip-row"><span class="tl-swatch" style="width:3px;border-radius:2px;background:#ff3333"></span><span><b>Left accent</b> · compound colour</span></div>` +
+            `<div class="tip-row"><span class="tl-text" style="color:var(--accent-green)">−0.2s</span><span><b>Δ</b> vs fitted lap pace · faster / slower</span></div>` +
+            `<div class="tip-row"><span class="tl-text">8L</span><span><b>Laps</b> run on the set</span></div>` +
             `<div class="tip-row"><span class="tl-text" style="color:var(--warning)">87%</span><span><b>Grip</b> estimate · decays with wear</span></div></div>` +
+            `<div class="tip-section"><div class="tip-title">Fitted</div>` +
+            `<div class="tip-row"><span class="tl-swatch tl-swatch-fitrow"></span><span>Highlighted row + top summary = set <b>fitted to the car</b></span></div></div>` +
             `<div class="tip-section"><div class="tip-title">Compounds</div>` +
             `<div class="tip-compounds">` +
             `<span class="tip-comp"><span class="tl-swatch tl-swatch-circle" style="background:#9B3CC4"></span>Super Soft</span>` +
@@ -895,10 +915,7 @@ function openTyreInfo(anchor) {
             `<span class="tip-comp"><span class="tl-swatch tl-swatch-circle" style="background:#e0e0e0"></span>Hard</span>` +
             `<span class="tip-comp"><span class="tl-swatch tl-swatch-circle" style="background:#00cc00"></span>Inter</span>` +
             `<span class="tip-comp"><span class="tl-swatch tl-swatch-circle" style="background:#00a6ff"></span>Wet</span>` +
-            `</div></div>` +
-            `<div class="tip-section"><div class="tip-title">Sections</div>` +
-            `<div class="tip-row"><span class="tl-text">▣</span><span><b>Available</b> — fitted first, then by freshness</span></div>` +
-            `<div class="tip-row"><span class="tl-text" style="opacity:0.45">○</span><span><b>Unavailable</b> — used / damaged</span></div></div>`;
+            `</div></div>`;
     } else {
         panel.innerHTML =
             `<div class="tip-section"><div class="tip-title">Legend</div>` +
@@ -1001,9 +1018,9 @@ let trackTempHistory = [];
 let airTempHistory = [];
 const TEMP_HISTORY_MAX = 30;
 let currentTrackId = -1;
-let pitTimesData = {};
 let lastLapDataPacket = null;
 let lastSessionPacket = null;
+let lastCarDamagePacket = null;
 /** Max lapDistance (m) seen this session — fallback when trackLength missing */
 let gapRingObservedMaxLapDist = 0;
 const sessionHistories = {};
@@ -1048,6 +1065,15 @@ let lastSessionLinkId = null;
 let playerVisualTyreCompound = -1;
 let playerActualTyreCompound = -1;
 let lastPlayerCarTelemetry = null;
+
+/** m_formula from Session. 13 = "F1 26" (Active Aero — DRS replaced by Straight Mode);
+ *  everything else, incl. 0 "F1 Modern"/F1 25 and 2 "F2", keeps DRS in the Car Telemetry widget. */
+const FORMULA_F1_26 = 13;
+/** m_formula 2 = "F2" — selects the F2 tyre-compound temperature table. */
+const FORMULA_F2 = 2;
+let currentFormula = -1;
+/** Active-aero straight mode for the player car, mirrored from CarTelemetry26 (F1 26 only). */
+let playerStraightModeActive = false;
 
 function el(id) { return document.getElementById(id); }
 
@@ -1130,6 +1156,7 @@ function setTyreWidgetTemps(car) {
     if ((!inner || inner.length < 4) && (!surf || surf.length < 4)) return;
 
     const range = getCompoundTempRange(playerActualTyreCompound);
+    const carcasRange = getCompoundCarcasRange(playerActualTyreCompound);
     const blister = getCompoundBlisterTemp(playerActualTyreCompound);
     for (const [, wc] of getTyreWidgetNodes()) {
         for (let i = 0; i < 4; i++) {
@@ -1139,7 +1166,7 @@ function setTyreWidgetTemps(car) {
             const ts = surf?.[i];
             const ti = inner?.[i];
             const surfCol = tyreTempColor(ts, range);
-            const innerCol = tyreTempColor(ti, range);
+            const innerCol = tyreTempColor(ti, carcasRange);
 
             const tsNum = Number(ts);
             const inBlister = blister && Number.isFinite(tsNum) && tsNum >= blister.min;
@@ -1149,7 +1176,7 @@ function setTyreWidgetTemps(car) {
             c.card.style.boxShadow = inBlister
                 ? `0 0 12px rgba(239,68,68,0.6)`
                 : (surfCol ? `0 0 8px ${tyreTempColorAlpha(ts, range, 0.3)}` : "");
-            if (c.fill) c.fill.style.background = innerCol ? tyreTempColorAlpha(ti, range, 0.12) : "";
+            if (c.fill) c.fill.style.background = innerCol ? tyreTempColorAlpha(ti, carcasRange, 0.12) : "";
             if (c.nodeS) { c.nodeS.textContent = formatDeg(ts); c.nodeS.style.color = surfCol || ""; }
             if (c.nodeI) { c.nodeI.textContent = formatDeg(ti); c.nodeI.style.color = innerCol || ""; }
             if (c.icos[0]) c.icos[0].style.color = surfCol || "var(--text-dim)";
@@ -1247,13 +1274,23 @@ function formatSectorTime(msPart, minutesPart) {
     return formatTime(totalMs);
 }
 
+// Damage fill colour: interpolates yellow (--yellow #ffd700) at low damage →
+// red (--danger #e10600) at high damage. The blend passes through orange near
+// the middle, so the colour smoothly encodes severity instead of stepping.
+function damageColor(pct) {
+    const t = Math.max(0, Math.min(100, Number(pct) || 0)) / 100;
+    const r = Math.round(255 + (225 - 255) * t);
+    const g = Math.round(215 + (6 - 215) * t);
+    return `rgb(${r}, ${g}, 0)`;
+}
+
 function setDamageBar(elId, pct) {
     const bar = el(elId);
     if (!bar) return;
     bar.style.width = pct + "%";
-    if (pct > 50) bar.style.background = "var(--danger)";
-    else if (pct > 25) bar.style.background = "var(--warning)";
-    else bar.style.background = "var(--safe)";
+    bar.style.background = damageColor(pct);
+    const valEl = el(elId + "Val");
+    if (valEl) valEl.textContent = pct > 0 ? Math.round(pct) + "%" : "--";
 }
 
 function getTempTrend(current, history) {
@@ -1273,9 +1310,14 @@ function pushTempHistory(history, value) {
 function renderTempWithTrend(elemId, temp, trend) {
     const e = el(elemId);
     if (!e) return;
-    const deltaAbs = Math.abs(trend.delta);
-    const deltaText = deltaAbs > 0 ? ` (${trend.delta > 0 ? "+" : ""}${trend.delta}°)` : "";
-    e.innerHTML = `${temp}°C <span class="temp-trend ${trend.cls}">${trend.arrow}${deltaText}</span>`;
+    const cls = trend.cls || "temp-trend-stable";
+    let deltaHtml = "";
+    if (trend.cls) {
+        const deltaText = trend.delta > 0 ? `+${trend.delta}°` : trend.delta < 0 ? `${trend.delta}°` : "±0°";
+        const arrow = trend.arrow ? `${trend.arrow} ` : "";
+        deltaHtml = `<span class="temp-delta ${cls}">${arrow}${deltaText}</span>`;
+    }
+    e.innerHTML = `<span class="temp-num ${cls}">${temp}°C</span>${deltaHtml}`;
 }
 
 function resetTopSpeedSessionState() {
@@ -1288,6 +1330,12 @@ function resetTopSpeedSessionState() {
 
 function updateSession(data) {
     lastSessionPacket = data;
+
+    // Selects DRS vs Straight-Mode (SM) presentation in the Car Telemetry widget.
+    if (data.formula !== undefined && data.formula !== null) {
+        currentFormula = data.formula;
+        updateDrsSmTile();
+    }
 
     const linkId = data.sessionLinkIdentifier;
     if (linkId !== undefined && linkId !== null) {
@@ -1321,8 +1369,6 @@ function updateSession(data) {
 
     if (data.trackId !== currentTrackId) {
         currentTrackId = data.trackId;
-        const pitInput = el("pitTimeInput");
-        if (pitInput) pitInput.value = getPitTimeForTrack(currentTrackId).toFixed(1);
     }
 
     if (typeof onSessionTypeChanged === "function") {
@@ -1371,6 +1417,7 @@ function updateFlagIndicator() {
     if (!data) {
         indicator.textContent = "--";
         indicator.dataset.flag = "none";
+        indicator.dataset.pulse = "0";
         return;
     }
 
@@ -1398,6 +1445,21 @@ function updateFlagIndicator() {
 
     indicator.textContent = label;
     indicator.dataset.flag = color;
+    // Pulse for safety-car (yellow) and red-flag states to draw attention.
+    indicator.dataset.pulse = (color === "yellow" || color === "red") ? "1" : "0";
+}
+
+function setSessionProgressBar(pct) {
+    const bar = el("sessionProgressBar");
+    if (!bar) return;
+    const track = bar.parentElement;
+    if (pct === null) {
+        if (track) track.hidden = true;
+        bar.style.width = "0";
+        return;
+    }
+    if (track) track.hidden = false;
+    bar.style.width = Math.max(0, Math.min(100, pct)) + "%";
 }
 
 function updateSessionProgress() {
@@ -1412,16 +1474,25 @@ function updateSessionProgress() {
         const lap = lastLapDataPacket?.lapDataItems?.[playerCarIndex]?.currentLapNum ?? 0;
         const totalLaps = lastSessionPacket?.totalLaps ?? 0;
         labelEl.textContent = "Laps";
-        valueEl.textContent = lap > 0 && totalLaps > 0 ? `${lap}/${totalLaps}` : "--";
+        if (lap > 0 && totalLaps > 0) {
+            valueEl.textContent = `${lap}/${totalLaps}`;
+            setSessionProgressBar((Math.min(lap, totalLaps) / totalLaps) * 100);
+        } else {
+            valueEl.textContent = "--";
+            setSessionProgressBar(null);
+        }
     } else {
         const timeLeftSec = lastSessionPacket?.sessionTimeLeft ?? 0;
+        const durationSec = lastSessionPacket?.sessionDuration ?? 0;
         labelEl.textContent = "Time";
         if (timeLeftSec > 0) {
             const m = Math.floor(timeLeftSec / 60);
             const s = timeLeftSec % 60;
             valueEl.textContent = `${m}:${String(s).padStart(2, "0")}`;
+            setSessionProgressBar(durationSec > 0 ? ((durationSec - timeLeftSec) / durationSec) * 100 : null);
         } else {
             valueEl.textContent = "--";
+            setSessionProgressBar(null);
         }
     }
 }
@@ -1442,7 +1513,7 @@ function updateWeatherForecast(data) {
     const count = data.numWeatherForecastSamples || 0;
     const samples = data.weatherForecastSamples;
     if (!samples || count === 0) {
-        container.innerHTML = '<div class="weather-placeholder">No forecast data available</div>';
+        container.innerHTML = '<div class="widget-empty"><div class="widget-empty-icon"><span class="widget-empty-dash"></span></div><div class="widget-empty-title">No forecast data available</div><div class="widget-empty-sub">Waiting for session data</div></div>';
         return;
     }
 
@@ -1456,7 +1527,7 @@ function updateWeatherForecast(data) {
     }
 
     if (relevant.length === 0) {
-        container.innerHTML = '<div class="weather-placeholder">No forecast for current session</div>';
+        container.innerHTML = '<div class="widget-empty"><div class="widget-empty-icon"><span class="widget-empty-dash"></span></div><div class="widget-empty-title">No forecast for current session</div><div class="widget-empty-sub">Waiting for session data</div></div>';
         return;
     }
 
@@ -1536,6 +1607,26 @@ function updatePedalChart() {
     lineB.setAttribute("points", buildPedalPolylinePoints(pedalHistoryB));
 }
 
+/** DRS / Straight-Mode tile in the Car Telemetry widget.
+ *  F1 26 (m_formula 13) drops DRS for Active Aero, so the tile shows "SM" (Straight Mode)
+ *  driven by CarTelemetry26's activeAeroMode. Every other formula — including F2, which keeps
+ *  DRS in the 2026 game — renders "DRS" from the player's CarTelemetry25 drs flag, as before. */
+function updateDrsSmTile() {
+    const drsEl = el("drsIndicator");
+    if (!drsEl) return;
+    if (currentFormula === FORMULA_F1_26) {
+        drsEl.textContent = "SM";
+        drsEl.title = "Straight Mode (Active Aero)";
+        drsEl.classList.add("drs-sm");
+        drsEl.classList.toggle("active", playerStraightModeActive);
+    } else {
+        drsEl.textContent = "DRS";
+        drsEl.title = "DRS";
+        drsEl.classList.remove("drs-sm");
+        drsEl.classList.toggle("active", lastPlayerCarTelemetry?.drs === 1);
+    }
+}
+
 function updateCarTelemetry25(data) {
     // Property name follows the renamed C# DTO (CarTelemetry25Packet.CarTelemetry25Data[]).
     // Older logs serialised as carTelemetryData; fall back so historical sessions still display.
@@ -1599,14 +1690,9 @@ function updateCarTelemetry25(data) {
         _pedalChartRafId = requestAnimationFrame(() => { _pedalChartRafId = 0; updatePedalChart(); });
     }
 
-    const drsEl = el("drsIndicator");
-    if (drsEl) {
-        drsEl.textContent = "DRS";
-        if (car.drs === 1) drsEl.classList.add("active");
-        else drsEl.classList.remove("active");
-    }
-
     lastPlayerCarTelemetry = car;
+    updateDrsSmTile();
+
     // Tyre temps: RL, RR, FL, FR (see F1 UDP appendix); inner temp fallback if surface is 0
     setTyreWidgetTemps(car);
 }
@@ -1650,13 +1736,61 @@ function updateCarStatus(data) {
 }
 
 const FUEL_MIX_BADGE  = { 0: "LEAN", 1: "STD", 2: "RICH", 3: "MAX" };
-const ERS_MODE_BADGE  = { 0: "NONE", 1: "MED",  2: "HOT",  3: "OVER" };
+// Deploy modes 0..2 are shared; mode 3 is named per regulation (OVERTAKE / BOOST).
+const ERS_MODE_NAME   = { 0: "NONE", 1: "MEDIUM", 2: "HOTLAP" };
 const MAX_ERS_J = 4_000_000;
 const MAX_MGUK_HARVEST_J = 2_000_000;
+
+// Per-regulation ERS model, selected by m_formula (Session packet). The packet
+// carries no store/deploy capacity, so caps the game does not provide are held
+// here as documented constants; F1 26's harvest budget comes straight from
+// m_ersHarvestLimitPerLap, and its deploy/lap auto-scales to the session peak.
+const FUEL_ERS_REG_CFG = {
+    "2026": { storeCapJ: MAX_ERS_J, deployCapJ: null /* auto-peak */, overName: "BOOST",    harvest: "combined", hasErs: true },
+    "2025": { storeCapJ: MAX_ERS_J, deployCapJ: MAX_ERS_J,            overName: "OVERTAKE", harvest: "split",    hasErs: true },
+    "f2":   { hasErs: false },
+};
+
+// F1 26 deploy/lap has no documented cap, so we scale the bar to the largest
+// deploy seen this session (floored at 4 MJ). Reset on session change.
+let ersDeployPeakJ = 0;
+
+const clampPct = (v) => Math.max(0, Math.min(100, v));
+const toMJ = (j) => (Math.max(0, Number(j) || 0) / 1_000_000).toFixed(2);
+
+function fuelErsRegKey(formula) {
+    if (formula === FORMULA_F1_26) return "2026";
+    if (formula === FORMULA_F2) return "f2";
+    return "2025";
+}
+
+/** Plain-language fuel verdict from the signed MFD laps-vs-target delta. */
+function fuelVerdict(delta) {
+    const a = Math.abs(delta);
+    if (a < 0.05) return "On target";
+    const laps = a.toFixed(1);
+    const unit = laps === "1.0" ? "lap" : "laps";
+    return delta > 0 ? `${laps} ${unit} in hand` : `${laps} ${unit} short — lift & coast`;
+}
+
+function setHarvestBar(pct) {
+    const bar = el("csErsHarvestBar");
+    if (!bar) return;
+    bar.style.width = pct + "%";
+    // Threshold cues let the strategist see "running out of harvest headroom" at a glance.
+    bar.classList.toggle("cs-bar-warn", pct >= 85 && pct < 95);
+    bar.classList.toggle("cs-bar-crit", pct >= 95);
+}
 
 function updateFuelErsWidget(car) {
     if (!car) return;
 
+    const regKey = fuelErsRegKey(currentFormula);
+    const cfg = FUEL_ERS_REG_CFG[regKey];
+    const card = el("csCard");
+    if (card) card.dataset.reg = regKey;
+
+    // ---- FUEL ----
     const mixEl = el("csFuelMix");
     if (mixEl) {
         mixEl.textContent = FUEL_MIX_BADGE[car.fuelMix] || "--";
@@ -1666,68 +1800,101 @@ function updateFuelErsWidget(car) {
     const fuelInTank = Number(car.fuelInTank) || 0;
     const fuelRemLaps = Number(car.fuelRemainingLaps) || 0;
     setText("csFuelTank", fuelInTank.toFixed(1) + " kg");
-    setText("csFuelLaps", fuelRemLaps.toFixed(1) + " L");
 
     const sType = lastSessionPacket?.sessionType ?? 0;
     const isRace = sType === 15 || sType === 16 || sType === 17;
-    const deltaBox = el("csFuelDeltaBox");
-    const deltaEl = el("csFuelDelta");
     // m_fuelRemainingLaps is the MFD value: a signed delta of laps of fuel
     // surplus (+) or deficit (-) relative to finishing the race.
     const showDelta = isRace && Number.isFinite(fuelRemLaps);
+    const deltaBox = el("csFuelDeltaBox");
     if (deltaBox) deltaBox.hidden = !showDelta;
-    if (showDelta && deltaEl) {
+    if (showDelta) {
         const delta = fuelRemLaps;
-        const sign = delta >= 0 ? "+" : "";
-        deltaEl.textContent = sign + delta.toFixed(2);
-        let cls;
-        if (delta < -0.3) cls = "cs-delta-crit";
-        else if (delta > 0) cls = "cs-delta-up";
-        else cls = "cs-delta-warn";
-        deltaEl.className = "cs-big-value " + cls;
+        const cls = delta < -0.3 ? "cs-delta-crit" : delta < 0 ? "cs-delta-warn" : "cs-delta-up";
+        const deltaEl = el("csFuelDelta");
+        if (deltaEl) {
+            deltaEl.textContent = (delta >= 0 ? "+" : "−") + Math.abs(delta).toFixed(2);
+            deltaEl.className = "cs-big-value " + cls;
+        }
+        const verdictEl = el("csFuelVerdict");
+        if (verdictEl) {
+            verdictEl.textContent = fuelVerdict(delta);
+            verdictEl.className = "cs-verdict " + cls;
+        }
     }
 
+    // ---- ERS ---- (F2 has no ERS: hide the whole section)
+    const ersSection = el("csErsSection");
+    if (!cfg.hasErs) {
+        if (ersSection) ersSection.hidden = true;
+        return;
+    }
+    if (ersSection) ersSection.hidden = false;
+
+    const mode = car.ersDeployMode ?? 0;
     const ersModeEl = el("csErsMode");
     if (ersModeEl) {
-        ersModeEl.textContent = ERS_MODE_BADGE[car.ersDeployMode] || "--";
-        ersModeEl.dataset.mode = String(car.ersDeployMode ?? 0);
+        ersModeEl.textContent = mode === 3 ? cfg.overName : (ERS_MODE_NAME[mode] || "--");
+        ersModeEl.dataset.mode = String(mode);
+    }
+    // Deploy-mode chip (BOOST / OVERTAKE) shown only while that mode is active.
+    const deployChip = el("csErsDeployChip");
+    if (deployChip) {
+        if (mode === 3) {
+            deployChip.textContent = cfg.overName;
+            deployChip.hidden = false;
+        } else {
+            deployChip.hidden = true;
+        }
     }
 
+    // Store — fixed 4 MJ battery on both F1 regulations.
     const storeJ = Math.max(0, Number(car.ersStoreEnergy) || 0);
-    const storePct = Math.max(0, Math.min(100, (storeJ / MAX_ERS_J) * 100));
+    const storePct = clampPct((storeJ / cfg.storeCapJ) * 100);
     const storeBar = el("csErsStoreBar");
     if (storeBar) storeBar.style.width = storePct + "%";
-    setText("csErsStoreVal", storePct.toFixed(0) + "% · " + (storeJ / 1_000_000).toFixed(2) + " MJ");
+    setText("csErsStoreVal", storePct.toFixed(0) + "% · " + toMJ(storeJ) + " MJ");
 
+    // Deploy / lap — fixed 4 MJ on F1 25; auto-peak on F1 26.
     const deployJ = Math.max(0, Number(car.ersDeployedThisLap) || 0);
-    const deployPct = Math.max(0, Math.min(100, (deployJ / MAX_ERS_J) * 100));
+    let deployCapJ = cfg.deployCapJ;
+    if (deployCapJ == null) {
+        ersDeployPeakJ = Math.max(ersDeployPeakJ, deployJ, MAX_ERS_J);
+        deployCapJ = ersDeployPeakJ;
+    }
+    const deployPct = clampPct((deployJ / deployCapJ) * 100);
     const deployBar = el("csErsDeployBar");
     if (deployBar) deployBar.style.width = deployPct + "%";
-    setText("csErsDeployVal", (deployJ / 1_000_000).toFixed(2) + " / 4.00 MJ");
+    setText("csErsDeployVal", toMJ(deployJ) + " / " + toMJ(deployCapJ) + " MJ");
 
-    // Harvest cap: in packet format 2026 the game ships a dynamic per-lap limit
-    // (m_ersHarvestLimitPerLap) — the 2026 regulations change the cap and split it across
-    // both MGU components, so we sum K + H and compare against the game-provided value.
-    // In format 2025 the field is absent (0) and only MGU-K is regulated (≤ 2 MJ/lap), so
-    // we keep the legacy MGU-K-only display matching the in-game MFD "Harvest".
-    const limitJ = Math.max(0, Number(car.ersHarvestLimitPerLap) || 0);
-    const has2026Limit = limitJ > 0;
+    // Harvest / lap. F1 26: single per-lap budget from m_ersHarvestLimitPerLap
+    // (MGU-H removed by the 2026 regs, so K is the whole harvest). F1 25: MGU-K
+    // capped at 2 MJ/lap with MGU-H shown as an uncapped bonus.
     const harvKJ = Math.max(0, Number(car.ersHarvestedThisLapMguK) || 0);
     const harvHJ = Math.max(0, Number(car.ersHarvestedThisLapMguH) || 0);
-    const harvestJ = has2026Limit ? (harvKJ + harvHJ) : harvKJ;
-    const harvestCapJ = has2026Limit ? limitJ : MAX_MGUK_HARVEST_J;
-    const harvestPct = harvestCapJ > 0
-        ? Math.max(0, Math.min(100, (harvestJ / harvestCapJ) * 100))
-        : 0;
-    const harvestBar = el("csErsHarvestBar");
-    if (harvestBar) {
-        harvestBar.style.width = harvestPct + "%";
-        // Threshold cues let the strategist see "running out of harvest headroom" at a glance.
-        harvestBar.classList.toggle("cs-bar-warn", harvestPct >= 85 && harvestPct < 95);
-        harvestBar.classList.toggle("cs-bar-crit", harvestPct >= 95);
+    const harvestNoteEl = el("csErsHarvestNote");
+    if (cfg.harvest === "combined") {
+        const limitJ = Math.max(0, Number(car.ersHarvestLimitPerLap) || 0) || cfg.storeCapJ;
+        const harvestJ = harvKJ + harvHJ;
+        const pct = clampPct(limitJ > 0 ? (harvestJ / limitJ) * 100 : 0);
+        setText("csErsHarvestLabel", "Harvest / lap");
+        setText("csErsHarvestVal", toMJ(harvestJ) + " / " + toMJ(limitJ) + " MJ");
+        if (harvestNoteEl) {
+            const remainMJ = Math.max(0, (limitJ - harvestJ) / 1_000_000);
+            harvestNoteEl.textContent = remainMJ.toFixed(1) + " MJ left";
+            harvestNoteEl.classList.toggle("cs-note-warn", pct >= 92);
+        }
+        setHarvestBar(pct);
+    } else {
+        const pct = clampPct((harvKJ / MAX_MGUK_HARVEST_J) * 100);
+        setText("csErsHarvestLabel", "Harvest / lap (MGU-K)");
+        setText("csErsHarvestVal", toMJ(harvKJ) + " / " + toMJ(MAX_MGUK_HARVEST_J) + " MJ");
+        if (harvestNoteEl) {
+            harvestNoteEl.textContent = "+" + toMJ(harvHJ) + " MGU-H";
+            harvestNoteEl.classList.remove("cs-note-warn");
+        }
+        setHarvestBar(pct);
     }
-    setText("csErsHarvestVal",
-        (harvestJ / 1_000_000).toFixed(2) + " / " + (harvestCapJ / 1_000_000).toFixed(2) + " MJ");
 }
 
 function updateCarSetups(data) {
@@ -2157,6 +2324,7 @@ function renderPitStopHistory() {
 }
 
 function updateCarDamage(data) {
+    lastCarDamagePacket = data;
     const car = data.carDamageDataItems?.[playerCarIndex];
     if (!car) return;
 
@@ -2257,7 +2425,8 @@ function updateTopSpeedLeaderboard() {
     for (let i = 0; i < rows.length; i++) {
         const r = rows[i];
         const rowCls = r.isPlayer ? "ts-lb-row player-row" : "ts-lb-row";
-        parts.push(`<div class="${rowCls}"><span class="ts-lb-rank">${i + 1}</span><span class="ts-lb-name" title="${r.name}">${r.name}</span><span class="ts-lb-speed">${formatSpeedKmh(r.speed)}</span></div>`);
+        const safeName = escapeHtml(r.name);
+        parts.push(`<div class="${rowCls}"><span class="ts-lb-rank">${i + 1}</span><span class="ts-lb-name" title="${safeName}">${safeName}</span><span class="ts-lb-speed">${formatSpeedKmh(r.speed)}</span></div>`);
     }
     body.innerHTML = parts.join("");
 }
@@ -2457,7 +2626,7 @@ function renderEventItem(e, pinned) {
     const timeLabel = formatEventTimeCtx(e.timeCtx);
     return `<div class="${cls}">
         <span class="event-code" style="color:${codeColor}">${icon}${e.code}</span>
-        <span class="event-detail">${e.name}${e.detail ? " — " + e.detail : ""}${servedBadge}</span>
+        <span class="event-detail">${escapeHtml(e.name)}${e.detail ? " — " + escapeHtml(e.detail) : ""}${servedBadge}</span>
         <span class="event-time">${timeLabel}</span>
     </div>`;
 }
@@ -2592,7 +2761,6 @@ function updateTyreSets(data) {
     })).filter(s => s.visualTyreCompound !== 0 || s.actualTyreCompound !== 0);
 
     const available = annotated.filter(s => s.available || s.isFitted);
-    const used = annotated.filter(s => !s.available && !s.isFitted);
 
     // Group available by compound
     const availableByCompound = {};
@@ -2617,193 +2785,258 @@ function updateTyreSets(data) {
     const container = el("tyreSetGroups");
     if (!container) return;
 
+    // Wear-fill colour: 4-step scale (fresh → spent).
+    const wearFillColor = (w) => w <= 25 ? "#3ecf8e" : w <= 50 ? "#f5c518" : w <= 75 ? "#ff9f0a" : "#ff453a";
+
     const parts = [];
 
     for (const compound of sortedCompounds) {
         const setsList = availableByCompound[compound];
-        parts.push(`<div class="deck-row">`);
-        parts.push(`<div class="deck-row-header"><span>${compound}</span><span class="deck-row-count">${setsList.length}</span></div>`);
-        parts.push(`<div class="deck-row-chips">`);
+        const compoundCss = setsList[0].compoundInfo.css || "compound-unknown";
+        parts.push(`<div class="ts-group">`);
+        parts.push(`<div class="ts-group-head"><span class="ts-group-dot ${compoundCss}"></span><span class="ts-group-name">${compound}</span><span class="ts-group-count">${setsList.length}</span></div>`);
 
         for (const s of setsList) {
             const wearPct = s.wear;
-            const wearColor = wearPct > 60 ? "var(--danger)" : wearPct > 30 ? "var(--warning)" : "var(--safe)";
-            const fillHeight = 100 - wearPct;
+            const fillColor = wearFillColor(wearPct);
 
             const delta = s.lapDeltaTime;
-            const deltaSign = delta > 0 ? "+" : "";
-            const deltaCls = delta > 0 ? "pos" : delta < 0 ? "neg" : "zero";
-            const deltaText = delta !== 0 ? `${deltaSign}${(delta / 1000).toFixed(1)}s` : "+0.0s";
+            const deltaCls = delta > 0 ? "ts-delta--slower" : delta < 0 ? "ts-delta--faster" : "ts-delta--zero";
+            const deltaText = delta === 0
+                ? "±0.0s"
+                : `${delta > 0 ? "+" : "−"}${(Math.abs(delta) / 1000).toFixed(1)}s`;
 
             const grip = formatTyreSetGrip(s.actualTyreCompound, wearPct);
             const gripHtml = grip
-                ? `<span class="chip-grip-value" style="color:${grip.color}">${grip.text}</span>`
-                : `<span class="chip-grip-value">—</span>`;
+                ? `<span class="ts-grip" style="color:${grip.color}">${grip.text}</span>`
+                : `<span class="ts-grip ts-grip--na">—</span>`;
 
+            const rowCss = s.compoundInfo.css || "compound-unknown";
             const wrate = getCompoundWearRate(s.actualTyreCompound);
             const tipTitle = `Wear ${wearPct}%${wrate != null ? ' · Rate ' + wrate.toFixed(2) + '%/L' : ''}${s.isFitted ? ' · Fitted' : ''}`;
 
-            const cls = s.isFitted ? "tyre-chip fitted" : "tyre-chip";
-            const oncar = s.isFitted ? '<span class="chip-oncar" aria-label="On car">ON</span>' : '';
-            const compoundCss = s.compoundInfo.css || '';
-
-            parts.push(`<div class="${cls} ${compoundCss}" title="${tipTitle.replace(/"/g, '&quot;')}">
-                <div class="chip-side-bar chip-side-bar-l"><div class="chip-side-fill" style="height:${fillHeight}%;background:${wearColor}"></div></div>
-                <div class="chip-side-bar chip-side-bar-r"><div class="chip-side-fill" style="height:${fillHeight}%;background:${wearColor}"></div></div>
-                ${oncar}
-                <span class="chip-badge ${compoundCss}">${wearPct}%</span>
-                <span class="chip-delta ${deltaCls}">${deltaText}</span>
-                <span class="chip-laps">${s.lifeSpan}L</span>
-                <span class="chip-grip-label">Grip</span>
+            parts.push(`<div class="ts-set-row${s.isFitted ? " ts-set-row--fitted" : ""}" title="${tipTitle.replace(/"/g, '&quot;')}">
+                <span class="ts-row-accent ${rowCss}"></span>
+                <div class="ts-wear">
+                    <div class="ts-wear-track"><div class="ts-wear-fill" style="width:${wearPct}%;background:${fillColor}"></div></div>
+                    <span class="ts-wear-pct">${wearPct}%</span>
+                </div>
+                <span class="ts-delta ${deltaCls}">${deltaText}</span>
+                <span class="ts-life">${s.lifeSpan}L</span>
                 ${gripHtml}
             </div>`);
         }
 
-        parts.push(`</div></div>`);
+        parts.push(`</div>`);
     }
 
     container.innerHTML = parts.length > 0 ? parts.join("") : '<div class="tyreset-placeholder">No tyre sets available</div>';
 
-    // Unavailable section
-    const unavailableEl = el("tyreSetUnavailable");
-    if (unavailableEl) {
-        if (used.length > 0) {
-            used.sort((a, b) => {
-                const ai = compoundOrder.indexOf(a.compoundInfo.name);
-                const bi = compoundOrder.indexOf(b.compoundInfo.name);
-                return (ai === -1 ? 99 : ai) - (bi === -1 ? 99 : bi);
-            });
-            const dots = used.map(s => `<span class="unavailable-dot ${s.compoundInfo.css}">${getActualCompoundBadgeText(s.actualTyreCompound, s.compoundInfo.name)}</span>`).join("");
-            unavailableEl.innerHTML = `<span class="unavailable-summary-label">Unavailable</span>${dots}`;
-            unavailableEl.style.display = "";
+    // Fitted summary block
+    const fittedEl = el("tyreSetFitted");
+    if (fittedEl) {
+        const fitted = annotated.find(s => s.isFitted);
+        if (fitted) {
+            const fName = fitted.compoundInfo.name;
+            const fCss = fitted.compoundInfo.css || "compound-unknown";
+            const fWearColor = wearFillColor(fitted.wear);
+            fittedEl.innerHTML = `<div class="ts-fitted-left">
+                    <span class="ts-fitted-label">Fitted · On Car</span>
+                    <span class="ts-fitted-name ${fCss}">${fName}</span>
+                </div>
+                <div class="ts-fitted-right">
+                    <div class="ts-fitted-stat"><span class="ts-fitted-val" style="color:${fWearColor}">${fitted.wear}%</span><span class="ts-fitted-cap">Wear</span></div>
+                    <div class="ts-fitted-stat"><span class="ts-fitted-val">${fitted.lifeSpan}L</span><span class="ts-fitted-cap">Life</span></div>
+                </div>`;
+            fittedEl.hidden = false;
         } else {
-            unavailableEl.innerHTML = "";
-            unavailableEl.style.display = "none";
+            fittedEl.innerHTML = "";
+            fittedEl.hidden = true;
         }
     }
 }
 
-async function loadPitTimes() {
-    try {
-        const resp = await fetch("/api/pit-times");
-        if (resp.ok) pitTimesData = await resp.json();
-    } catch (e) {
-        console.warn("Failed to load pit times:", e);
+// Reworked Pit Stop Predictor — leads on the game's own pit strategy (ideal/latest
+// window lap + predicted rejoin position), urgency colour-coded against the current
+// lap. Exit traffic gaps are estimated from a fixed pit-lane loss (no editable input).
+const PP_FRONT_WING_REPAIR_SEC = 7.0;   // F1: a front-wing change costs ~7s on top of the stop
+const PP_WING_REPAIR_THRESHOLD = 15;    // % front-wing damage that warrants a repair stop
+const PP_COL = {
+    blue: "#3a8dff", green: "#3ecf8e", amber: "#ff9f0a", red: "#ff453a",
+    redSoft: "#ff6b6b", yellow: "#f5c518", text: "#cdd3db", dim: "#8d97a5",
+};
+
+function ppEmptyStateHtml() {
+    return '<div class="pp-empty">'
+        + '<div class="pp-empty-icon"><span class="pp-empty-dash"></span></div>'
+        + '<div class="pp-empty-title">No pit strategy yet</div>'
+        + '<div class="pp-empty-sub">Awaiting telemetry</div>'
+        + '</div>';
+}
+
+function ppLapTimelineHtml(cur, ideal, latest, color) {
+    const ds = Math.min(cur, ideal) - 2;
+    const de = Math.max(cur, latest) + 2;
+    const span = Math.max(1, de - ds);
+    const pct = (l) => ((l - ds) / span) * 100;
+    return '<div class="pp-timeline">'
+        + `<div class="pp-tl-curlabel" style="left:${pct(cur)}%;color:${color}">L${cur}</div>`
+        + '<div class="pp-tl-track"></div>'
+        + `<div class="pp-tl-band" style="left:${pct(ideal)}%;width:${pct(latest) - pct(ideal)}%"></div>`
+        + `<div class="pp-tl-ideal" style="left:${pct(ideal)}%"></div>`
+        + `<div class="pp-tl-cur" style="left:${pct(cur)}%;background:${color};box-shadow:0 0 6px ${color}"></div>`
+        + `<div class="pp-tl-dot" style="left:${pct(cur)}%;background:${color}"></div>`
+        + `<div class="pp-tl-lo" style="left:${pct(ideal)}%">L${ideal}</div>`
+        + `<div class="pp-tl-hi" style="left:${pct(latest)}%">L${latest}</div>`
+        + '</div>';
+}
+
+function ppTrafficRowHtml(cap, name, gapSec) {
+    if (!name) {
+        return `<div class="pp-traffic-row"><span class="pp-traffic-cap">${cap}</span>`
+            + '<span class="pp-traffic-name pp-traffic-empty">—</span>'
+            + '<span class="pp-traffic-gap">--</span></div>';
     }
+    const tight = gapSec < 1.0, clean = gapSec > 3.0;
+    const tag = tight ? "DRS" : clean ? "CLEAN AIR" : "";
+    const tagCol = tight ? PP_COL.amber : PP_COL.green;
+    const gapCol = tight ? PP_COL.amber : clean ? PP_COL.green : PP_COL.text;
+    const tagHtml = tag
+        ? `<span class="pp-traffic-tag" style="color:${tagCol};border-color:${tagCol}55">${tag}</span>`
+        : "";
+    return `<div class="pp-traffic-row"><span class="pp-traffic-cap">${cap}</span>`
+        + `<span class="pp-traffic-name">${escapeXmlText(name)}</span>`
+        + tagHtml
+        + `<span class="pp-traffic-gap" style="color:${gapCol}">+${gapSec.toFixed(1)}s</span></div>`;
 }
 
-function getPitTimeForTrack(trackId) {
-    const entry = pitTimesData[String(trackId)];
-    if (entry && entry.pitTimeSec != null && Number.isFinite(Number(entry.pitTimeSec)))
-        return Number(entry.pitTimeSec);
-    return DEFAULT_PIT_TIME_SEC;
-}
-
-function updatePitPredictor() {
-    const pitInput = el("pitTimeInput");
-    if (!pitInput) return;
-    if (!lastLapDataPacket) return;
-    const items = lastLapDataPacket.lapDataItems;
-    if (!items) return;
-
-    const playerLap = items[playerCarIndex];
-    if (!playerLap || playerLap.resultStatus < 2) return;
-
-    const pitTimeSec = parseFloat(pitInput.value) || getPitTimeForTrack(currentTrackId) || DEFAULT_PIT_TIME_SEC;
-    const pitTimeMs = pitTimeSec * 1000;
-
+// Cars the player would rejoin between, with gaps estimated from a fixed pit-lane loss.
+function ppComputeExitTraffic(items, pitLossMs) {
     const sorted = [];
     for (let i = 0; i < items.length; i++) {
         const ld = items[i];
         if (ld.resultStatus < 2) continue;
         const gapToLeaderMs = ld.deltaToRaceLeaderMinutesPart * 60000 + ld.deltaToRaceLeaderMsPart;
-        sorted.push({
-            idx: i,
-            pos: ld.carPosition,
-            gapToLeaderMs,
-            name: participantNames[i] || `Car ${i}`,
-            isPlayer: i === playerCarIndex,
-            pitStatus: ld.pitStatus,
-        });
+        sorted.push({ gapToLeaderMs, name: participantNames[i] || `Car ${i}`, isPlayer: i === playerCarIndex });
     }
-    sorted.sort((a, b) => a.pos - b.pos);
-
     const playerEntry = sorted.find(r => r.isPlayer);
-    if (!playerEntry) return;
-
-    const playerGapAfterPit = playerEntry.gapToLeaderMs + pitTimeMs;
-
-    let predictedPos = 1;
-    for (const r of sorted) {
-        if (r.isPlayer) continue;
-        if (r.gapToLeaderMs < playerGapAfterPit) {
-            predictedPos++;
-        }
-    }
-
-    setText("pitPredPos", predictedPos);
-
-    let carAhead = null;
-    let carBehind = null;
-    const positionsAfterPit = sorted
+    if (!playerEntry) return { ahead: null, behind: null, rejoinPos: 0 };
+    const playerGapAfterPit = playerEntry.gapToLeaderMs + pitLossMs;
+    const order = sorted
         .filter(r => !r.isPlayer)
-        .map(r => ({ ...r, effectiveGap: r.gapToLeaderMs }))
-        .concat([{ ...playerEntry, effectiveGap: playerGapAfterPit, isPlayer: true }])
-        .sort((a, b) => a.effectiveGap - b.effectiveGap);
-
-    const playerIdx = positionsAfterPit.findIndex(r => r.isPlayer);
-    if (playerIdx > 0) {
-        const ahead = positionsAfterPit[playerIdx - 1];
-        carAhead = {
-            name: ahead.name,
-            gapMs: playerGapAfterPit - ahead.effectiveGap,
-        };
-    }
-    if (playerIdx < positionsAfterPit.length - 1) {
-        const behind = positionsAfterPit[playerIdx + 1];
-        carBehind = {
-            name: behind.name,
-            gapMs: behind.effectiveGap - playerGapAfterPit,
-        };
-    }
-
-    if (carAhead) {
-        setText("pitAheadName", carAhead.name);
-        setText("pitAheadGap", `+${(carAhead.gapMs / 1000).toFixed(1)}s`);
-    } else {
-        setText("pitAheadName", "Leader");
-        setText("pitAheadGap", "--");
-    }
-
-    if (carBehind) {
-        setText("pitBehindName", carBehind.name);
-        setText("pitBehindGap", `-${(carBehind.gapMs / 1000).toFixed(1)}s`);
-    } else {
-        setText("pitBehindName", "No car behind");
-        setText("pitBehindGap", "--");
-    }
+        .map(r => ({ ...r, eff: r.gapToLeaderMs }))
+        .concat([{ ...playerEntry, eff: playerGapAfterPit }])
+        .sort((a, b) => a.eff - b.eff);
+    const pi = order.findIndex(r => r.isPlayer);
+    const ahead = pi > 0 ? { name: order[pi - 1].name, gap: (playerGapAfterPit - order[pi - 1].eff) / 1000 } : null;
+    const behind = pi < order.length - 1 ? { name: order[pi + 1].name, gap: (order[pi + 1].eff - playerGapAfterPit) / 1000 } : null;
+    // Predicted rejoin position = player's slot in the post-pit order (1-based).
+    return { ahead, behind, rejoinPos: pi + 1 };
 }
 
-async function savePitTime() {
-    const pitInput = el("pitTimeInput");
-    if (!pitInput) return;
-    const val = parseFloat(pitInput.value);
-    if (!val || val <= 0 || currentTrackId < 0) return;
-    const trackName = TRACK_NAMES[currentTrackId] || `Track ${currentTrackId}`;
-    try {
-        const resp = await fetch(`/api/pit-times/${currentTrackId}`, {
-            method: "PUT",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ trackName, pitTimeSec: val }),
-        });
-        if (resp.ok) {
-            pitTimesData[String(currentTrackId)] = { trackName, pitTimeSec: val };
-            setText("pitSaveStatus", "Saved!");
-            setTimeout(() => { setText("pitSaveStatus", ""); }, 2000);
-        }
-    } catch (e) {
-        console.warn("Failed to save pit time:", e);
+function updatePitPredictor() {
+    const body = el("pitPredictorBody");
+    if (!body) return;
+
+    const sp = lastSessionPacket;
+    const items = lastLapDataPacket?.lapDataItems;
+    const playerLap = items?.[playerCarIndex];
+
+    const idealLap = sp?.pitStopWindowIdealLap ?? 0;
+    const latestLap = sp?.pitStopWindowLatestLap ?? 0;
+    const gameRejoinPos = sp?.pitStopRejoinPosition ?? 0;
+
+    // Require only that the player is racing. The game's pit window (ideal/latest lap)
+    // and rejoin position are 0 unless a stop is planned/mandatory — but we can still
+    // estimate the "pit now" outcome (rejoin + traffic) from live gaps in any race.
+    if (!playerLap || playerLap.resultStatus < 2) {
+        body.innerHTML = ppEmptyStateHtml();
+        return;
     }
+
+    // The game only fills the pit window when there's a planned/mandatory stop.
+    const hasWindow = idealLap > 0 && latestLap > 0;
+
+    const currentLap = playerLap.currentLapNum || 0;
+    const currentPos = playerLap.carPosition || 0;
+
+    // Front-wing damage forces a pit and adds repair time to the stop.
+    const dmg = lastCarDamagePacket?.carDamageDataItems?.[playerCarIndex];
+    const wingDmg = dmg ? Math.max(dmg.frontLeftWingDamage || 0, dmg.frontRightWingDamage || 0) : 0;
+    const hasWingDamage = wingDmg >= PP_WING_REPAIR_THRESHOLD;
+    const repairSec = hasWingDamage ? PP_FRONT_WING_REPAIR_SEC : 0;
+
+    // Urgency against the window (only meaningful when the game gave us one).
+    let statusText, statusColor;
+    if (hasWindow) {
+        if (currentLap < idealLap) {
+            const n = idealLap - currentLap;
+            statusText = `PIT IN ${n} ${n === 1 ? "LAP" : "LAPS"}`;
+            statusColor = PP_COL.blue;
+        } else if (currentLap <= latestLap) {
+            const left = latestLap - currentLap;
+            statusText = left <= 1 ? "WINDOW CLOSING" : "PIT NOW";
+            statusColor = left <= 1 ? PP_COL.amber : PP_COL.green;
+        } else {
+            statusText = "WINDOW MISSED";
+            statusColor = PP_COL.red;
+        }
+        if (hasWingDamage) { statusText = "BOX NOW · REPAIR"; statusColor = PP_COL.red; }
+    }
+    const traffic = ppComputeExitTraffic(items, (DEFAULT_PIT_TIME_SEC + repairSec) * 1000);
+
+    // Prefer the game's rejoin prediction; fall back to our own estimate from live gaps
+    // (which is all we have when no stop is planned).
+    const rejoinEstimated = gameRejoinPos <= 0;
+    const rejoinPos = rejoinEstimated ? (traffic.rejoinPos || 0) : gameRejoinPos;
+    const hasRejoin = rejoinPos > 0;
+
+    const delta = rejoinPos - currentPos;
+    const dCol = delta <= 0 ? PP_COL.green : delta <= 2 ? PP_COL.yellow : PP_COL.redSoft;
+    const arrow = delta > 0 ? "▼" : delta < 0 ? "▲" : "–";
+    const changeText = delta === 0 ? "even" : `${Math.abs(delta)} ${Math.abs(delta) === 1 ? "place" : "places"}`;
+
+    let html = "";
+
+    if (hasWingDamage) {
+        html += '<div class="pp-damage">'
+            + '<span class="pp-damage-icon">⚠</span>'
+            + '<span class="pp-damage-label">FRONT WING DAMAGE</span>'
+            + `<span class="pp-damage-repair">+${repairSec.toFixed(1)}s repair</span>`
+            + '</div>';
+    }
+
+    if (hasWindow) {
+        html += '<div class="pp-section pp-window-sec">'
+            + '<div class="pp-row-top"><span class="pp-label">Pit Window</span>'
+            + `<span class="pp-window-laps">Laps ${idealLap}–${latestLap}</span></div>`
+            + '<div class="pp-status">'
+            + `<span class="pp-status-dot" style="background:${statusColor};box-shadow:0 0 7px ${statusColor}"></span>`
+            + `<span class="pp-status-text" style="color:${statusColor}">${statusText}</span></div>`
+            + ppLapTimelineHtml(currentLap, idealLap, latestLap, statusColor)
+            + '</div>';
+    }
+
+    if (hasRejoin) {
+        const rejoinLabel = rejoinEstimated ? "Rejoin if pit now" : "Rejoin Position";
+        html += '<div class="pp-section pp-rejoin-sec">'
+            + `<div class="pp-rejoin-left"><span class="pp-label">${rejoinLabel}</span>`
+            + `<div class="pp-rejoin-num" style="color:${dCol}">P${rejoinPos}</div>`
+            + (hasWingDamage ? `<span class="pp-rejoin-repair">incl. +${repairSec.toFixed(1)}s wing repair</span>` : "")
+            + '</div>'
+            + '<div class="pp-rejoin-right">'
+            + `<span class="pp-rejoin-flow">P${currentPos} → P${rejoinPos}</span>`
+            + `<span class="pp-rejoin-badge" style="color:${dCol};background:${dCol}1f">${arrow} ${changeText}</span>`
+            + '</div></div>';
+    }
+
+    html += '<div class="pp-section pp-traffic-sec">'
+        + '<span class="pp-label">Exit Traffic</span>'
+        + ppTrafficRowHtml("AHEAD", traffic.ahead?.name, traffic.ahead?.gap)
+        + ppTrafficRowHtml("BEHIND", traffic.behind?.name, traffic.behind?.gap)
+        + '</div>';
+
+    body.innerHTML = html;
 }
 
 function updateSessionHistory(data) {
@@ -3379,7 +3612,7 @@ function updateGapBoard() {
     for (const driver of chosen) {
         const rowCls = driver.isPlayer ? "gap-row-player" : "";
         const posColor = driver.isPlayer ? "gap-pos-player" : "";
-        parts.push(`<tr class="${rowCls}"><td class="gap-driver-cell"><span class="gap-pos ${posColor}">${driver.pos}</span> <span class="gap-driver-name">${driver.name}</span></td>`);
+        parts.push(`<tr class="${rowCls}"><td class="gap-driver-cell"><span class="gap-pos ${posColor}">${driver.pos}</span> <span class="gap-driver-name">${escapeHtml(driver.name)}</span></td>`);
         for (const lapIdx of lapColumns) {
             const cell = formatLapCell(driver.idx, lapIdx, driver.isPlayer);
             parts.push(`<td class="gap-time-cell ${cell.cls}">${cell.text}</td>`);
@@ -3667,15 +3900,9 @@ function updateLapTimesWidget() {
     renderLapTimes(tbody, headRow);
 }
 
-/** PacketCarTelemetry26Data — new in packet format 2026. Drives the dedicated "F1 26 Systems"
- *  widget (tpl-telemetry26). Renders:
- *    • Active Aero — Corner / Straight mode + availability + distance to next zone
- *    • Boost (Overtake mode) — available / active + distance to activation
- *    • 2026 regulations badge (lights up when m_2026Regulations == 1)
- *    • Wrong-way warning (only when m_drivingWrongWay == 1)
- *  When the player is in a format-2025 session this handler never fires, so the widget
- *  shows its "Awaiting 2026 telemetry…" placeholder. The widget can be removed from the
- *  layout entirely if the user only ever runs 2025. */
+/** PacketCarTelemetry26Data — new in packet format 2026 (F1 26 only). The sole consumer is the
+ *  Car Telemetry widget's Straight-Mode (SM) tile, which mirrors Active Aero in place of DRS.
+ *  Never fires in a format-2025 session, so the tile stays on its DRS rendering there. */
 function updateCarTelemetry26(data) {
     // Property name follows the renamed C# DTO (CarTelemetry26Packet.CarTelemetry26DataItems).
     // Carries the legacy carTelemetry2DataItems fallback for any in-flight cached payloads.
@@ -3685,62 +3912,9 @@ function updateCarTelemetry26(data) {
     const item = items[idx];
     if (!item) return;
 
-    // Hide the placeholder once any data flows in; show it again only on hard reload.
-    const placeholder = document.getElementById("t26Placeholder");
-    if (placeholder) placeholder.hidden = true;
-
-    // ---- Active Aero -------------------------------------------------------------
-    const aeroTile = document.getElementById("t26AeroTile");
-    const aeroStatus = document.getElementById("t26AeroStatus");
-    const aeroMode = document.getElementById("t26AeroMode");
-    const aeroIcon = document.getElementById("t26AeroModeIcon");
-    const aeroDist = document.getElementById("t26AeroDist");
-    if (aeroTile) {
-        const available = item.activeAeroAvailable === 1;
-        const isStraight = item.activeAeroMode === 1;
-        // Tile data-state drives the colour ring via CSS: idle / ready / active.
-        aeroTile.dataset.state = !available ? "idle" : (isStraight ? "active" : "ready");
-        if (aeroStatus) aeroStatus.textContent = available ? "Ready" : "N/A";
-        if (aeroMode) aeroMode.textContent = !available ? "—" : (isStraight ? "Straight" : "Corner");
-        // Half-disk for corner mode, full disk for straight mode — quick glance recognition.
-        if (aeroIcon) aeroIcon.textContent = isStraight ? "●" : "◐";
-        if (aeroDist) {
-            const d = item.activeAeroActivationDistance | 0;
-            aeroDist.textContent = available
-                ? (d > 0 ? d + " m" : "now")
-                : "—";
-        }
-    }
-
-    // ---- Boost (Overtake) --------------------------------------------------------
-    const boostTile = document.getElementById("t26BoostTile");
-    const boostStatus = document.getElementById("t26BoostStatus");
-    const boostMode = document.getElementById("t26BoostMode");
-    const boostIcon = document.getElementById("t26BoostIcon");
-    const boostDist = document.getElementById("t26BoostDist");
-    if (boostTile) {
-        const available = item.overtakeAvailable === 1;
-        const active = item.overtakeActive === 1;
-        boostTile.dataset.state = !available ? "idle" : (active ? "active" : "ready");
-        if (boostStatus) boostStatus.textContent = !available ? "N/A" : (active ? "ACTIVE" : "Ready");
-        if (boostMode) boostMode.textContent = !available ? "—" : (active ? "Pushing" : "Armed");
-        // Filled bolt when boost is firing, outline when armed.
-        if (boostIcon) boostIcon.textContent = active ? "⚡" : "⟁";
-        if (boostDist) {
-            const d = item.overtakeActivationDistance | 0;
-            boostDist.textContent = available
-                ? (d > 0 ? d + " m" : "now")
-                : "—";
-        }
-    }
-
-    // ---- 2026 regulations marker -------------------------------------------------
-    const regsBadge = document.getElementById("t26RegsBadge");
-    if (regsBadge) regsBadge.hidden = item.regulations2026 !== 1;
-
-    // ---- Wrong-way warning -------------------------------------------------------
-    const wrongBadge = document.getElementById("t26WrongWayBadge");
-    if (wrongBadge) wrongBadge.hidden = item.drivingWrongWay !== 1;
+    // Mirror straight mode into the Car Telemetry widget's SM tile (replaces DRS in F1 26).
+    playerStraightModeActive = item.activeAeroMode === 1;
+    updateDrsSmTile();
 }
 
 const PACKET_HANDLERS = {
@@ -3800,6 +3974,7 @@ function initConnection() {
                 pinnedPenalties = [];
                 renderEvents();
                 resetTopSpeedSessionState();
+                ersDeployPeakJ = 0;
                 lastTimeTrialPacket = null;
                 lastCarSetupsPacket = null;
                 _lapTimesSetupContent.clear();
@@ -3899,6 +4074,5 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (typeof initWidgets === "function") initWidgets();
     ensureTopSpeedLayoutObserver();
     syncRpmBarSegmentWidths(RPM_SCALE_FALLBACK);
-    await loadPitTimes();
     initConnection();
 });

@@ -3,10 +3,10 @@
 const WIDGET_REGISTRY = {
     session:      { title: "Session",              tpl: "tpl-session",      w: 4,   h: 9,   minW: 1,    minH: 1 },
     telemetry:    { title: "Car Telemetry",        tpl: "tpl-telemetry",    w: 6,   h: 9,   minW: 1,    minH: 1 },
-    telemetry26:  { title: "F1 26 Systems",        tpl: "tpl-telemetry26",  w: 5,   h: 7,   minW: 1,    minH: 1 },
     tyres:        { title: "Tyres",                tpl: "tpl-tyres",        w: 5,   h: 12,  minW: 1,    minH: 1 },
     tyreSets:     { title: "Available Tyre Sets",  tpl: "tpl-tyreSets",     w: 7,   h: 14,  minW: 1,    minH: 1 },
     pitPredictor: { title: "Pit Stop Predictor",   tpl: "tpl-pitPredictor", w: 6,   h: 6,   minW: 1,    minH: 1 },
+    trackMap:     { title: "Track Map",            tpl: "tpl-trackMap",     w: 8,   h: 12,  minW: 1,    minH: 1 },
     fuelErs:      { title: "Fuel & ERS",           tpl: "tpl-fuelErs",      w: 6,   h: 7,   minW: 1,    minH: 1 },
     lapData:      { title: "Lap Data",             tpl: "tpl-lapData",      w: 4,   h: 9,   minW: 1,    minH: 1 },
     damage:       { title: "Damage",               tpl: "tpl-damage",       w: 4,   h: 5,   minW: 1,    minH: 1 },
@@ -52,8 +52,6 @@ function makeWidgetHtml(widgetId) {
         headerExtra = `<button class="event-filter-toggle" id="btnEventFilter" title="Filter events"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/></svg></button>`;
     } else if (widgetId === "session") {
         headerExtra = `<button class="event-filter-toggle" id="btnSessionSettings" title="Visible fields"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg></button>`;
-    } else if (widgetId === "pitPredictor") {
-        headerExtra = `<button type="button" class="pit-times-toggle" id="btnPitTimesSettings" title="Pit times for all tracks"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></button>`;
     } else if (widgetId === "tyres") {
         headerExtra = `<button class="tyre-info-btn" title="Legend &amp; temperature scale">?</button>`;
     } else if (widgetId === "tyreSets") {
@@ -268,17 +266,8 @@ function wireWidgetEvents(widgetId) {
     if ((widgetId === "topSpeed" || widgetId === "topSpeedCompare") && typeof window.ensureTopSpeedLayoutObserver === "function") {
         window.ensureTopSpeedLayoutObserver();
     }
-    if (widgetId === "pitPredictor") {
-        const btn = document.getElementById("btnSavePitTime");
-        const input = document.getElementById("pitTimeInput");
-        if (input && typeof getPitTimeForTrack === "function" && typeof currentTrackId !== "undefined") {
-            input.value = getPitTimeForTrack(currentTrackId).toFixed(1);
-        }
-        if (btn && typeof savePitTime === "function") btn.addEventListener("click", savePitTime);
-        if (input && typeof updatePitPredictor === "function") {
-            input.addEventListener("change", updatePitPredictor);
-            updatePitPredictor();
-        }
+    if (widgetId === "pitPredictor" && typeof updatePitPredictor === "function") {
+        updatePitPredictor();
     }
     if (widgetId === "events" && typeof initEventFilter === "function") {
         initEventFilter();
@@ -286,18 +275,21 @@ function wireWidgetEvents(widgetId) {
     if (widgetId === "session" && typeof initSessionSettings === "function") {
         initSessionSettings();
     }
-    if (widgetId === "pitPredictor" && typeof initPitTimesPanel === "function") {
-        initPitTimesPanel();
-    }
     if (widgetId === "tyres") {
         if (typeof _tyreWidgetCache !== "undefined") _tyreWidgetCache.clear();
         if (typeof initTyreInfoTooltip === "function") initTyreInfoTooltip();
+    }
+    if (widgetId === "tyreSets" && typeof initTyreInfoTooltip === "function") {
+        initTyreInfoTooltip();
     }
     if (widgetId === "lapTimes" && typeof updateLapTimesWidget === "function") {
         updateLapTimesWidget();
     }
     if (widgetId === "lapData" && typeof initLapDataWidget === "function") {
         initLapDataWidget();
+    }
+    if (widgetId === "trackMap" && typeof window.initTrackMapWidget === "function") {
+        window.initTrackMapWidget();
     }
 }
 

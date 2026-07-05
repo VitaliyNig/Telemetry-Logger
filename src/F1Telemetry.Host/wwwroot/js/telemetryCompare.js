@@ -20,6 +20,7 @@
         heightScale: 1.9,           // 1.3 | 1.9 | 2.8 (Compact / Normal / Tall presets)
         miniPerSector: 3,
         insightsEnabled: true,
+        sideTab: 'controls',        // 'controls' | 'insights' — active left-column tab
         chipMode: 'pair',           // 'pair' | 'diff'
         mapLayers: { line: true, deltaHeat: true, events: true, dominance: false, loss: true },
         // Default zoom is fairly close (3×) so the map opens as a trajectory-analysis surface.
@@ -58,6 +59,7 @@
             if (typeof p.heightScale === 'number') compareState.heightScale = p.heightScale;
             if ([1, 3, 4].indexOf(Number(p.miniPerSector)) >= 0) compareState.miniPerSector = Number(p.miniPerSector);
             compareState.insightsEnabled = p.insightsEnabled !== false;
+            if (p.sideTab === 'insights' || p.sideTab === 'controls') compareState.sideTab = p.sideTab;
             if (p.chipMode === 'diff' || p.chipMode === 'pair') compareState.chipMode = p.chipMode;
             if (p.mapLayers && typeof p.mapLayers === 'object') {
                 compareState.mapLayers = {
@@ -87,6 +89,7 @@
                 heightScale: compareState.heightScale,
                 miniPerSector: compareState.miniPerSector,
                 insightsEnabled: compareState.insightsEnabled,
+                sideTab: compareState.sideTab,
                 chipMode: compareState.chipMode,
                 mapLayers: compareState.mapLayers,
                 mapZoom: compareState.mapZoom,
@@ -121,12 +124,68 @@
         { key: 'rpm',   label: 'RPM', plotTitle: 'RPM', height: 60, min: 0, max: 14000 },
         { key: 'ers',   label: 'ERS', plotTitle: 'ERS', height: 60, min: 0, max: 100 },
         { key: 'drs',   label: 'DRS', plotTitle: 'DRS', height: 22, min: 0, max: 1, style: 'band' },
+        // 2026-regulation rows (Season Pack, CarTelemetry26): Active Aero Straight Mode is
+        // the DRS analogue, Overtake (Boost) is the gap-based attack tool. Band rows are
+        // auto-hidden when no visible lap carries the signal (see metricsFor), so 2025
+        // sessions never show them and 2026 sessions show them instead of an empty DRS row.
+        { key: 'aero',  label: 'Aero', plotTitle: 'ACTIVE AERO', height: 22, min: 0, max: 1, style: 'band' },
+        { key: 'ovt',   label: 'Boost', plotTitle: 'BOOST', height: 22, min: 0, max: 1, style: 'band' },
     ];
 
     var ERS_MODE_TAGS = ['', 'MED', 'HOT', 'OT'];
 
+    // Mode 3 was renamed Overtake → Boost under the 2026 regulations (spec v1.1).
+    function ersModeTag(md, carIdx) {
+        if (md === 3 && lapIsReg26(carIdx)) return 'BST';
+        return ERS_MODE_TAGS[md] || '';
+    }
+
+    // Per-lap regulation detection. Session format is the base signal; ghost laps imported
+    // from another session may differ, so any lap whose samples carry Active Aero / Boost
+    // data is treated as 2026 regardless of the host session's format.
+    function lapIsReg26(carIdx) {
+        return !!(compareState.__reg26 && compareState.__reg26.has(carIdx));
+    }
+    function computeReg26Set(lapData) {
+        var out = new Set();
+        if (!lapData) return out;
+        var sess = window.HistoryDetail && window.HistoryDetail.state ? window.HistoryDetail.state.session : null;
+        var sessionIs26 = !!(sess && sess.meta && Number(sess.meta.packetFormat) >= 2026);
+        lapData.forEach(function (d, carIdx) {
+            if (sessionIs26) { out.add(carIdx); return; }
+            var samples = d && d.samples;
+            if (!samples) return;
+            for (var i = 0; i < samples.length; i++) {
+                if ((samples[i].aero || 0) === 1 || (samples[i].ovt || 0) === 1) { out.add(carIdx); return; }
+            }
+        });
+        return out;
+    }
+
+    // True when at least one visible lap has the band signal active somewhere. Decides
+    // which of the DRS / Active Aero / Boost rows exist for the current comparison —
+    // works for pure 2025, pure 2026 and mixed (ghost) selections without a format flag.
+    function bandHasSignal(lapData, key) {
+        if (!lapData) return false;
+        var found = false;
+        lapData.forEach(function (d) {
+            if (found || !d || !d.samples) return;
+            var samples = d.samples;
+            for (var i = 0; i < samples.length; i++) {
+                if ((samples[i][key] || 0) === 1) { found = true; return; }
+            }
+        });
+        return found;
+    }
+    function metricsFor(lapData) {
+        return METRICS.filter(function (m) {
+            return m.style !== 'band' || bandHasSignal(lapData, m.key);
+        });
+    }
+
     // Compact chip-value formatter per metric. Returns string for a sample+metric pair.
-    function formatChipValue(metricKey, sample, deltaAt) {
+    // carIdx is only needed for regulation-sensitive labels (ERS mode 3: OT vs BST).
+    function formatChipValue(metricKey, sample, deltaAt, carIdx) {
         if (!sample && metricKey !== 'delta') return '—';
         switch (metricKey) {
             case 'delta': return deltaAt == null ? '—'
@@ -138,8 +197,10 @@
             case 'gr':    return sample.gr > 0 ? 'G' + sample.gr : (sample.gr === 0 ? 'N' : 'R');
             case 'rpm':   return Math.round(sample.rpm).toLocaleString();
             case 'ers':   return Math.round(sample.ers || 0) + '% '
-                + (ERS_MODE_TAGS[sample.ersMd || 0] || '');
+                + ersModeTag(sample.ersMd || 0, carIdx);
             case 'drs':   return sample.drs ? 'ON' : 'OFF';
+            case 'aero':  return sample.aero ? 'STRAIGHT' : 'CORNER';
+            case 'ovt':   return sample.ovt ? 'ON' : 'OFF';
             default:      return '';
         }
     }
@@ -232,10 +293,32 @@
         var sess = window.HistoryDetail.state.session;
         var trackLen = Math.round((sess && sess.meta && sess.meta.trackLengthM) || 5000);
         body.innerHTML = ''
-            + '<div class="tc-topbar">'
-            +   '<div class="tc-mode-toggle" role="group" aria-label="Compare layout mode">'
-            +     '<button type="button" data-mode="charts">Charts</button>'
-            +     '<button type="button" data-mode="map">Map</button>'
+            + '<div class="tc-root">'
+            + '<div class="tc-layout ' + tcLayoutModeClass() + '" id="tcLayout">'
+            +   '<div class="tc-side" id="tcSide" data-priority="secondary">'
+            +     '<div class="tc-side-tabs" role="tablist" aria-label="Left panel tabs">'
+            +       '<button type="button" class="tc-side-tab" data-side-tab="controls" role="tab">Controls</button>'
+            +       '<button type="button" class="tc-side-tab" data-side-tab="insights" role="tab">'
+            +         '<span>Insights</span>'
+            +         '<span class="tc-side-tab-badge" id="tcInsightsBadge" hidden>0</span>'
+            +       '</button>'
+            +     '</div>'
+            +     '<div class="tc-side-panel" id="tcPanelControls" data-side-panel="controls">'
+            +       '<div class="tc-side-picker-host" id="tcSidePickerHost"></div>'
+            +       '<div class="tc-side-toolbar tc-sector-badges" id="tcBadges"></div>'
+            +     '</div>'
+            +     '<div class="tc-side-panel" id="tcPanelInsights" data-side-panel="insights">'
+            +       '<div class="tc-side-insights-host" id="tcInsights"></div>'
+            +     '</div>'
+            +   '</div>'
+            +   '<div class="tc-main">'
+            +     '<div class="tc-layer tc-layer-b" data-priority="primary">'
+            +       '<div class="tc-charts" id="tcCharts"></div>'
+            +     '</div>'
+            +   '</div>'
+            +   '<div class="tc-rail" data-priority="secondary">'
+            +     '<div class="tc-map tc-layer tc-layer-c" id="tcMap"></div>'
+            +     '<aside class="tc-focus" id="tcFocusPanel"></aside>'
             +   '</div>'
             + '</div>'
             + '<div class="tc-transport" id="tcTransport">'
@@ -256,20 +339,6 @@
             +     '<button type="button" data-sync="time" title="Markers at their real position for the same elapsed time — shows the live gap">Gap</button>'
             +   '</span>'
             + '</div>'
-            + '<div class="tc-layout ' + tcLayoutModeClass() + '" id="tcLayout">'
-            +   '<div class="tc-side" id="tcSide" data-priority="secondary">'
-            +     '<div class="tc-side-picker-host" id="tcSidePickerHost"></div>'
-            +     '<div class="tc-side-toolbar tc-sector-badges" id="tcBadges"></div>'
-            +   '</div>'
-            +   '<div class="tc-main">'
-            +     '<div class="tc-layer tc-layer-b" data-priority="primary">'
-            +       '<div class="tc-charts" id="tcCharts"></div>'
-            +     '</div>'
-            +   '</div>'
-            +   '<div class="tc-rail" data-priority="secondary">'
-            +     '<div class="tc-map tc-layer tc-layer-c" id="tcMap"></div>'
-            +     '<aside class="tc-focus" id="tcFocusPanel"></aside>'
-            +   '</div>'
             + '</div>';
 
         var side = body.querySelector('#tcSidePickerHost');
@@ -282,8 +351,39 @@
         side.appendChild(picker);
         wireModeToggle(body);
         wireTransport(body);
+        wireSideTabs(body);
 
         reloadLapSamples().then(redraw);
+    }
+
+    // Left-column tabs: Controls (lap picker + chart controls) | Insights (Top Loss Zones).
+    function applySideTab(root) {
+        var tab = compareState.sideTab === 'insights' ? 'insights' : 'controls';
+        root.querySelectorAll('.tc-side-tab').forEach(function (b) {
+            var on = b.dataset.sideTab === tab;
+            b.classList.toggle('active', on);
+            b.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        root.querySelectorAll('.tc-side-panel').forEach(function (p) {
+            p.hidden = p.dataset.sidePanel !== tab;
+        });
+    }
+    function wireSideTabs(root) {
+        root.querySelectorAll('.tc-side-tab').forEach(function (b) {
+            b.addEventListener('click', function () {
+                compareState.sideTab = b.dataset.sideTab === 'insights' ? 'insights' : 'controls';
+                persistState();
+                applySideTab(root);
+            });
+        });
+        applySideTab(root);
+    }
+
+    function updateInsightsBadge(n) {
+        var b = document.getElementById('tcInsightsBadge');
+        if (!b) return;
+        if (n > 0) { b.textContent = String(n); b.hidden = false; }
+        else { b.hidden = true; }
     }
 
     // Two-mode layout: 'charts' (chart stack is the hero) and 'map' (the 3D track map
@@ -294,9 +394,19 @@
         try { return localStorage.getItem(MODE_KEY) === 'map' ? 'map' : 'charts'; } catch (e) { return 'charts'; }
     }
     function tcLayoutModeClass() { return 'tc-layout--' + getCompareMode(); }
+    // The toggle renders into the breadcrumb header slot (next to Export Driver / Ghosts),
+    // not into the tab body — historyDetail clears the slot when another sub-tab opens.
     function wireModeToggle(root) {
         var layout = root.querySelector('#tcLayout');
-        var btns = root.querySelectorAll('.tc-mode-toggle button');
+        var slot = document.getElementById('historyHeaderModeSlot');
+        if (slot) {
+            slot.innerHTML = ''
+                + '<div class="tc-mode-toggle" role="group" aria-label="Compare layout mode">'
+                +   '<button type="button" data-mode="charts">Charts</button>'
+                +   '<button type="button" data-mode="map">Map</button>'
+                + '</div>';
+        }
+        var btns = slot ? slot.querySelectorAll('.tc-mode-toggle button') : [];
         function sync() {
             var m = getCompareMode();
             if (layout) {
@@ -351,10 +461,17 @@
         latestCompareLapData = lapData;
         clearDeltaSeriesCache();
         stopChartCamLoop();
+        // Refresh per-redraw caches: regulation set (OT/BST labels, attack-aid chips) and
+        // the metric list with band rows resolved against the actual data (DRS vs SM/Boost).
+        compareState.__reg26 = computeReg26Set(lapData);
+        compareState.__metrics = metricsFor(lapData);
+        compareState.__laneColors = null; // lap/driver selection may have changed
+
         ensureReferenceSelection(lapData);
         drawBadges(lapData);
         drawChartStack(lapData);
         drawTrackMap(lapData);
+        drawInsights(lapData);
     }
 
     function notifyCompare(msg) {
@@ -443,67 +560,70 @@
             refLap = (refDriverLap.laps || []).find(function (l) { return l.lapNum === sel.lap; });
         }
 
-        // ---------- Compact side toolbar ----------
-        // View section: delta mode + split + zoom shortcuts.
-        var html = '<div class="tc-stb">'
-            + '<div class="tc-stb-section">'
-            +   '<div class="tc-stb-label">View</div>'
+        // ---------- Chart controls (sub-card layout) ----------
+        // Each setting is a labelled row; Sectors + Channels are full-width sections.
+        // All data-* attributes are unchanged so the delegated click handler below still
+        // dispatches correctly — only the markup/labels were restyled.
+        var metrics = compareState.__metrics || METRICS;
+        var visibleCount = metrics.filter(function (m) { return !compareState.hiddenMetrics.has(m.key); }).length;
+
+        var html = '<div class="tc-stb tc-ctrl">'
+            + '<div class="tc-ctrl-head">Chart controls</div>'
+
+            // Delta mode
+            + '<div class="tc-ctrl-row">'
+            +   '<span class="tc-ctrl-label">Delta</span>'
             +   '<div class="tc-segmented tc-segmented--full">'
-            +     '<button class="tc-seg-btn ' + (compareState.deltaMode === 'cumulative' ? 'active' : '') + '" data-mode="cumulative" title="Cumulative delta">Cumul.</button>'
-            +     '<button class="tc-seg-btn ' + (compareState.deltaMode === 'sector' ? 'active' : '') + '" data-mode="sector" title="Per-sector delta">Per Sec.</button>'
+            +     '<button class="tc-seg-btn ' + (compareState.deltaMode === 'cumulative' ? 'active' : '') + '" data-mode="cumulative" title="Cumulative delta">Cumulative</button>'
+            +     '<button class="tc-seg-btn ' + (compareState.deltaMode === 'sector' ? 'active' : '') + '" data-mode="sector" title="Per-sector delta">Per sec</button>'
             +   '</div>'
-            +   '<div class="tc-stb-row">'
-            +     '<span class="tc-stb-mini">Split</span>'
-            +     '<div class="tc-segmented">'
-            +       '<button class="tc-seg-btn ' + (compareState.miniPerSector === 1 ? 'active' : '') + '" data-mini="1">3</button>'
-            +       '<button class="tc-seg-btn ' + (compareState.miniPerSector === 3 ? 'active' : '') + '" data-mini="3">9</button>'
-            +       '<button class="tc-seg-btn ' + (compareState.miniPerSector === 4 ? 'active' : '') + '" data-mini="4">12</button>'
-            +     '</div>'
+            + '</div>'
+
+            // Split
+            + '<div class="tc-ctrl-row">'
+            +   '<span class="tc-ctrl-label">Split</span>'
+            +   '<div class="tc-segmented tc-segmented--full">'
+            +     '<button class="tc-seg-btn ' + (compareState.miniPerSector === 1 ? 'active' : '') + '" data-mini="1">3</button>'
+            +     '<button class="tc-seg-btn ' + (compareState.miniPerSector === 3 ? 'active' : '') + '" data-mini="3">9</button>'
+            +     '<button class="tc-seg-btn ' + (compareState.miniPerSector === 4 ? 'active' : '') + '" data-mini="4">12</button>'
             +   '</div>'
-            +   '<div class="tc-stb-row">'
-            +     '<span class="tc-stb-mini">Zoom</span>'
-            +     '<div class="tc-zoom-actions">'
-            +       '<button class="tc-zoom-btn" data-action="reset-zoom" title="Reset to full lap">Reset</button>'
-            +       '<button class="tc-zoom-btn" data-action="zoom-in-2x" title="Zoom in 2×" aria-label="Zoom in 2×">+2×</button>'
-            +       '<button class="tc-zoom-btn" data-action="zoom-out-2x" title="Zoom out 2×" aria-label="Zoom out 2×">−2×</button>'
-            +     '</div>'
+            + '</div>'
+
+            // Zoom
+            + '<div class="tc-ctrl-row">'
+            +   '<span class="tc-ctrl-label">Zoom</span>'
+            +   '<div class="tc-zoom-actions tc-zoom-actions--grow">'
+            +     '<button class="tc-zoom-btn" data-action="reset-zoom" title="Reset to full lap">Reset</button>'
+            +     '<button class="tc-zoom-btn" data-action="zoom-in-2x" title="Zoom in 2×" aria-label="Zoom in 2×">+2×</button>'
+            +     '<button class="tc-zoom-btn" data-action="zoom-out-2x" title="Zoom out 2×" aria-label="Zoom out 2×">−2×</button>'
             +   '</div>'
             + '</div>';
 
-        // Sectors — clickable zoom shortcuts (horizontal scroll if many).
-        html += '<div class="tc-stb-section">'
-            +   '<div class="tc-stb-label">Sectors</div>'
-            +   '<div class="tc-sector-groups">';
-        var miniCount = Math.max(1, Number(compareState.miniPerSector) || 1);
-        var currentSector = null;
-        segments.forEach(function (seg, idx) {
-            if (currentSector !== seg.sector) {
-                if (currentSector !== null) html += '</div>';
-                html += '<div class="tc-sector-group" data-sector="S' + seg.sector + '">';
-                currentSector = seg.sector;
-            }
+        // Sectors — clickable mini sub-cards (label over reference time). Wraps to a grid.
+        html += '<div class="tc-ctrl-section">'
+            +   '<div class="tc-ctrl-label">Sectors</div>'
+            +   '<div class="tc-sector-grid">';
+        segments.forEach(function (seg) {
             var sectorKey = 's' + seg.sector + 'Ms';
             var refMs = refLap ? refLap[sectorKey] : 0;
             var segmentMs = seg.parts > 1 ? (refMs / seg.parts) : refMs;
             var fullLabel = 'S' + seg.sector + (seg.parts > 1 ? ('.' + seg.part) : '');
-            var shortLabel = seg.sector + (seg.parts > 1 ? ('.' + seg.part) : '');
-            html += '<button class="tc-badge" data-start="' + seg.start + '" data-end="' + seg.end + '" title="' + fullLabel + '">'
-                + '<strong><span class="tc-badge-label-full">' + fullLabel + '</span><span class="tc-badge-label-short">' + shortLabel + '</span></strong> '
-                + window.HistoryDetail.formatSectorTime(segmentMs)
+            var isActive = compareState.zoomStart === seg.start && compareState.zoomEnd === seg.end;
+            html += '<button class="tc-sector-card ' + (isActive ? 'is-active' : '') + '" data-start="' + seg.start + '" data-end="' + seg.end + '" title="Zoom charts to ' + fullLabel + '">'
+                + '<span class="tc-sector-card-label">' + fullLabel + '</span>'
+                + '<span class="tc-sector-card-time">' + window.HistoryDetail.formatSectorTime(segmentMs) + '</span>'
                 + '</button>';
-
-            if (miniCount > 1 && (idx + 1) % miniCount === 0 && (idx + 1) < segments.length) {
-                html += '<span class="tc-sector-divider" aria-hidden="true"></span>';
-            }
         });
-        if (currentSector !== null) html += '</div>';
         html += '</div></div>';
 
-        // Channels — visible-metric chips, wrapping.
-        html += '<div class="tc-stb-section">'
-            +   '<div class="tc-stb-label">Channels</div>'
+        // Channels — visible-metric chips with a "used / total" count.
+        html += '<div class="tc-ctrl-section">'
+            +   '<div class="tc-ctrl-section-head">'
+            +     '<span class="tc-ctrl-label">Channels</span>'
+            +     '<span class="tc-ctrl-count">' + visibleCount + '/' + metrics.length + '</span>'
+            +   '</div>'
             +   '<div class="tc-channel-list">';
-        METRICS.forEach(function (m) {
+        metrics.forEach(function (m) {
             var pressed = !compareState.hiddenMetrics.has(m.key);
             html += '<button class="tc-channel ' + (pressed ? 'active' : '') + '" data-key="' + m.key + '"'
                 + ' aria-pressed="' + (pressed ? 'true' : 'false') + '">'
@@ -511,46 +631,31 @@
         });
         html += '</div></div>';
 
-        // Display section: chip mode + height preset + reset + insights.
-        html += '<div class="tc-stb-section">'
-            +   '<div class="tc-stb-label">Display</div>'
-            +   '<div class="tc-stb-row">'
-            +     '<div class="tc-segmented tc-segmented--grow">'
-            +       '<button class="tc-seg-btn tc-chip-mode ' + (compareState.chipMode === 'pair' ? 'active' : '') + '" data-chip-mode="pair">Values</button>'
-            +       '<button class="tc-seg-btn tc-chip-mode ' + (compareState.chipMode === 'diff' ? 'active' : '') + '" data-chip-mode="diff">Delta</button>'
-            +     '</div>'
-            +   '</div>'
-            +   '<div class="tc-stb-row">'
-            +     '<span class="tc-stb-mini">Size</span>'
-            +     '<div class="tc-segmented tc-segmented--grow">';
-        // Size presets: SVG icon visualises a chart-row of growing height.
-        // Multiplies METRICS[i].height (base 50–70 px). Tall=2.8 → Speed row ~196 px,
-        // Throttle/Brake ~140 px — properly readable for shape & numerical inspection.
-        [
-            { scale: 1.3, title: 'Compact', barY: 9, barH: 4 },
-            { scale: 1.9, title: 'Normal',  barY: 6, barH: 7 },
-            { scale: 2.8, title: 'Tall',    barY: 2, barH: 11 },
-        ].forEach(function (pair) {
-            var active = Math.abs(compareState.heightScale - pair.scale) < 0.01;
-            var icon = '<svg class="tc-size-icon" viewBox="0 0 16 14" aria-hidden="true" focusable="false">'
-                + '<rect x="1" y="' + pair.barY + '" width="14" height="' + pair.barH + '" rx="1.5"/>'
-                + '</svg>';
-            html += '<button class="tc-seg-btn tc-seg-btn--icon ' + (active ? 'active' : '') + '"'
-                + ' data-scale="' + pair.scale + '" title="' + pair.title + '" aria-label="' + pair.title + '">'
-                + icon + '</button>';
-        });
-        html += '</div>'
-            +   '</div>'
-            +   '<div class="tc-stb-row">'
-            +     '<span class="tc-stb-mini">Insights</span>'
-            +     '<button class="tc-seg-btn tc-insights-toggle tc-stb-toggle ' + (compareState.insightsEnabled ? 'active' : '') + '" data-action="insights">'
-            +       (compareState.insightsEnabled ? 'On' : 'Off') + '</button>'
+        // Read mode (value chips: absolute values vs delta).
+        html += '<div class="tc-ctrl-row">'
+            +   '<span class="tc-ctrl-label">Read</span>'
+            +   '<div class="tc-segmented tc-segmented--full">'
+            +     '<button class="tc-seg-btn tc-chip-mode ' + (compareState.chipMode === 'pair' ? 'active' : '') + '" data-chip-mode="pair">Values</button>'
+            +     '<button class="tc-seg-btn tc-chip-mode ' + (compareState.chipMode === 'diff' ? 'active' : '') + '" data-chip-mode="diff">Delta</button>'
             +   '</div>'
             + '</div>';
 
-        if (compareState.insightsEnabled) {
-            html += renderTopLossZones(lapData, sess);
-        }
+        // Row-height preset (S / M / L → heightScale 1.3 / 1.9 / 2.8).
+        html += '<div class="tc-ctrl-row">'
+            +   '<span class="tc-ctrl-label">Size</span>'
+            +   '<div class="tc-segmented tc-segmented--full">';
+        [
+            { scale: 1.3, label: 'S', title: 'Compact rows' },
+            { scale: 1.9, label: 'M', title: 'Normal rows' },
+            { scale: 2.8, label: 'L', title: 'Tall rows' },
+        ].forEach(function (pair) {
+            var active = Math.abs(compareState.heightScale - pair.scale) < 0.01;
+            html += '<button class="tc-seg-btn ' + (active ? 'active' : '') + '"'
+                + ' data-scale="' + pair.scale + '" title="' + pair.title + '" aria-label="' + pair.title + '">'
+                + pair.label + '</button>';
+        });
+        html += '</div></div>';
+
         html += '</div>';
         host.innerHTML = html;
 
@@ -564,26 +669,6 @@
         // current despite the closure capturing nothing.
         if (!host.__tcBadgesWired) {
             host.__tcBadgesWired = true;
-            // Hover bridge: panel card ↔ map zone. Uses delegation so it survives
-            // every drawBadges innerHTML rewrite without re-attaching listeners.
-            host.addEventListener('mouseover', function (e) {
-                var z = e.target && e.target.closest && e.target.closest('.tc-loss-zone');
-                if (!z) return;
-                var id = z.dataset.zoneId;
-                if (!id) return;
-                document.querySelectorAll('.tc-map-loss').forEach(function (g) {
-                    g.classList.toggle('is-hover', g.dataset.zoneId === id);
-                });
-            });
-            host.addEventListener('mouseout', function (e) {
-                var z = e.target && e.target.closest && e.target.closest('.tc-loss-zone');
-                if (!z) return;
-                // Suppress flicker when moving between child elements of the same card.
-                if (z.contains(e.relatedTarget)) return;
-                document.querySelectorAll('.tc-map-loss.is-hover').forEach(function (g) {
-                    g.classList.remove('is-hover');
-                });
-            });
             host.addEventListener('click', function (e) {
                 var t = e.target;
                 if (!t || !t.closest) return;
@@ -615,12 +700,6 @@
                 }
                 if (ds.action === 'zoom-in-2x') { zoomIn2x(); redraw(data); return; }
                 if (ds.action === 'zoom-out-2x') { zoomOut2x(); redraw(data); return; }
-                if (ds.action === 'insights') {
-                    compareState.insightsEnabled = !compareState.insightsEnabled;
-                    persistState();
-                    drawBadges(data);
-                    return;
-                }
                 // Mini-segment split (3/9/12).
                 if (ds.mini != null) {
                     var next = Number(ds.mini);
@@ -669,8 +748,60 @@
         }
     }
 
-    function renderTopLossZones(lapData, sess) {
+    // Renders the Insights panel (Top Loss Zones list) into its own host and refreshes the
+    // tab badge count. Detection runs every redraw regardless of which tab is active so the
+    // badge stays current even while the user is on the Controls tab.
+    function drawInsights(lapData) {
+        var host = document.getElementById('tcInsights');
+        if (!host) return;
+        var sess = window.HistoryDetail.state.session;
         var zones = detectTopLossZones(lapData, sess, 3);
+        updateInsightsBadge(zones.length);
+        host.innerHTML = renderTopLossZonesHtml(zones);
+        wireInsightsHost(host);
+    }
+
+    // Idempotent delegated wiring for the Insights host: hover bridges a loss-zone card to
+    // its highlight on the 3D map, and clicking a card's jump button zooms the chart stack
+    // (and toggles off if the same range is already active). Mirrors the badge click logic.
+    function wireInsightsHost(host) {
+        if (host.__tcInsightsWired) return;
+        host.__tcInsightsWired = true;
+        host.addEventListener('mouseover', function (e) {
+            var z = e.target && e.target.closest && e.target.closest('.tc-loss-zone');
+            if (!z) return;
+            var id = z.dataset.zoneId;
+            if (!id) return;
+            document.querySelectorAll('.tc-map-loss').forEach(function (g) {
+                g.classList.toggle('is-hover', g.dataset.zoneId === id);
+            });
+        });
+        host.addEventListener('mouseout', function (e) {
+            var z = e.target && e.target.closest && e.target.closest('.tc-loss-zone');
+            if (!z) return;
+            if (z.contains(e.relatedTarget)) return;
+            document.querySelectorAll('.tc-map-loss.is-hover').forEach(function (g) {
+                g.classList.remove('is-hover');
+            });
+        });
+        host.addEventListener('click', function (e) {
+            var btn = e.target && e.target.closest && e.target.closest('button[data-start]');
+            if (!btn) return;
+            var data = latestCompareLapData;
+            if (!data) return;
+            var start = Number(btn.dataset.start), end = Number(btn.dataset.end);
+            if (compareState.zoomStart === start && compareState.zoomEnd === end) {
+                compareState.zoomStart = null;
+                compareState.zoomEnd = null;
+            } else {
+                compareState.zoomStart = start;
+                compareState.zoomEnd = end;
+            }
+            redraw(data);
+        });
+    }
+
+    function renderTopLossZonesHtml(zones) {
         if (!zones.length) return '<div class="tc-insights-empty">Top Loss Zones: not enough comparable data.</div>';
         // Largest loss in the set drives the bar normalisation (zone#1 always full).
         var maxLoss = zones.reduce(function (acc, z) { return Math.max(acc, z.loss); }, 0);
@@ -990,8 +1121,9 @@
 
 
     function enforceMetricLimit() {
-        var maxVisible = (compareState.miniPerSector >= 4 && window.innerWidth <= 720) ? 6 : METRICS.length;
-        var visible = METRICS.filter(function (m) { return !compareState.hiddenMetrics.has(m.key); });
+        var metrics = compareState.__metrics || METRICS;
+        var maxVisible = (compareState.miniPerSector >= 4 && window.innerWidth <= 720) ? 6 : metrics.length;
+        var visible = metrics.filter(function (m) { return !compareState.hiddenMetrics.has(m.key); });
         while (visible.length > maxVisible) {
             var victim = visible.pop();
             compareState.hiddenMetrics.add(victim.key);
@@ -1074,12 +1206,14 @@
         var refSamples = refIdx != null ? lapData.get(refIdx).samples : null;
 
         enforceMetricLimit();
-        var visibleMetrics = METRICS.filter(function (m) { return !compareState.hiddenMetrics.has(m.key); });
+        var visibleMetrics = (compareState.__metrics || METRICS).filter(function (m) { return !compareState.hiddenMetrics.has(m.key); });
 
         var html = '';
-        html += '<div class="tc-overview" id="tcOverview" title="Drag window to pan · click empty track to center">'
-             +   renderOverviewSegments(sess.meta, compareState.miniPerSector, trackLen)
-             +   '<div class="tc-overview-window" id="tcOverviewWin" title="Drag to move zoom window"></div>'
+        html += '<div class="tc-overview-sticky">'
+             +   '<div class="tc-overview" id="tcOverview" title="Drag window to pan · click empty track to center">'
+             +     renderOverviewSegments(sess.meta, compareState.miniPerSector, trackLen)
+             +     '<div class="tc-overview-window" id="tcOverviewWin" title="Drag to move zoom window"></div>'
+             +   '</div>'
              + '</div>';
         visibleMetrics.forEach(function (m) {
             var h = effectiveHeight(m);
@@ -1089,10 +1223,15 @@
                 + '<div class="tc-chart-svg-host"></div>'
                 + '</div>';
         });
-        // Hover overlay spans the entire stack.
+        // Hover overlay spans the entire stack. Value chips live here (not inside the
+        // per-row SVG hosts) so a chip taller than its row is never clipped by the
+        // row's overflow:hidden — it just spills over the neighbouring rows.
         html += '<div class="tc-hover-layer" id="tcHoverLayer">'
              + '<div class="tc-crosshair" id="tcCrosshair"></div>'
              + '<div class="tc-brush" id="tcBrush"></div>'
+             + visibleMetrics.map(function (m) {
+                    return '<div class="tc-row-chip" data-metric="' + m.key + '" hidden></div>';
+               }).join('')
              + '</div>';
         html += '<div class="tc-interact-hint" aria-hidden="true">Wheel zoom · Shift+drag pan · drag select zoom · dbl-click reset · Esc reset · [← →] pan · [+ −] zoom</div>';
         host.innerHTML = html;
@@ -1102,11 +1241,8 @@
         });
 
         visibleMetrics.forEach(function (m) {
-            var row = host.querySelector('[data-metric="' + m.key + '"] .tc-chart-svg-host');
+            var row = host.querySelector('.tc-chart-row[data-metric="' + m.key + '"] .tc-chart-svg-host');
             row.innerHTML = renderChartSvg(m, lapData, selections, refSamples, refIdx, xMin, xMax, sess, effectiveHeight(m));
-            // Per-row value chip that follows the crosshair. Hidden until the user hovers.
-            row.insertAdjacentHTML('beforeend',
-                '<div class="tc-row-chip" data-metric="' + m.key + '" hidden></div>');
         });
 
         wireHover(host, lapData, selections, refSamples, refIdx, xMin, xMax, sess);
@@ -1115,10 +1251,9 @@
         function updateChartStackView(nextXMin, nextXMax) {
             if (!host) return;
             visibleMetrics.forEach(function (m) {
-                var row = host.querySelector('[data-metric="' + m.key + '"] .tc-chart-svg-host');
+                var row = host.querySelector('.tc-chart-row[data-metric="' + m.key + '"] .tc-chart-svg-host');
                 if (!row) return;
-                row.innerHTML = renderChartSvg(m, lapData, selections, refSamples, refIdx, nextXMin, nextXMax, sess, effectiveHeight(m))
-                    + '<div class="tc-row-chip" data-metric="' + m.key + '" hidden></div>';
+                row.innerHTML = renderChartSvg(m, lapData, selections, refSamples, refIdx, nextXMin, nextXMax, sess, effectiveHeight(m));
             });
             var overviewWin = host.querySelector('#tcOverviewWin');
             if (overviewWin) {
@@ -1327,7 +1462,7 @@
                 { v: 14000, label: '14k' },
             ];
         }
-        if (key === 'drs') {
+        if (metric.style === 'band') {
             return [
                 { v: 0, label: '0' },
                 { v: 0.5, label: '·' },
@@ -1426,12 +1561,13 @@
         // lines fill the width — SVG text would stretch horizontally with it on wide screens.
         var insetTitle = '<div class="tc-plot-title">' + titleStr + '</div>';
 
-        // ---- DRS band row: one horizontal track per visible driver, filled where
-        // their drs===1. Splitting per driver in their team colour makes it obvious
-        // who opened the wing and who didn't — the previous single-band-from-ref
-        // version hid every compare lap's DRS state. Ref track always renders first
-        // (top), then compares in selection order.
-        if (metric.style === 'band' && metric.key === 'drs') {
+        // ---- Binary band rows (DRS / Active Aero SM / Boost): one horizontal track per
+        // visible driver, filled where the signal ===1. Splitting per driver in their team
+        // colour makes it obvious who used the tool and who didn't — the previous
+        // single-band-from-ref version hid every compare lap's state. Ref track always
+        // renders first (top), then compares in selection order. The sample field name
+        // matches metric.key (drs / aero / ovt).
+        if (metric.style === 'band') {
             var bandSvg = '';
             var drsLabelsHtml = '';
             var tracks = [];
@@ -1452,7 +1588,7 @@
             tracks.forEach(function (track, idx) {
                 var ty = PAD_T + trackH * idx + trackGap / 2;
                 var th = Math.max(2, trackH - trackGap);
-                runLengthRuns(track.samples, 'drs', xMin, xMax).forEach(function (r) {
+                runLengthRuns(track.samples, metric.key, xMin, xMax).forEach(function (r) {
                     if (r.v !== 1) return;
                     var x0 = Math.max(0, x(Math.max(r.from, xMin)));
                     var x1 = Math.min(W, x(Math.min(r.to, xMax)));
@@ -1481,7 +1617,7 @@
                 if (x1 <= x0) return;
                 ersBg += '<rect class="tc-ers-band tc-ers-mode-' + r.v + '" x="' + x0 + '" y="' + PAD_T
                     + '" width="' + (x1 - x0) + '" height="' + plotH + '"/>';
-                var tag = ERS_MODE_TAGS[r.v] || '';
+                var tag = ersModeTag(r.v, refCarIdx);
                 if (tag && (x1 - x0) > 30) {
                     ersLabelsHtml += '<div class="tc-ers-mode-tag" style="left:' + ((x1 - 3) / W * 100) + '%;top:' + (PAD_T + 2) + 'px">' + tag + '</div>';
                 }
@@ -1504,13 +1640,16 @@
             teamSeen.set(tid, n + 1);
         });
 
-        var lines = '';
-        var compareSeriesCount = 0;
+        // Two visual roles only: the reference lap is the thick anchor line drawn
+        // beneath everything; every compare lap gets the same thinner stroke on top.
+        // (The old scheme singled out the *first* compare lap with extra weight and
+        // a glow — an arbitrary distinction that read as meaningful when it wasn't.)
+        var refLine = '';
+        var cmpLines = '';
         selections.forEach(function (kv) {
             var carIdx = kv[0];
             var d = lapData && lapData.get(carIdx);
             if (!d || !d.samples) return;
-            var driver = resolveCompareDriver(sess, carIdx, kv[1]);
             var color = laneColorFor(carIdx);
             var dIdx = teamDashIdx.get(carIdx) || 0;
             var dashClass = dIdx === 0 ? ' tc-line--solid' : (dIdx === 1 ? ' tc-line--dashed' : ' tc-line--dotted');
@@ -1531,12 +1670,13 @@
                 var yv = PAD_T + plotH - (pt.v - vMinPlot) / Math.max(0.0001, vMaxPlot - vMinPlot) * plotH;
                 return x(pt.d) + ',' + yv;
             });
-            var roleClass = 'tc-line tc-line-extra';
-            if (carIdx === refCarIdx) roleClass = 'tc-line tc-line-ref';
-            else if (compareSeriesCount === 0) roleClass = 'tc-line tc-line-current';
-            lines += '<polyline class="' + roleClass + dashClass + '" stroke="' + color + '" points="' + pts.join(' ') + '"/>';
-            if (carIdx !== refCarIdx) compareSeriesCount++;
+            var isRef = carIdx === refCarIdx;
+            var roleClass = isRef ? 'tc-line tc-line-ref' : 'tc-line tc-line-cmp';
+            var poly = '<polyline class="' + roleClass + dashClass + '" stroke="' + color + '" points="' + pts.join(' ') + '"/>';
+            if (isRef) refLine = poly;
+            else cmpLines += poly;
         });
+        var lines = refLine + cmpLines;
 
         // Zero baseline when visible in range (speed / inputs / delta / steering).
         var baseY = PAD_T + plotH - (0 - vMinPlot) / Math.max(0.0001, vMaxPlot - vMinPlot) * plotH;
@@ -1618,6 +1758,8 @@
             ers: (a.ers || 0) + ((b.ers || 0) - (a.ers || 0)) * f,
             ersMd: a.ersMd || 0,
             drs: a.drs || 0,
+            aero: a.aero || 0,
+            ovt: a.ovt || 0,
         };
     }
 
@@ -1642,6 +1784,22 @@
         return '#' + hx(mix(r)) + hx(mix(g)) + hx(mix(b));
     }
 
+    // Readability guard: liveryColours can be near-black (dark blues/greens) which vanish
+    // on the dark chart background. If relative luminance is below the floor, mix the
+    // colour toward white just enough to clear it — hue is preserved, identity stays.
+    var MIN_LINE_LUMA = 80; // 0..255; ~#505050 grey equivalent
+    function ensureReadableColor(hex) {
+        var m = /^#?([0-9a-f]{2})([0-9a-f]{2})([0-9a-f]{2})$/i.exec(hex);
+        if (!m) return hex;
+        var r = parseInt(m[1], 16), g = parseInt(m[2], 16), b = parseInt(m[3], 16);
+        var luma = 0.2126 * r + 0.7152 * g + 0.0722 * b;
+        if (luma >= MIN_LINE_LUMA) return hex;
+        var p = (MIN_LINE_LUMA - luma) / (255 - luma);
+        function mix(c) { return Math.round(c + (255 - c) * p); }
+        function hx(c) { return ('0' + c.toString(16)).slice(-2); }
+        return '#' + hx(mix(r)) + hx(mix(g)) + hx(mix(b));
+    }
+
     // One consistent display colour per selected lap, keyed by selection id, so a lap looks
     // identical on the 3D map, the chart lines and the focus cards. Same-team laps are shaded
     // by their occurrence order (aligns with the chart's solid/dashed/dotted dash index, which
@@ -1658,15 +1816,18 @@
                 ? teamAccentColor(drv.teamId, drv.liveryColorHex) : '#9aa0a6';
             var tid = drv && drv.teamId != null ? String(drv.teamId) : ('_' + key);
             var occ = seen[tid] || 0; seen[tid] = occ + 1;
-            out.set(key, shadeColor(base, occ));
+            out.set(key, ensureReadableColor(shadeColor(base, occ)));
         });
         return out;
     }
 
     // Module-level lookup so the chart-line, band and per-driver renderers (each in their own
     // function) get a lap's display colour without threading a local laneColors map through.
+    // Cached per redraw — laneColorMap walks the whole selection and was being rebuilt for
+    // every line of every metric row (and on every hover tick).
     function laneColorFor(carIdx) {
-        return laneColorMap().get(carIdx) || '#9aa0a6';
+        if (!compareState.__laneColors) compareState.__laneColors = laneColorMap();
+        return compareState.__laneColors.get(carIdx) || '#9aa0a6';
     }
 
     // Linear-interpolated lap time at a distance from a driver's Motion samples (d ascending).
@@ -1735,7 +1896,7 @@
             });
         });
 
-        window.TrackMap3D.attach(host);
+        window.TrackMap3D.attach(host, { liveTags: false }); // no live-car feed here — nothing to tag
         // Big running-delta overlay, pinned to the top of the WebGL stage. Created once and
         // reused across redraws (attach is idempotent for the same host, so .tc-map3d persists).
         var stage = host.querySelector('.tc-map3d');
@@ -1951,7 +2112,7 @@
             if (metricKey === 'rpm') return (dv >= 0 ? '+' : '') + Math.round(dv);
             if (metricKey === 'gr') return (dv >= 0 ? '+' : '') + Math.round(dv);
             if (metricKey === 'ers') return (dv >= 0 ? '+' : '') + Math.round(dv) + '%';
-            if (metricKey === 'drs') return dv === 0 ? '0' : (dv > 0 ? '+ON' : '-ON');
+            if (metricKey === 'drs' || metricKey === 'aero' || metricKey === 'ovt') return dv === 0 ? '0' : (dv > 0 ? '+ON' : '-ON');
             if (metricKey === 'delta') return (dv >= 0 ? '+' : '') + dv.toFixed(3) + ' s';
             return (dv >= 0 ? '+' : '') + dv.toFixed(2);
         }
@@ -2009,9 +2170,15 @@
             chips.forEach(function (chip) {
                 var metricKey = chip.dataset.metric;
                 if (perDriver.length === 0) { chip.hidden = true; return; }
+                // Chips live in the stack-wide hover layer; anchor each one to its
+                // metric row via the row's rect measured against the layer's rect.
+                var rowHost = host.querySelector('.tc-chart-row[data-metric="' + metricKey + '"] .tc-chart-svg-host');
+                if (!rowHost) { chip.hidden = true; return; }
+                var rowRect = rowHost.getBoundingClientRect();
+                var rowTop = rowRect.top - rect.top;
                 var metricDef = metricByKey.get(metricKey);
-                var y = 8;
-                var hostH = chip.parentElement.clientHeight || 40;
+                var hostH = rowRect.height || 40;
+                var y = hostH / 2;
                 var plotH = Math.max(1, hostH - PAD_T - PAD_B);
                 if (metricDef && pair.current) {
                     var yv;
@@ -2020,20 +2187,38 @@
                     else yv = 0;
                     var pr = getYRange(metricKey);
                     var yNorm = (yv - pr.min) / Math.max(0.0001, pr.max - pr.min);
-                    y = Math.max(2, Math.min(hostH - 18, PAD_T + (1 - yNorm) * plotH));
+                    // Raw position only — the final clamp happens below with the chip's
+                    // real rendered height (multi-driver chips are much taller than one line).
+                    y = PAD_T + (1 - yNorm) * plotH;
                 }
-                // Speed chip annexes a DRS state badge so the user can read "DRS open"
-                // straight from the speed row — without scanning the dedicated DRS row.
-                function drsTagFor(cmpOn, refOn, isPair) {
+                // Speed chip annexes attack-aid badges so the user can read "DRS open" /
+                // "Straight Mode" / "Boost" straight from the speed row — without scanning
+                // the dedicated band rows. Labels: DRS (≤2025), SM + BST (2026 regs).
+                var AID_BADGES = [
+                    { key: 'drs',  label: 'DRS' },
+                    { key: 'aero', label: 'SM' },
+                    { key: 'ovt',  label: 'BST' },
+                ];
+                function aidTagFor(label, cmpOn, refOn, isPair) {
                     if (!cmpOn && !refOn) return '';
                     if (isPair) {
                         // In pair mode the tag piggy-backs on a per-driver row; the colour
                         // is meaningless there, so we use a neutral pill.
-                        return cmpOn ? '<span class="tc-chip-drs tc-chip-drs--equal">DRS</span>' : '';
+                        return cmpOn ? '<span class="tc-chip-drs tc-chip-drs--equal">' + label + '</span>' : '';
                     }
-                    if (cmpOn && !refOn) return '<span class="tc-chip-drs tc-chip-drs--gain">DRS +</span>';
-                    if (!cmpOn && refOn) return '<span class="tc-chip-drs tc-chip-drs--loss">DRS −</span>';
-                    return '<span class="tc-chip-drs tc-chip-drs--equal">DRS</span>';
+                    if (cmpOn && !refOn) return '<span class="tc-chip-drs tc-chip-drs--gain">' + label + ' +</span>';
+                    if (!cmpOn && refOn) return '<span class="tc-chip-drs tc-chip-drs--loss">' + label + ' −</span>';
+                    return '<span class="tc-chip-drs tc-chip-drs--equal">' + label + '</span>';
+                }
+                function aidTagsDiff(cmpSample, refSample) {
+                    return AID_BADGES.map(function (aid) {
+                        return aidTagFor(aid.label, !!(cmpSample && cmpSample[aid.key]), !!(refSample && refSample[aid.key]), false);
+                    }).join('');
+                }
+                function aidTagsPair(sample) {
+                    return AID_BADGES.map(function (aid) {
+                        return aidTagFor(aid.label, !!(sample && sample[aid.key]), false, true);
+                    }).join('');
                 }
 
                 var rows = '';
@@ -2043,35 +2228,36 @@
                         // "0.6486164050141454" in the chip. Format to 3 dp with sign, matching
                         // formatChipValue's delta path so both chip modes look consistent.
                         var dv = ((pair.current && pair.current.delta) || 0) - ((pair.ref && pair.ref.delta) || 0);
-                        rows = '<span class="tc-chip-ref">Δ</span><span class="tc-chip-val">'
-                            + escapeHtml((dv >= 0 ? '+' : '') + dv.toFixed(3) + ' s') + '</span>';
-                    } else if (metricKey === 'drs') {
-                        // DRS is binary — "+ON / -ON / 0" was cryptic. Render a coloured tag
-                        // that immediately conveys the diff state: cmp gained (green),
-                        // cmp lost the wing (red), or both equal (neutral). When neither
-                        // driver has DRS open the chip is hidden — nothing to compare.
-                        var dCmpOn = !!(pair.current && pair.current.sample && pair.current.sample.drs);
-                        var dRefOn = !!(pair.ref && pair.ref.sample && pair.ref.sample.drs);
+                        rows = '<span class="tc-chip-row"><span class="tc-chip-ref">Δ</span><span class="tc-chip-val">'
+                            + escapeHtml((dv >= 0 ? '+' : '') + dv.toFixed(3) + ' s') + '</span></span>';
+                    } else if (metricKey === 'drs' || metricKey === 'aero' || metricKey === 'ovt') {
+                        // Band signals are binary — "+ON / -ON / 0" was cryptic. Render a
+                        // coloured tag that immediately conveys the diff state: cmp gained
+                        // (green), cmp lost the tool (red), or both equal (neutral). When
+                        // neither driver has it active the chip is hidden — nothing to compare.
+                        var aidDef = AID_BADGES.find(function (a) { return a.key === metricKey; });
+                        var dCmpOn = !!(pair.current && pair.current.sample && pair.current.sample[metricKey]);
+                        var dRefOn = !!(pair.ref && pair.ref.sample && pair.ref.sample[metricKey]);
                         if (!dCmpOn && !dRefOn) { chip.hidden = true; return; }
-                        rows = drsTagFor(dCmpOn, dRefOn, false);
+                        rows = '<span class="tc-chip-row">'
+                            + aidTagFor(aidDef ? aidDef.label : metricKey.toUpperCase(), dCmpOn, dRefOn, false)
+                            + '</span>';
                     } else {
                         var diffText = formatMetricDiff(metricKey, pair.current && pair.current.sample, pair.ref && pair.ref.sample);
-                        rows = '<span class="tc-chip-ref">Δ</span><span class="tc-chip-val">' + escapeHtml(diffText) + '</span>';
-                        // Inline DRS badge on the Speed chip so the wing state is visible
-                        // without consulting the separate DRS row.
-                        if (metricKey === 'spd') {
-                            var sCmpOn = !!(pair.current && pair.current.sample && pair.current.sample.drs);
-                            var sRefOn = !!(pair.ref && pair.ref.sample && pair.ref.sample.drs);
-                            rows += drsTagFor(sCmpOn, sRefOn, false);
-                        }
+                        // Inline attack-aid badges on the Speed chip so DRS / SM / Boost
+                        // state is visible without consulting the separate band rows.
+                        var diffAids = (metricKey === 'spd')
+                            ? aidTagsDiff(pair.current && pair.current.sample, pair.ref && pair.ref.sample) : '';
+                        rows = '<span class="tc-chip-row"><span class="tc-chip-ref">Δ</span><span class="tc-chip-val">'
+                            + escapeHtml(diffText) + '</span>' + diffAids + '</span>';
                     }
                 } else {
                     // One entry per selected lap so the chip reflects the comparison size, not just C/R.
                     rows = perDriver.map(function (pd) {
                         var dv = (metricKey === 'delta') ? pd.delta : null;
-                        var text = formatChipValue(metricKey, pd.sample, dv);
-                        // Per-driver DRS badge appended to the Speed row only.
-                        var drsTag = (metricKey === 'spd') ? drsTagFor(!!(pd.sample && pd.sample.drs), false, true) : '';
+                        var text = formatChipValue(metricKey, pd.sample, dv, pd.carIdx);
+                        // Per-driver attack-aid badges appended to the Speed row only.
+                        var drsTag = (metricKey === 'spd') ? aidTagsPair(pd.sample) : '';
                         // Tag tone reflects cumulative delta at the hover point: the
                         // reference is the baseline (neutral); a compare lap with a
                         // negative delta is ahead (win → green), positive is behind
@@ -2092,12 +2278,23 @@
                 }
                 chip.innerHTML = rows;
                 chip.hidden = false;
-                // Chip is absolute-positioned inside the row's SVG host; track the crosshair x.
-                var chipHost = chip.parentElement;
-                var hostW = chipHost.clientWidth;
+                // Horizontal: sit right of the crosshair, flip to the left side when
+                // the rendered chip would clip at the layer's right edge.
+                var layerW = rect.width;
+                var layerH = rect.height;
                 var chipW = chip.offsetWidth || 80;
-                chip.style.left = Math.max(2, Math.min(hostW - chipW - 2, pct * hostW + 6)) + 'px';
-                chip.style.top = y + 'px';
+                var chipH = chip.offsetHeight || 18;
+                var xPx = pct * layerW;
+                var left = xPx + 10;
+                if (left + chipW > layerW - 2) left = xPx - chipW - 10;
+                left = Math.max(2, Math.min(layerW - chipW - 2, left));
+                // Vertical: centre on the value point inside the row, then clamp to the
+                // *layer* — a chip taller than its row spills over neighbouring rows
+                // instead of being cut off at the row edge.
+                var top = rowTop + y - chipH / 2;
+                top = Math.max(2, Math.min(layerH - chipH - 2, top));
+                chip.style.left = left + 'px';
+                chip.style.top = top + 'px';
             });
 
             updateMapMarkers(d, lapData, sess);
@@ -2493,7 +2690,12 @@
         var gr = s ? (s.gr > 0 ? s.gr : (s.gr === 0 ? 'N' : 'R')) : '—';
         var thr = s ? Math.max(0, Math.min(100, s.thr)) : 0;
         var brk = s ? Math.max(0, Math.min(100, s.brk)) : 0;
-        var ersMd = s ? (ERS_MODE_TAGS[s.ersMd || 0] || '') : '';
+        var ersMd = s ? ersModeTag(s.ersMd || 0, pd.carIdx) : '';
+        // Attack-aid chips per regulation: DRS for ≤2025 laps, Straight Mode + Boost for 2026.
+        var aidChips = lapIsReg26(pd.carIdx)
+            ? '<span class="tc-rd-chip tc-rd-chip--drs is-' + (s && s.aero ? 'on' : 'off') + '">SM</span>'
+              + '<span class="tc-rd-chip tc-rd-chip--boost is-' + (s && s.ovt ? 'on' : 'off') + '">BST</span>'
+            : '<span class="tc-rd-chip tc-rd-chip--drs is-' + (s && s.drs ? 'on' : 'off') + '">DRS</span>';
         return ''
             + '<div class="tc-rd tc-rd--' + (isRef ? 'ref' : 'cmp') + '" style="--rd:' + color + '">'
             +   '<div class="tc-rd-head"><span class="tc-rd-dot"></span>'
@@ -2507,7 +2709,7 @@
             +   '</div>'
             +   '<div class="tc-rd-pedals">' + pedalBar('thr', thr) + pedalBar('brk', brk) + '</div>'
             +   '<div class="tc-rd-chips">'
-            +     '<span class="tc-rd-chip tc-rd-chip--drs is-' + (s && s.drs ? 'on' : 'off') + '">DRS</span>'
+            +     aidChips
             +     (ersMd ? '<span class="tc-rd-chip">' + escapeHtml(ersMd) + '</span>' : '')
             +     (s ? '<span class="tc-rd-chip">ERS ' + Math.round(s.ers || 0) + '%</span>' : '')
             +   '</div>'

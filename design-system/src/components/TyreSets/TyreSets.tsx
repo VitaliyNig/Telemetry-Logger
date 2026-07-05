@@ -100,6 +100,11 @@ function formatTyreSetGrip(actualCompoundId: number, wearPct: number) {
   return { text: `${pct.toFixed(1)}%`, color };
 }
 
+// Wear-fill colour: 4-step scale (fresh → spent).
+function wearFillColor(w: number) {
+  return w <= 25 ? "#3ecf8e" : w <= 50 ? "#f5c518" : w <= 75 ? "#ff9f0a" : "#ff453a";
+}
+
 interface AnnotatedSet extends TyreSetItem {
   idx: number;
   isFitted: boolean;
@@ -135,57 +140,72 @@ export function TyreSets({ sets, fittedIdx, className }: TyreSetsProps) {
     byCompound.get(compound)!.sort((a, b) => Number(b.isFitted) - Number(a.isFitted) || a.wear - b.wear);
   }
 
+  const fitted = annotated.find((s) => s.isFitted) ?? null;
+
   return (
-    <div className={["card", className ?? ""].filter(Boolean).join(" ")}>
-      <div className="tyreset-fitted">
-        <span className="fitted-label">Fitted:</span>
-        {/* The live app never writes to this element either — it's a static "--" in production. Preserved verbatim. */}
-        <span className="fitted-value">--</span>
-      </div>
-      <div className="tyreset-groups">
-        {sortedCompounds.length === 0 && <div className="tyreset-placeholder">No tyre sets available</div>}
+    <div className={["card", "ts-card", className ?? ""].filter(Boolean).join(" ")}>
+      {fitted && (
+        <div className="ts-fitted">
+          <div className="ts-fitted-left">
+            <span className="ts-fitted-label">Fitted · On Car</span>
+            <span className={`ts-fitted-name ${fitted.compoundCss}`}>{fitted.compoundName}</span>
+          </div>
+          <div className="ts-fitted-right">
+            <div className="ts-fitted-stat">
+              <span className="ts-fitted-val" style={{ color: wearFillColor(fitted.wear) }}>{fitted.wear}%</span>
+              <span className="ts-fitted-cap">Wear</span>
+            </div>
+            <div className="ts-fitted-stat">
+              <span className="ts-fitted-val">{fitted.lifeSpan}L</span>
+              <span className="ts-fitted-cap">Life</span>
+            </div>
+          </div>
+        </div>
+      )}
+      <div className="ts-pool">
+        {sortedCompounds.length === 0 && (
+          <div className="widget-empty">
+            <div className="widget-empty-icon"><span className="widget-empty-dash" /></div>
+            <div className="widget-empty-title">No tyre sets available</div>
+            <div className="widget-empty-sub">Waiting for telemetry</div>
+          </div>
+        )}
         {sortedCompounds.map((compound) => {
           const list = byCompound.get(compound)!;
           return (
-            <div className="deck-row" key={compound}>
-              <div className="deck-row-header">
-                <span>{compound}</span>
-                <span className="deck-row-count">{list.length}</span>
+            <div className="ts-group" key={compound}>
+              <div className="ts-group-head">
+                <span className={`ts-group-dot ${list[0].compoundCss}`} />
+                <span className="ts-group-name">{compound}</span>
+                <span className="ts-group-count">{list.length}</span>
               </div>
-              <div className="deck-row-chips">
-                {list.map((s) => {
-                  const wearColor = s.wear > 60 ? "var(--danger)" : s.wear > 30 ? "var(--warning)" : "var(--safe)";
-                  const fillHeight = 100 - s.wear;
-                  const delta = s.lapDeltaTime;
-                  const deltaSign = delta > 0 ? "+" : "";
-                  const deltaCls = delta > 0 ? "pos" : delta < 0 ? "neg" : "zero";
-                  const deltaText = delta !== 0 ? `${deltaSign}${(delta / 1000).toFixed(1)}s` : "+0.0s";
-                  const grip = formatTyreSetGrip(s.actualTyreCompound, s.wear);
-                  const wrate = COMPOUND_WEAR_RATE_PCT[s.actualTyreCompound];
-                  const tipTitle = `Wear ${s.wear}%${wrate != null ? ` · Rate ${wrate.toFixed(2)}%/L` : ""}${s.isFitted ? " · Fitted" : ""}`;
+              {list.map((s) => {
+                const delta = s.lapDeltaTime;
+                const deltaCls = delta > 0 ? "ts-delta--slower" : delta < 0 ? "ts-delta--faster" : "ts-delta--zero";
+                const deltaText = delta === 0 ? "±0.0s" : `${delta > 0 ? "+" : "−"}${(Math.abs(delta) / 1000).toFixed(1)}s`;
+                const grip = formatTyreSetGrip(s.actualTyreCompound, s.wear);
+                const wrate = COMPOUND_WEAR_RATE_PCT[s.actualTyreCompound];
+                const tipTitle = `Wear ${s.wear}%${wrate != null ? ` · Rate ${wrate.toFixed(2)}%/L` : ""}${s.isFitted ? " · Fitted" : ""}`;
 
-                  return (
-                    <div className={s.isFitted ? "tyre-chip fitted" : "tyre-chip"} title={tipTitle} key={s.idx}>
-                      <div className="chip-side-bar chip-side-bar-l">
-                        <div className="chip-side-fill" style={{ height: `${fillHeight}%`, background: wearColor }} />
+                return (
+                  <div className={s.isFitted ? "ts-set-row ts-set-row--fitted" : "ts-set-row"} title={tipTitle} key={s.idx}>
+                    <span className={`ts-row-accent ${s.compoundCss}`} />
+                    <div className="ts-wear">
+                      <div className="ts-wear-track">
+                        <div className="ts-wear-fill" style={{ width: `${s.wear}%`, background: wearFillColor(s.wear) }} />
                       </div>
-                      <div className="chip-side-bar chip-side-bar-r">
-                        <div className="chip-side-fill" style={{ height: `${fillHeight}%`, background: wearColor }} />
-                      </div>
-                      {s.isFitted && <span className="chip-oncar" aria-label="On car">ON</span>}
-                      <span className={`chip-badge ${s.compoundCss}`}>{s.wear}%</span>
-                      <span className={`chip-delta ${deltaCls}`}>{deltaText}</span>
-                      <span className="chip-laps">{s.lifeSpan}L</span>
-                      <span className="chip-grip-label">Grip</span>
-                      {grip ? (
-                        <span className="chip-grip-value" style={{ color: grip.color }}>{grip.text}</span>
-                      ) : (
-                        <span className="chip-grip-value">—</span>
-                      )}
+                      <span className="ts-wear-pct">{s.wear}%</span>
                     </div>
-                  );
-                })}
-              </div>
+                    <span className={`ts-delta ${deltaCls}`}>{deltaText}</span>
+                    <span className="ts-life">{s.lifeSpan}L</span>
+                    {grip ? (
+                      <span className="ts-grip" style={{ color: grip.color }}>{grip.text}</span>
+                    ) : (
+                      <span className="ts-grip ts-grip--na">—</span>
+                    )}
+                  </div>
+                );
+              })}
             </div>
           );
         })}

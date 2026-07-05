@@ -10,18 +10,18 @@ function cx(...parts: (string | false | null | undefined)[]): string {
   return parts.filter(Boolean).join(" ");
 }
 
-/** Mirrors the `.tc-topbar` > `.tc-mode-toggle` markup built in telemetryCompare.js's `render()`/`wireModeToggle()`. */
+/** Mirrors the `.tc-mode-toggle` markup built in telemetryCompare.js's `wireModeToggle()`.
+ *  Lives in the breadcrumb header's `.history-mode-slot` (next to Export Driver / Ghosts),
+ *  not in a dedicated topbar row. */
 export function CompareModeToggle({ mode, onModeChange, className }: CompareModeToggleProps) {
   return (
-    <div className={cx("tc-topbar", className)}>
-      <div className="tc-mode-toggle" role="group" aria-label="Compare layout mode">
-        <button type="button" className={cx(mode === "charts" && "active")} onClick={() => onModeChange("charts")}>
-          Charts
-        </button>
-        <button type="button" className={cx(mode === "map" && "active")} onClick={() => onModeChange("map")}>
-          Map
-        </button>
-      </div>
+    <div className={cx("tc-mode-toggle", className)} role="group" aria-label="Compare layout mode">
+      <button type="button" className={cx(mode === "charts" && "active")} onClick={() => onModeChange("charts")}>
+        Charts
+      </button>
+      <button type="button" className={cx(mode === "map" && "active")} onClick={() => onModeChange("map")}>
+        Map
+      </button>
     </div>
   );
 }

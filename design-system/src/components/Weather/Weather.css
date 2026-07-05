@@ -2,12 +2,13 @@
     overflow-x: auto;
 }
 
-.weather-placeholder {
-    color: var(--text-dim);
-    font-style: italic;
-    font-size: 13px;
-    padding: 8px 0;
-}
+.weather-card { display: flex; flex-direction: column; }
+
+.widget-empty { flex: 1; min-height: 0; padding: 24px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px; }
+.widget-empty-icon { width: 44px; height: 44px; flex: none; border-radius: 50%; border: 1.5px solid #2c343f; display: flex; align-items: center; justify-content: center; opacity: .7; }
+.widget-empty-dash { width: 14px; height: 2px; border-radius: 2px; background: #3d4651; }
+.widget-empty-title { font: 600 13px var(--font-sans, inherit); color: #8d97a5; }
+.widget-empty-sub { font: 400 11px var(--font-sans, inherit); color: #5a6472; margin-top: -7px; }
 
 .wf-accuracy {
     font-size: 10px;

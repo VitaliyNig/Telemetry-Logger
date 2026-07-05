@@ -266,86 +266,27 @@ static class Program
     }
 
     /// <summary>
-    /// Aggregates a lap's 20 Hz samples into a single normalized resource-usage percentage:
-    /// 100% means max allowed ERS deployment for the lap + DRS used across all configured
-    /// static DRS zones for this track. DRS is normalized by zone coverage (not whole lap) so
-    /// non-DRS parts of the lap do not dilute the score.
-    /// Returns null when samples are unavailable so the client can render an em-dash.
+    /// Per-lap Perf for the detail endpoint. v3 laps carry a persisted value (computed at lap
+    /// completion); v2 laps are computed from their inline samples. Either way the result is
+    /// memoized on the cached graph so the cost is paid once per cache lifetime, not per
+    /// request. One upgrade case triggers a recompute: a stored value that had to fall back
+    /// to whole-lap DRS usage (no zones captured at record time) is re-derived from the
+    /// sidecar once zones for the track exist. See <see cref="LapPerfCalculator"/>.
     /// </summary>
-    private static object? ComputeLapPerf(List<LapSample>? samples, int trackId, float trackLengthM, DrsZoneStore drsStore)
+    private static LapPerfData? ResolveLapPerf(HistoryReader reader, string folder, string slug,
+        DriverLap lap, int trackId, float trackLengthM, ushort packetFormat,
+        TrackGeometryZoneStore zoneStore)
     {
-        if (samples == null || samples.Count == 0) return null;
-        const float ErsMaxLapJ = 4_000_000f; // 4 MJ capacity baseline for normalization.
-        const float Wers = 0.7f;
-        const float Wdrs = 0.3f;
+        var straightMode = TrackGeometryZoneStore.UsesStraightMode(packetFormat);
+        var zones = zoneStore.GetZones(trackId, straightMode);
+        var zonesExist = zones.Length > 0;
+        if (lap.Perf != null && (lap.Perf.DrsZoneBased || !zonesExist))
+            return lap.Perf;
 
-        var drsZonesByTrack = drsStore.Load();
-        (float Start, float End)[]? zones = null;
-        var hasZones = trackLengthM > 0 &&
-            drsZonesByTrack.TryGetValue(trackId, out zones) &&
-            zones.Length > 0;
-        int drsZoneSamples = 0;
-        int drsOnInZone = 0;
-        float minErsDepLapJ = float.MaxValue;
-        float maxErsDepLapJ = 0f;
-        // Harvest tracking is opportunistic: 2025 logs have HarvJ/HarvLimJ == 0 because the
-        // game didn't expose the cap. We only emit harvest stats when at least one sample
-        // had a non-zero cap (format 2026+).
-        float maxHarvJ = 0f;
-        float maxHarvLimJ = 0f;
-
-        for (int i = 0; i < samples.Count; i++)
-        {
-            var s = samples[i];
-            if (hasZones)
-            {
-                var dNorm = Math.Clamp(s.D / trackLengthM, 0f, 1f);
-                for (int z = 0; z < zones!.Length; z++)
-                {
-                    var (start, end) = zones[z];
-                    if (dNorm >= start && dNorm <= end)
-                    {
-                        drsZoneSamples++;
-                        if (s.Drs == 1) drsOnInZone++;
-                        break;
-                    }
-                }
-            }
-
-            var dep = s.ErsDepLapJ;
-            if (dep < minErsDepLapJ) minErsDepLapJ = dep;
-            if (dep > maxErsDepLapJ) maxErsDepLapJ = dep;
-
-            if (s.HarvJ > maxHarvJ) maxHarvJ = s.HarvJ;
-            if (s.HarvLimJ > maxHarvLimJ) maxHarvLimJ = s.HarvLimJ;
-        }
-
-        var ersUsedLapJ = Math.Max(0f, maxErsDepLapJ - minErsDepLapJ);
-        var ersUsage = Math.Clamp(ersUsedLapJ / ErsMaxLapJ, 0f, 1f);
-        var drsUsage = hasZones
-            ? (drsZoneSamples > 0 ? (float)drsOnInZone / drsZoneSamples : 0f)
-            : (float)samples.Count(s => s.Drs == 1) / samples.Count;
-        var perfPct = Math.Clamp((ersUsage * Wers + drsUsage * Wdrs) * 100f, 0f, 100f);
-
-        // Harvest efficiency is "how close did this lap get to the cap" — strategically useful
-        // (low = recovering more energy than the regs allow burns, i.e. wasted capacity; high
-        // close to 100% = pushing the harvest budget). Reported separately so it doesn't
-        // muddle the existing perfPct definition; null when the format didn't supply a cap.
-        byte? harvEfficiencyPct = maxHarvLimJ > 0f
-            ? (byte)MathF.Round(Math.Clamp(maxHarvJ / maxHarvLimJ, 0f, 1f) * 100f)
-            : (byte?)null;
-
-        return new
-        {
-            perfPct = (byte)MathF.Round(perfPct),
-            ersUsagePct = (byte)MathF.Round(ersUsage * 100f),
-            drsUsagePct = (byte)MathF.Round(drsUsage * 100f),
-            drsZoneBased = hasZones,
-            weights = new { ers = Wers, drs = Wdrs },
-            harvEfficiencyPct,
-            harvCapMJ = maxHarvLimJ > 0f ? (float?)MathF.Round(maxHarvLimJ / 1_000_000f, 2) : null,
-            harvUsedMJ = maxHarvLimJ > 0f ? (float?)MathF.Round(maxHarvJ / 1_000_000f, 2) : null,
-        };
+        var (samples, _) = reader.LoadLapBuffers(folder, slug, lap);
+        var computed = LapPerfCalculator.Compute(samples, trackLengthM, zones, straightMode);
+        if (computed != null) lap.Perf = computed;
+        return lap.Perf;
     }
 
     /// <summary>
@@ -418,9 +359,8 @@ static class Program
         builder.Services.AddSingleton<SessionLogger>();
         builder.Services.AddSingleton<HistoryReader>();
         builder.Services.AddHostedService<SessionLoggerWriter>();
-        var drsZonesPath = Path.Combine(AppContext.BaseDirectory, "wwwroot", "data", "drs-zones.json");
-        builder.Services.AddSingleton(new DrsZoneStore(drsZonesPath));
-        builder.Services.AddSingleton<AutoDrsZoneCaptureService>();
+        var trackGeometryDir = Path.Combine(AppContext.BaseDirectory, "wwwroot", "data", "track-geometry");
+        builder.Services.AddSingleton(new TrackGeometryZoneStore(trackGeometryDir));
 
         builder.Services.AddSingleton<DebugPacketTracker>();
         builder.Services.AddSingleton<IngressDiagnosticsTracker>();
@@ -480,7 +420,14 @@ static class Program
 
         app.UseResponseCompression();
         app.UseDefaultFiles();
-        app.UseStaticFiles();
+        // no-cache ≠ no-store: browsers may keep a copy but must revalidate (ETag → 304)
+        // before using it. Without this, heuristic caching serves stale JS/CSS after an app
+        // update until the cache expires on its own.
+        app.UseStaticFiles(new StaticFileOptions
+        {
+            OnPrepareResponse = ctx =>
+                ctx.Context.Response.Headers.CacheControl = "no-cache",
+        });
 
         app.MapHub<TelemetryHub>("/hub/telemetry");
 
@@ -838,67 +785,6 @@ static class Program
             return Results.Ok(new { reset = true });
         });
 
-        // --- Debug: DRS zones inspector ---
-        // Lists every known track plus its current state in drs-zones.json. The
-        // current-track block exposes the id of the live session so the UI can offer a
-        // "re-capture" button only when the player is actually on track.
-        app.MapGet("/api/debug/drs-zones", (DrsZoneStore store, AutoDrsZoneCaptureService capture,
-            TelemetryState state, ProtocolRegistry registry) =>
-        {
-            var zonesByTrack = store.Load();
-            var session = state.Get<SessionPacket>((byte)F1PacketId.Session);
-            int? currentTrackId = session != null ? session.TrackId : null;
-
-            // Aggregate the track table across every registered plugin's lookups, so a 2026-only
-            // track (e.g. Madrid id 42) shows up even if Format2025 doesn't know it.
-            var allTracks = new SortedDictionary<int, string>();
-            foreach (var p in registry.All)
-                foreach (var kv in p.Lookups.TrackNames)
-                    if (!allTracks.ContainsKey(kv.Key))
-                        allTracks[kv.Key] = kv.Value;
-
-            var tracks = allTracks.Select(kv =>
-            {
-                var has = zonesByTrack.TryGetValue(kv.Key, out var zones) && zones.Length > 0;
-                float coverage = 0f;
-                if (has)
-                    foreach (var (s, e) in zones!) coverage += e - s;
-                return new
-                {
-                    trackId = kv.Key,
-                    trackName = kv.Value,
-                    hasZones = has,
-                    zoneCount = has ? zones!.Length : 0,
-                    coverage = (float)Math.Round(coverage, 4),
-                    zones = has
-                        ? zones!.Select(z => new[] { z.Start, z.End }).ToArray()
-                        : Array.Empty<float[]>(),
-                };
-            }).ToArray();
-
-            string? currentTrackName = null;
-            if (currentTrackId.HasValue)
-                currentTrackName = allTracks.TryGetValue(currentTrackId.Value, out var n) ? n : $"Track{currentTrackId.Value}";
-
-            return Results.Ok(new
-            {
-                currentTrackId,
-                currentTrackName,
-                captureStatus = capture.GetStatus(),
-                tracks,
-            });
-        });
-
-        // Wipes the JSON entry for one track and re-arms auto-capture so the next valid
-        // practice/quali/TT lap on that track triggers a fresh capture.
-        app.MapPost("/api/debug/drs-zones/{trackId:int}/recapture",
-            async (int trackId, DrsZoneStore store, AutoDrsZoneCaptureService capture) =>
-        {
-            await store.DeleteTrackAsync(trackId);
-            capture.Forget(trackId);
-            return Results.Ok(new { trackId, recaptureArmed = true });
-        });
-
         // --- Sessions (History) ---
 
         app.MapGet("/api/sessions", (ProtocolRegistry registry) =>
@@ -1006,7 +892,7 @@ static class Program
 
         // Session detail: meta + per-driver lap summaries (NO samples/motion). Small enough
         // to hold in the browser for the whole lifetime of the detail view.
-        app.MapGet("/api/sessions/{folder}/{slug}", (string folder, string slug, DrsZoneStore store, HistoryReader historyReader) =>
+        app.MapGet("/api/sessions/{folder}/{slug}", (string folder, string slug, TrackGeometryZoneStore zoneStore, HistoryReader historyReader) =>
         {
             var data = historyReader.Load(folder, slug);
             if (data == null)
@@ -1022,21 +908,24 @@ static class Program
                     name = kv.Value.Name,
                     liveryColorHex = kv.Value.LiveryColorHex,
                     lapCount = kv.Value.Laps.Count,
+                    // Per-driver final-classification snapshot (backfilled by SessionLogger).
+                    // Null in logs recorded before the field existed — the UI then falls back
+                    // to the raw finalClassification packet below.
+                    final = kv.Value.Final,
                     laps = kv.Value.Laps.Select(l => new
                     {
                         l.LapNum, l.LapTimeMs, l.S1Ms, l.S2Ms, l.S3Ms,
                         l.CompoundActual, l.CompoundVisual, l.TyreAge, l.TyreWearEnd,
                         l.Valid, l.Pit, l.Position, l.GapToLeaderMs, l.RaceFlag,
                         l.BlueFlag,
-                        // Per-lap Performance aggregate for the Race Lap Times view. Computed
-                        // here (not persisted) from the lap's 20 Hz samples so old logs still
-                        // light up after an app upgrade — and so we don't pay for it when the
-                        // caller doesn't need it (samples themselves stay out of this payload).
-                        Perf = ComputeLapPerf(
-                            l.Samples,
+                        // Per-lap Performance aggregate for the Race Lap Times view. v3 logs
+                        // carry it precomputed; v2 logs compute it from inline samples once
+                        // per cache lifetime. Samples themselves stay out of this payload.
+                        Perf = ResolveLapPerf(historyReader, folder, slug, l,
                             data.Meta?.TrackId ?? -1,
                             data.Meta?.TrackLengthM ?? 0f,
-                            store),
+                            data.Meta?.PacketFormat ?? 0,
+                            zoneStore),
                     }).ToArray(),
                     tyreByLap = kv.Value.TyreByLap,
                 });
@@ -1093,10 +982,11 @@ static class Program
             // on-track points reach the chart/map.
             var trackLen = data.Meta?.TrackLengthM ?? 0f;
             var maxD = trackLen > 0f ? trackLen + 50f : float.MaxValue;
-            var samples = (match.Samples ?? new List<LapSample>())
+            var (rawSamples, rawMotion) = historyReader.LoadLapBuffers(folder, slug, match);
+            var samples = (rawSamples ?? new List<LapSample>())
                 .Where(s => s.D >= 0f && s.D <= maxD)
                 .ToList();
-            var motion = (match.Motion ?? new List<MotionSample>())
+            var motion = (rawMotion ?? new List<MotionSample>())
                 .Where(m => m.D >= 0f && m.D <= maxD)
                 .ToList();
 
@@ -1122,7 +1012,10 @@ static class Program
         app.MapGet("/api/sessions/{folder}/{slug}/export", (string folder, string slug, int carIdx, HistoryReader historyReader) =>
         {
             var data = historyReader.Load(folder, slug);
-            if (data?.Drivers == null || !data.Drivers.TryGetValue(carIdx, out var driver))
+            // Hydrated copy: v3 logs keep samples in the sidecar, but the exported payload
+            // stays in the inline v2 ghost shape so import stays format-agnostic.
+            var driver = historyReader.LoadDriverWithSamples(folder, slug, carIdx);
+            if (data?.Meta == null || driver == null)
                 return Results.NotFound(new { error = "driver not found" });
 
             var payload = new
@@ -1175,7 +1068,9 @@ static class Program
             if (!root.TryGetProperty("driver", out var driverEl))
                 return Results.BadRequest(new { error = "no driver payload" });
 
-            var safeFolder = Path.GetFileName(folder);
+            var safeFolder = HistoryReader.SafeLeafName(folder);
+            if (safeFolder == null)
+                return Results.BadRequest(new { error = "invalid folder name" });
             var ghostsDir = Path.Combine(HistoryRoot.Path, safeFolder, "_ghosts");
             Directory.CreateDirectory(ghostsDir);
             var fileName = $"ghost_{DateTimeOffset.UtcNow.ToUnixTimeSeconds()}.json";
@@ -1214,7 +1109,9 @@ static class Program
             if (target?.Meta == null)
                 return Results.NotFound(new { error = "session not found" });
 
-            var safeFolder = Path.GetFileName(folder);
+            var safeFolder = HistoryReader.SafeLeafName(folder);
+            if (safeFolder == null)
+                return Results.BadRequest(new { error = "invalid folder name" });
             var ghostsDir = Path.Combine(HistoryRoot.Path, safeFolder, "_ghosts");
             if (!Directory.Exists(ghostsDir)) return Results.Ok(Array.Empty<object>());
 
@@ -1241,13 +1138,45 @@ static class Program
             return Results.Ok(ghosts);
         });
 
+        // Delete one imported ghost file from the session's _ghosts/ store. fileName is the
+        // leaf name returned by /ghosts and /api/history/import.
+        app.MapDelete("/api/sessions/{folder}/{slug}/ghosts/{fileName}",
+            (string folder, string slug, string fileName, HistoryReader historyReader) =>
+        {
+            var target = historyReader.Load(folder, slug);
+            if (target?.Meta == null)
+                return Results.NotFound(new { error = "session not found" });
+
+            var safeFolder = HistoryReader.SafeLeafName(folder);
+            var safeFile = HistoryReader.SafeLeafName(fileName);
+            if (safeFolder == null || safeFile == null ||
+                !safeFile.EndsWith(".json", StringComparison.OrdinalIgnoreCase))
+                return Results.BadRequest(new { error = "invalid ghost file name" });
+
+            var path = Path.Combine(HistoryRoot.Path, safeFolder, "_ghosts", safeFile);
+            if (!File.Exists(path))
+                return Results.NotFound(new { error = "ghost not found" });
+
+            try
+            {
+                File.Delete(path);
+            }
+            catch (Exception ex)
+            {
+                return Results.Problem("Failed to delete ghost: " + ex.Message, statusCode: 500);
+            }
+            return Results.Ok(new { deleted = true, fileName = safeFile });
+        });
+
         app.MapPost("/api/sessions/open-folder", (OpenFolderRequest req) =>
         {
             if (string.IsNullOrWhiteSpace(req.Folder))
                 return Results.BadRequest(new { error = "folder is required" });
 
             // Sanitize: only allow folder name, no path traversal
-            var safeName = Path.GetFileName(req.Folder);
+            var safeName = HistoryReader.SafeLeafName(req.Folder);
+            if (safeName == null)
+                return Results.BadRequest(new { error = "invalid folder name" });
             var fullPath = Path.Combine(HistoryRoot.Path, safeName);
 
             if (!Directory.Exists(fullPath))
