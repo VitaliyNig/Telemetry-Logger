@@ -4298,6 +4298,8 @@ input.history-folder-path:focus {
 
 /* ---------- DriverPicker ---------- */
 
+/* Card chrome matches Live-tab widgets (.grid-stack-item-content): same bg/border/radius,
+   so Compare laps reads as a sub-card in the sidebar rather than floating text. */
 .history-driver-picker {
     display: flex;
     flex-direction: column;
@@ -4305,7 +4307,7 @@ input.history-folder-path:focus {
     padding: var(--space-2);
     background: var(--color-bg-card);
     border: 1px solid var(--color-border-default);
-    border-radius: 6px;
+    border-radius: var(--radius-md, 8px);
     min-width: 240px;
 }
 
@@ -4927,6 +4929,52 @@ td.lap-cell__tyre { cursor: default; }
 .delta-down { color: var(--semantic-red); font-weight: 700; }
 .delta-same { color: var(--text-dim); }
 
+/* History → Results (final classification). Reuses the virtual-grid table skin. */
+.res-container {
+    padding: var(--space-4);
+    max-width: 980px;
+}
+
+/* Framed, scrollable wrapper matching Events / Lap Times tables. */
+.res-container .lt-virtual-table-wrap {
+    max-height: calc(100vh - 240px);
+    overflow: auto;
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+    background: var(--color-bg-card);
+}
+
+@supports (max-height: 100dvh) {
+    .res-container .lt-virtual-table-wrap { max-height: calc(100dvh - 240px); }
+}
+
+/* Keep the header row visible while scrolling the classification. */
+.res-container .lt-virtual-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+}
+
+.res-row--dnf .lt-virtual-cell--driver,
+.res-row--dnf .lt-virtual-pos {
+    color: var(--text-dim);
+}
+
+.res-cell--status {
+    color: var(--text-secondary);
+    white-space: nowrap;
+}
+
+.res-row--dnf .res-cell--status {
+    color: var(--semantic-red);
+}
+
+/* Fastest race lap of the field — traditional purple. */
+.res-best-lap--overall {
+    color: #b57bff;
+    font-weight: 700;
+}
+
 @media (max-width: 960px) {
     .lap-grid-wrap { max-height: calc(100vh - 200px); }
     @supports (max-height: 100dvh) {
@@ -5494,9 +5542,20 @@ td.lap-cell__tyre { cursor: default; }
 
 /* ---------- Telemetry Compare ---------- */
 
+/* Compare workspace root: a flex column that fills the detail body. The topbar and
+   transport stay pinned at the top/bottom; the 3-column grid takes the remaining height
+   and each column scrolls independently (wired in the >=1201px block below). */
+.tc-root {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+
 .tc-layout {
     display: grid;
-    grid-template-columns: minmax(220px, 260px) minmax(0, 1fr) minmax(380px, 480px);
+    /* The centre column is the hero: roughly 1/5 · 3/5 · 1/5. Mins keep the side
+       toolbar and the map/focus rail usable; above that the 1fr:3fr:1fr ratio holds. */
+    grid-template-columns: minmax(220px, 1fr) minmax(0, 3fr) minmax(300px, 1fr);
     grid-template-areas: "side main rail";
     gap: 12px;
     padding: 4px;
@@ -5514,13 +5573,7 @@ td.lap-cell__tyre { cursor: default; }
     display: flex;
     flex-direction: column;
     gap: 10px;
-    scrollbar-width: thin;
     padding-right: 2px;
-}
-.tc-rail::-webkit-scrollbar { width: 6px; }
-.tc-rail::-webkit-scrollbar-thumb {
-    background: var(--color-border-default);
-    border-radius: 999px;
 }
 
 .tc-side {
@@ -5536,7 +5589,6 @@ td.lap-cell__tyre { cursor: default; }
        laps / Top-Loss-Zones never pushes the page or runs off-screen. */
     max-height: calc(100vh - 12px);
     overflow-y: auto;
-    scrollbar-width: thin;
 }
 .tc-side-picker-host { min-width: 0; flex: 0 0 auto; }
 .tc-side-picker-host .history-driver-picker {
@@ -5551,17 +5603,69 @@ td.lap-cell__tyre { cursor: default; }
     max-height: clamp(160px, 42vh, 460px);
     overflow-y: auto;
     overflow-x: hidden;
-    scrollbar-width: thin;
     padding-right: 3px;
-}
-.tc-side-picker-host .tc-lap-card-list::-webkit-scrollbar { width: 6px; }
-.tc-side-picker-host .tc-lap-card-list::-webkit-scrollbar-thumb {
-    background: var(--color-border-default);
-    border-radius: 999px;
 }
 /* The Add button stays a fixed size even when the list scrolls. */
 .tc-side-picker-host .tc-lap-card-add { flex: 0 0 auto; }
 .tc-side-toolbar { min-width: 0; flex: 0 0 auto; }
+
+/* Left-column tabs: Controls (lap picker + chart controls) | Insights (Top Loss Zones).
+   Sticky so the tab bar stays visible while the active panel scrolls; the opaque
+   background stops the scrolling panel from showing through behind it. */
+.tc-side-tabs {
+    position: sticky;
+    top: 0;
+    z-index: 3;
+    flex: 0 0 auto;
+    display: flex;
+    gap: 4px;
+    padding: 4px;
+    border-radius: 8px;
+    background: var(--color-bg-base);
+}
+.tc-side-tab {
+    flex: 1 1 0;
+    min-width: 0;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    padding: 7px 8px;
+    border: none;
+    border-radius: 6px;
+    background: rgba(255, 255, 255, 0.04);
+    color: var(--color-text-secondary);
+    font-family: inherit;
+    font-size: 12px;
+    font-weight: 600;
+    letter-spacing: 0.3px;
+    cursor: pointer;
+    transition: background var(--motion-fast, .15s), color var(--motion-fast, .15s);
+}
+.tc-side-tab:hover { color: var(--color-text-primary); background: var(--color-bg-card-hover); }
+.tc-side-tab.active {
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
+    box-shadow: inset 0 0 0 1px var(--color-border-default);
+}
+.tc-side-tab-badge {
+    box-sizing: border-box;
+    min-width: 16px;
+    height: 16px;
+    padding: 0 5px;
+    border-radius: 999px;
+    background: var(--color-accent-primary);
+    color: #fff;
+    font-size: 10px;
+    font-weight: 700;
+    line-height: 16px;
+    text-align: center;
+}
+.tc-side-tab-badge[hidden] { display: none; }
+
+.tc-side-panel { min-width: 0; display: flex; flex-direction: column; gap: 8px; }
+.tc-side-panel[hidden] { display: none; }
+.tc-side-insights-host { min-width: 0; }
 
 .tc-main { grid-area: main; min-width: 0; display: flex; flex-direction: column; gap: 8px; }
 
@@ -5603,6 +5707,30 @@ td.lap-cell__tyre { cursor: default; }
 .tc-mode-toggle button:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
 .tc-mode-toggle button.active { background: var(--color-accent-primary); color: #fff; }
 
+/* Three-independent-columns workspace (wide screens only). The root fills the detail
+   body's height; the grid takes the leftover space below the topbar/transport, and each
+   column (side · charts · rail) becomes its own scroll container so scrolling one never
+   moves the others. Below 1201px the columns reflow/stack and the page scrolls normally
+   (handled by the max-width media queries further down). */
+@media (min-width: 1201px) {
+    .tc-root { height: 100%; }
+    .tc-layout {
+        flex: 1 1 auto;
+        min-height: 0;
+        align-items: stretch;
+    }
+    .tc-layout--charts .tc-side,
+    .tc-layout--charts .tc-main,
+    .tc-layout--charts .tc-rail {
+        position: static;
+        top: auto;
+        min-height: 0;
+        max-height: 100%;
+        height: 100%;
+        overflow-y: auto;
+    }
+}
+
 /* Map-priority mode: the 3D-map rail becomes the hero column; charts shrink to a
    secondary column. Pure grid-column reflow — DOM order is unchanged. */
 /* Map-priority mode (wide screens only): the 3D map becomes the centre hero, the YOU-vs-REF
@@ -5611,22 +5739,48 @@ td.lap-cell__tyre { cursor: default; }
    wrappers into the parent grid so they can be placed by area — no DOM changes, and Charts
    mode is left completely untouched. */
 @media (min-width: 1201px) {
+    /* Three independent columns: tools (side) · map-over-charts (centre) · focus.
+       The centre column is split vertically — the 3D map takes the top 2/3 and the chart
+       stack the bottom 1/3 (scrolls internally). Side and focus span the full height and
+       each scroll on their own. `display: contents` promotes the charts / map / focus out
+       of their .tc-main / .tc-rail wrappers so the grid can place them by area. */
     .tc-layout--map {
-        grid-template-columns: minmax(200px, 230px) minmax(0, 1fr) minmax(300px, 360px);
-        grid-template-rows: minmax(0, 1fr) auto;
+        grid-template-columns: minmax(200px, 1fr) minmax(0, 3fr) minmax(280px, 1fr);
+        grid-template-rows: 2fr 1fr;
         grid-template-areas:
             "side map    focus"
-            "side charts charts";
+            "side charts focus";
     }
     .tc-layout--map .tc-main,
     .tc-layout--map .tc-rail { display: contents; }
-    .tc-layout--map .tc-layer-b { grid-area: charts; min-width: 0; max-height: 32vh; overflow-y: auto; opacity: 1; }
-    .tc-layout--map .tc-map { grid-area: map; }
-    .tc-layout--map .tc-focus { grid-area: focus; }
-    .tc-layout--map .tc-map3d { aspect-ratio: auto; height: min(72vh, 600px); }
-    /* The tools/insights column spans both rows; cap it and scroll internally so a long
-       Top Loss Zones list can't stretch the grid and open a gap between map and charts. */
-    .tc-layout--map .tc-side { align-self: start; max-height: calc(100vh - 96px); overflow-y: auto; }
+    .tc-layout--map .tc-side {
+        grid-area: side;
+        position: static;
+        top: auto;
+        min-height: 0;
+        max-height: 100%;
+        overflow-y: auto;
+    }
+    .tc-layout--map .tc-map {
+        grid-area: map;
+        min-height: 0;
+        overflow: hidden;
+    }
+    .tc-layout--map .tc-layer-b {
+        grid-area: charts;
+        min-width: 0;
+        min-height: 0;
+        overflow-y: auto;
+        opacity: 1;
+    }
+    .tc-layout--map .tc-focus {
+        grid-area: focus;
+        min-height: 0;
+        max-height: 100%;
+        overflow-y: auto;
+    }
+    /* Fill the map cell: the stage grows into the row, the caption keeps its size. */
+    .tc-layout--map .tc-map3d { aspect-ratio: auto; flex: 1 1 auto; min-height: 0; height: auto; }
 }
 
 /* Big running delta pinned to the top of the 3D map stage (Map mode only). */
@@ -5692,7 +5846,26 @@ td.lap-cell__tyre { cursor: default; }
 .tc-lap-card-add:disabled { opacity: 0.45; cursor: not-allowed; }
 
 /* Lap playback transport (scrubber + play/speed) — spans the bottom of the Compare view. */
-.tc-transport { display: flex; align-items: center; gap: 10px; padding: 8px 6px 2px; margin-top: 4px; }
+/* Lap playback transport (scrubber + play/speed) — pinned as a footer bar along the
+   bottom of the Compare workspace. Sticky bottom keeps it in view when the page scrolls
+   on narrow screens; on wide screens it's the last flex item of .tc-root, so it sits at
+   the very bottom of the viewport-bounded layout. Distinct card background (matches the
+   widget/sub-card bg used elsewhere on this page) instead of the page background —
+   otherwise the bar visually disappears and only the thin top border reads as a separator. */
+.tc-transport {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex: 0 0 auto;
+    position: sticky;
+    bottom: 0;
+    z-index: 5;
+    padding: 8px 12px;
+    margin-top: 8px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md, 8px);
+}
 .tc-tp-btn {
     flex: 0 0 auto;
     width: 30px; height: 26px;
@@ -6145,6 +6318,110 @@ td.lap-cell__tyre { cursor: default; }
 .tc-stb-section .tc-zoom-btn { padding: 3px 8px; font-size: 10px; flex: 1 1 auto; text-align: center; }
 .tc-stb-section .tc-zoom-actions { flex: 1 1 auto; min-width: 0; gap: 3px; }
 .tc-stb-section .tc-icon-btn { width: 24px; height: 24px; font-size: 13px; }
+
+/* ---- Chart controls: flat sub-card layout (labelled rows + sector mini-cards) ----
+   Card chrome matches Live-tab widgets (.grid-stack-item-content) and the Compare laps
+   card above it (.history-driver-picker) — same bg/border/radius, so the whole left
+   column reads as a stack of widget-style sub-cards instead of loose floating text. */
+.tc-ctrl {
+    gap: 10px;
+    padding: 8px;
+    background: var(--color-bg-card);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md, 8px);
+}
+.tc-ctrl-head {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-dim);
+    padding-bottom: 7px;
+    border-bottom: 1px solid var(--border);
+}
+.tc-ctrl-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 0;
+}
+.tc-ctrl-label {
+    flex: 0 0 auto;
+    width: 50px;
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    color: var(--text-dim);
+    user-select: none;
+}
+.tc-ctrl-row > .tc-segmented,
+.tc-ctrl-row > .tc-zoom-actions { flex: 1 1 auto; min-width: 0; }
+.tc-ctrl-section { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.tc-ctrl-section-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.tc-ctrl-count {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+}
+/* Zoom row: 3 equal buttons filling the width. */
+.tc-zoom-actions--grow { flex-wrap: nowrap; gap: 4px; }
+.tc-zoom-actions--grow .tc-zoom-btn { flex: 1 1 0; text-align: center; padding: 5px 4px; }
+
+/* Sector mini sub-cards: label over reference time. */
+.tc-sector-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+}
+.tc-sector-card {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+    padding: 6px 8px;
+    border: 1px solid var(--color-border-default);
+    border-radius: 6px;
+    background: color-mix(in srgb, var(--color-bg-card) 92%, #fff 8%);
+    cursor: pointer;
+    min-width: 0;
+    transition: border-color var(--motion-fast, .15s), background var(--motion-fast, .15s);
+}
+.tc-sector-card:hover { border-color: color-mix(in srgb, var(--accent-brand) 45%, var(--color-border-default)); }
+.tc-sector-card.is-active {
+    border-color: var(--accent-brand);
+    background: color-mix(in srgb, var(--accent-brand) 14%, transparent);
+}
+.tc-sector-card-label {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    color: var(--text-dim);
+}
+.tc-sector-card.is-active .tc-sector-card-label { color: var(--accent-brand); }
+.tc-sector-card-time {
+    font-family: var(--font-mono, 'Courier New', monospace);
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+    font-variant-numeric: tabular-nums;
+}
+
+/* Channel chips in the controls panel: boxed pills with a metric-colour rail. */
+.tc-ctrl .tc-channel-list { gap: 4px; }
+.tc-ctrl .tc-channel {
+    border: 1px solid var(--color-border-default);
+    background: color-mix(in srgb, var(--color-bg-card) 92%, #fff 8%);
+    padding: 4px 9px 4px 12px;
+    font-size: 11px;
+}
+.tc-ctrl .tc-channel::before { background: var(--color-border-muted); }
+.tc-ctrl .tc-channel.active {
+    border-color: color-mix(in srgb, var(--color-border-default) 45%, var(--text-dim));
+    color: var(--text-primary);
+}
 
 /* Top Loss Zones panel (Insights). Lives in the compact side toolbar, so the
    layout has to stay narrow (~200 px wide) — vertical cards with stacked rows
@@ -7601,24 +7878,61 @@ td.lap-cell__tyre { cursor: default; }
     position: relative;
     width: 100%;
     border: 1px solid var(--color-border-default);
-    border-radius: 6px;
+    border-radius: 8px;
     background: color-mix(in srgb, var(--color-bg-card) 92%, #fff 8%);
-    padding: 5px 6px 5px 10px;
+    padding: 7px 7px 7px 12px;
     color: var(--text-primary);
     cursor: pointer;
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 9px;
     font-size: 12px;
     line-height: 1.2;
     overflow: hidden;
+    transition: border-color var(--motion-fast, .15s), box-shadow var(--motion-fast, .15s);
 }
+.tc-lap-card:hover { border-color: color-mix(in srgb, var(--color-border-default) 60%, var(--text-dim)); }
+/* Active reference lap: subtle accent ring (matches the chart's REF emphasis). */
+.tc-lap-card.is-ref {
+    border-color: color-mix(in srgb, var(--accent-brand) 50%, var(--color-border-default));
+    box-shadow: 0 0 0 1px color-mix(in srgb, var(--accent-brand) 28%, transparent);
+}
+/* Driver code badge in team colour (text colour set inline by luminance). */
+.tc-lap-card-badge {
+    flex: 0 0 auto;
+    min-width: 36px;
+    height: 30px;
+    padding: 0 7px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 800;
+    letter-spacing: 0.5px;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.22);
+}
+/* Left indicator: colour + line style, mirroring how the lap is drawn on the charts.
+   Solid bar = solid line; the dashed/dotted variants paint a vertical dash pattern in the
+   same team colour so teammates (same colour) can still be told apart at a glance. */
 .tc-lap-card::before {
     content: '';
     position: absolute;
     left: 0; top: 0; bottom: 0;
-    width: 3px;
+    width: 4px;
     background: var(--tc-card-color, #9aa0a6);
+}
+.tc-lap-card[data-line-style="dashed"]::before {
+    background: repeating-linear-gradient(
+        to bottom,
+        var(--tc-card-color, #9aa0a6) 0, var(--tc-card-color, #9aa0a6) 6px,
+        transparent 6px, transparent 11px);
+}
+.tc-lap-card[data-line-style="dotted"]::before {
+    background: repeating-linear-gradient(
+        to bottom,
+        var(--tc-card-color, #9aa0a6) 0, var(--tc-card-color, #9aa0a6) 2.5px,
+        transparent 2.5px, transparent 6px);
 }
 .tc-lap-card.is-muted { opacity: 0.45; }
 .tc-lap-card-info {
@@ -7632,43 +7946,77 @@ td.lap-cell__tyre { cursor: default; }
 .tc-lap-card-name-row {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     overflow: hidden;
 }
-.tc-lap-card-name {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
+.tc-lap-card-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     min-width: 0;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text-primary);
 }
 .tc-lap-card-lap {
-    font-size: 10px;
-    font-weight: 600;
+    flex: 0 0 auto;
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text-primary);
+    letter-spacing: 0.2px;
+}
+.tc-lap-card-time {
+    font-family: var(--font-mono, 'Courier New', monospace);
+    font-size: 11px;
+    font-variant-numeric: tabular-nums;
     color: var(--text-dim);
     letter-spacing: 0.2px;
 }
+.tc-lap-card-time--none { color: var(--color-text-muted, var(--text-dim)); }
+/* Tyre chip: compound colour dot + letter (S/M/H/I/W) + optional age in laps. */
+.tc-lap-card-tyre {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    font-size: 10px;
+    font-weight: 600;
+    line-height: 1;
+    white-space: nowrap;
+}
+.tc-tyre-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex: 0 0 auto;
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
+}
+.tc-tyre-letter { color: var(--text-primary); letter-spacing: 0.3px; }
+.tc-tyre-age { color: var(--text-dim); }
+.tc-tyre-age::before { content: '·'; margin-right: 3px; }
 .tc-lap-card-actions {
     display: inline-flex;
     align-items: center;
-    gap: 1px;
+    gap: 4px;
     flex: 0 0 auto;
 }
 .tc-lap-card-ref {
     border: 1px solid var(--color-border-default);
-    border-radius: 3px;
+    border-radius: 4px;
     background: transparent;
     color: var(--text-dim);
     cursor: pointer;
     font-size: 9px;
     font-weight: 700;
     line-height: 1;
-    padding: 2px 4px;
-    letter-spacing: 0.3px;
+    padding: 4px 6px;
+    letter-spacing: 0.4px;
+    white-space: nowrap;
 }
 .tc-lap-card-ref:hover { color: var(--text-primary); border-color: var(--accent-brand); }
+/* Active reference indicator (not a button) — accent pill. */
+.tc-lap-card-ref.is-active {
+    background: color-mix(in srgb, var(--accent-brand) 20%, transparent);
+    border-color: color-mix(in srgb, var(--accent-brand) 55%, transparent);
+    color: var(--accent-brand);
+    cursor: default;
+}
 .tc-lap-card-vis, .tc-lap-card-remove {
     border: 0;
     background: transparent;
@@ -7676,10 +8024,29 @@ td.lap-cell__tyre { cursor: default; }
     cursor: pointer;
     font-size: 11px;
     line-height: 1;
-    padding: 2px 3px;
+    padding: 3px 4px;
+    border-radius: 4px;
 }
 .tc-lap-card-remove { font-size: 13px; }
-.tc-lap-card-vis:hover, .tc-lap-card-remove:hover { color: var(--text-primary); }
+.tc-lap-card-vis:hover, .tc-lap-card-remove:hover {
+    color: var(--text-primary);
+    background: var(--color-bg-card-hover);
+}
+/* Compare-laps header: title left, "used / max" count right. */
+.tc-lap-card-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+}
+.tc-lap-card-count {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text-dim);
+    font-variant-numeric: tabular-nums;
+    letter-spacing: 0;
+    text-transform: none;
+}
 .tc-lap-card-add {
     min-height: 26px;
     display: flex;
