@@ -1336,6 +1336,15 @@
     background: var(--accent-blue);
     clip-path: polygon(100% 0, 100% 100%, 0 0);
 }
+.tl-swatch-wearbar {
+    background: linear-gradient(to right, #3ecf8e, #f5c518, #ff9f0a, #ff453a);
+    border-radius: 3px;
+}
+.tl-swatch-fitrow {
+    background: rgba(0,166,255,0.18);
+    border-left: 3px solid var(--accent-blue);
+    border-radius: 2px;
+}
 .tl-text {
     width: 28px;
     flex-shrink: 0;
