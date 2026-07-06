@@ -58,18 +58,18 @@
     border: 1px solid currentColor;
     color: var(--text-dim);
 }
-.cs-badge[data-mix="0"] { color: #4dc9ff; }
-.cs-badge[data-mix="1"] { color: #9aa4b2; }
-.cs-badge[data-mix="2"] { color: #ffd60a; }
-.cs-badge[data-mix="3"] { color: #ff9f0a; }
+.cs-badge[data-mix="0"] { color: var(--accent-blue); }
+.cs-badge[data-mix="1"] { color: var(--text-secondary); }
+.cs-badge[data-mix="2"] { color: var(--accent-yellow); }
+.cs-badge[data-mix="3"] { color: var(--accent-orange); }
 
 .cs-badge[data-mode="0"] { color: var(--text-dim); }
-.cs-badge[data-mode="1"] { color: #3ecf8e; }
-.cs-badge[data-mode="2"] { color: #ff9f0a; }
+.cs-badge[data-mode="1"] { color: var(--accent-green); }
+.cs-badge[data-mode="2"] { color: var(--accent-orange); }
 .cs-card[data-reg="2026"] .cs-badge[data-mode="3"],
-.cs-card[data-reg="2026"] .cs-deploy-chip { color: #4dc9ff; }
+.cs-card[data-reg="2026"] .cs-deploy-chip { color: var(--accent-blue); }
 .cs-card[data-reg="2025"] .cs-badge[data-mode="3"],
-.cs-card[data-reg="2025"] .cs-deploy-chip { color: #ffd60a; }
+.cs-card[data-reg="2025"] .cs-deploy-chip { color: var(--accent-yellow); }
 
 .cs-fuel-delta {
     display: flex;

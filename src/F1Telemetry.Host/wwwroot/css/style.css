@@ -1619,25 +1619,42 @@
     color: var(--text-dim);
 }
 .cs-badge {
+    margin-left: auto;
+    flex: none;
     font-family: var(--font-mono);
     font-size: clamp(9px, 2.4cqi, 12px);
     font-weight: 700;
     letter-spacing: 0.5px;
-    padding: 4px 8px;
-    border-radius: 3px;
-    background: rgba(255,255,255,0.08);
-    color: var(--color-text-secondary);
-    border: 1px solid transparent;
+    padding: 2px 7px;
+    border-radius: 4px;
+    background: transparent;
+    border: 1px solid currentColor;
+    color: var(--text-dim);
 }
-.cs-badge[data-mix="0"] { background: rgba(0,166,255,0.18);  color: #7ac9ff; }
-.cs-badge[data-mix="1"] { background: rgba(255,255,255,0.1); color: var(--text-primary); }
-.cs-badge[data-mix="2"] { background: rgba(255,140,0,0.2);   color: #ffb266; }
-.cs-badge[data-mix="3"] { background: rgba(225,6,0,0.25);    color: #ff7a75; }
+.cs-badge[data-mix="0"] { color: var(--accent-blue); }
+.cs-badge[data-mix="1"] { color: var(--text-secondary); }
+.cs-badge[data-mix="2"] { color: var(--accent-yellow); }
+.cs-badge[data-mix="3"] { color: var(--accent-orange); }
 
-.cs-badge[data-mode="0"] { background: rgba(255,255,255,0.08); color: var(--text-dim); }
-.cs-badge[data-mode="1"] { background: rgba(255,215,0,0.18);   color: #ffe066; }
-.cs-badge[data-mode="2"] { background: rgba(255,140,0,0.25);   color: #ffb266; }
-.cs-badge[data-mode="3"] { background: rgba(184,92,255,0.25);  color: #d49cff; }
+.cs-badge[data-mode="0"] { color: var(--text-dim); }
+.cs-badge[data-mode="1"] { color: var(--accent-green); }
+.cs-badge[data-mode="2"] { color: var(--accent-orange); }
+.cs-card[data-reg="2026"] .cs-badge[data-mode="3"],
+.cs-card[data-reg="2026"] .cs-deploy-chip { color: var(--accent-blue); }
+.cs-card[data-reg="2025"] .cs-badge[data-mode="3"],
+.cs-card[data-reg="2025"] .cs-deploy-chip { color: var(--accent-yellow); }
+
+.cs-deploy-chip {
+    flex: none;
+    font-family: var(--font-mono);
+    font-size: clamp(8px, 2cqi, 10px);
+    font-weight: 700;
+    letter-spacing: 0.4px;
+    padding: 1px 5px;
+    border-radius: 4px;
+    border: 1px solid currentColor;
+    color: var(--text-dim);
+}
 
 .cs-fuel-delta {
     display: flex;
@@ -2522,6 +2539,305 @@
     color: var(--accent-yellow);
 }
 
+/* Available Tyre Sets */
+.ts-card {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+}
+.widget-body > .card.ts-card { overflow: hidden; }
+
+/* Fitted summary block */
+.ts-fitted {
+    flex: none;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 12px 14px;
+    margin-bottom: 12px;
+    border-radius: var(--radius-md);
+    background: rgba(0,166,255,0.10);
+    border: 1px solid rgba(0,166,255,0.30);
+}
+.ts-fitted[hidden] { display: none; }
+.ts-fitted-left {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    min-width: 0;
+}
+.ts-fitted-label {
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--accent-blue);
+}
+.ts-fitted-name {
+    align-self: flex-start;
+    padding: 3px 11px;
+    border-radius: 5px;
+    font-size: 13px;
+    font-weight: 700;
+}
+.ts-fitted-right {
+    margin-left: auto;
+    display: flex;
+    align-items: flex-end;
+    gap: 18px;
+}
+.ts-fitted-stat { text-align: right; }
+.ts-fitted-val {
+    display: block;
+    font-family: var(--font-mono);
+    font-size: 22px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--color-text-primary);
+}
+.ts-fitted-cap {
+    display: block;
+    margin-top: 4px;
+    font-size: 8px;
+    font-weight: 600;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: var(--color-text-dim);
+}
+
+/* Scrollable pool of grouped sets */
+.ts-pool {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    overflow-y: auto;
+}
+.ts-group {
+    display: flex;
+    flex-direction: column;
+}
+.ts-group-head {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    padding: 10px 2px 5px;
+}
+.ts-group-dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 2px;
+    flex: none;
+}
+.ts-group-name {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+    color: var(--color-text-secondary);
+}
+.ts-group-count {
+    margin-left: auto;
+    font-family: var(--font-mono);
+    font-size: 10px;
+    color: var(--color-text-dim);
+    background: var(--color-bg-elevated);
+    border-radius: 999px;
+    padding: 1px 7px;
+}
+
+/* Individual set row */
+.ts-set-row {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 8px 6px 8px 12px;
+    border-top: 1px solid var(--color-border-muted);
+}
+.ts-set-row--fitted { background: rgba(0,166,255,0.12); }
+.ts-row-accent {
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+}
+.ts-wear {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    flex: 1;
+    min-width: 0;
+}
+.ts-wear-track {
+    flex: 1;
+    height: 6px;
+    min-width: 30px;
+    border-radius: 3px;
+    background: var(--color-bg-elevated);
+    overflow: hidden;
+}
+.ts-wear-fill {
+    height: 100%;
+    border-radius: 3px;
+    transition: width 0.4s ease, background 0.3s;
+}
+.ts-wear-pct {
+    width: 34px;
+    flex: none;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--color-text-secondary);
+}
+.ts-delta {
+    width: 56px;
+    flex: none;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 14px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+.ts-delta--slower { color: var(--semantic-red); }
+.ts-delta--faster { color: var(--accent-green); }
+.ts-delta--zero   { color: var(--color-text-muted); }
+.ts-life {
+    width: 28px;
+    flex: none;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--color-text-muted);
+}
+.ts-grip {
+    width: 36px;
+    flex: none;
+    text-align: right;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 600;
+    font-variant-numeric: tabular-nums;
+}
+.ts-grip--na { color: var(--color-text-dim); }
+
+/* Compound colours (reworked tyre-sets) */
+.ts-fitted-name.compound-soft       { background: #ff3333; color: #fff; }
+.ts-fitted-name.compound-super-soft { background: #9B3CC4; color: #fff; }
+.ts-fitted-name.compound-medium     { background: #ffd700; color: #111; }
+.ts-fitted-name.compound-hard       { background: #e0e0e0; color: #111; }
+.ts-fitted-name.compound-inter      { background: #00cc00; color: #111; }
+.ts-fitted-name.compound-wet        { background: #00a6ff; color: #111; }
+.ts-fitted-name.compound-unknown    { background: #444;    color: #aaa; }
+.ts-group-dot.compound-soft,        .ts-row-accent.compound-soft       { background: #ff3333; }
+.ts-group-dot.compound-super-soft,  .ts-row-accent.compound-super-soft { background: #9B3CC4; }
+.ts-group-dot.compound-medium,      .ts-row-accent.compound-medium     { background: #ffd700; }
+.ts-group-dot.compound-hard,        .ts-row-accent.compound-hard       { background: #e0e0e0; }
+.ts-group-dot.compound-inter,       .ts-row-accent.compound-inter      { background: #00cc00; }
+.ts-group-dot.compound-wet,         .ts-row-accent.compound-wet        { background: #00a6ff; }
+.ts-group-dot.compound-unknown,     .ts-row-accent.compound-unknown    { background: #444; }
+
+/* Circular compound badge (shared with standings) */
+.tyreset-badge {
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    flex-shrink: 0;
+    font-family: var(--font-mono);
+}
+.tyreset-badge.compound-soft      { background: #ff3333; color: #fff; }
+.tyreset-badge.compound-super-soft { background: #9B3CC4; color: #fff; }
+.tyreset-badge.compound-medium    { background: #ffd700; color: #111; }
+.tyreset-badge.compound-hard      { background: #e0e0e0; color: #111; }
+.tyreset-badge.compound-inter     { background: #00cc00; color: #111; }
+.tyreset-badge.compound-wet       { background: #00a6ff; color: #111; }
+.tyreset-badge.compound-unknown   { background: #444; color: #aaa; }
+.tyreset-badge-sm {
+    width: 18px;
+    height: 18px;
+    font-size: 9px;
+}
+
+/* Pit Stop Predictor (reworked) — game pit window + predicted rejoin */
+.pp-card { display: flex; flex-direction: column; }
+.pp { flex: 1; min-height: 0; display: flex; flex-direction: column; }
+
+.pp-section { padding: 14px 2px; border-bottom: 1px solid #1d242d; }
+.pp-section:last-child { border-bottom: none; }
+
+.pp-label {
+    font: 600 9px var(--font-sans, inherit);
+    letter-spacing: .12em;
+    color: #6b7682;
+    text-transform: uppercase;
+}
+
+/* damage strip */
+.pp-damage {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 12px;
+    margin-bottom: 2px;
+    background: rgba(255,69,58,.12);
+    border: 1px solid rgba(255,69,58,.25);
+    border-radius: 6px;
+}
+.pp-damage-icon { font-size: 12px; color: #ff6b6b; }
+.pp-damage-label { font: 700 11px var(--font-sans, inherit); letter-spacing: .04em; color: #ff6b6b; }
+.pp-damage-repair { margin-left: auto; font: 700 12px var(--font-mono, monospace); color: #ff9f0a; }
+
+/* window */
+.pp-row-top { display: flex; align-items: baseline; justify-content: space-between; }
+.pp-window-laps { font: 600 11px var(--font-mono, monospace); color: #8d97a5; }
+.pp-status { display: flex; align-items: center; gap: 8px; margin-top: 7px; }
+.pp-status-dot { width: 7px; height: 7px; border-radius: 50%; flex: none; }
+.pp-status-text { font: 800 15px var(--font-sans, inherit); letter-spacing: .01em; }
+
+/* lap window timeline */
+.pp-timeline { position: relative; height: 38px; margin: 9px 4px 0; }
+.pp-tl-curlabel { position: absolute; top: 0; transform: translateX(-50%); font: 700 9px var(--font-mono, monospace); white-space: nowrap; }
+.pp-tl-track { position: absolute; top: 19px; left: 0; right: 0; height: 5px; border-radius: 3px; background: #232b35; }
+.pp-tl-band { position: absolute; top: 19px; height: 5px; border-radius: 3px; background: rgba(58,141,255,.45); }
+.pp-tl-ideal { position: absolute; top: 15px; width: 2px; height: 13px; background: #3a8dff; transform: translateX(-1px); }
+.pp-tl-cur { position: absolute; top: 14px; width: 2px; height: 15px; transform: translateX(-1px); }
+.pp-tl-dot { position: absolute; top: 17px; width: 9px; height: 9px; border-radius: 50%; transform: translate(-50%,0); border: 2px solid #12161c; }
+.pp-tl-lo, .pp-tl-hi { position: absolute; bottom: 0; transform: translateX(-50%); font: 600 9px var(--font-mono, monospace); color: #7a8493; }
+
+/* rejoin */
+.pp-rejoin-sec { display: flex; align-items: flex-end; gap: 14px; }
+.pp-rejoin-left { display: flex; flex-direction: column; gap: 5px; }
+.pp-rejoin-num { font: 800 42px var(--font-sans, inherit); line-height: .9; }
+.pp-rejoin-repair { font: 600 9px var(--font-mono, monospace); color: #ff9f0a; }
+.pp-rejoin-right { margin-left: auto; display: flex; flex-direction: column; gap: 6px; align-items: flex-end; text-align: right; }
+.pp-rejoin-flow { font: 600 11px var(--font-mono, monospace); color: #8d97a5; }
+.pp-rejoin-badge { font: 700 12px var(--font-sans, inherit); border-radius: 5px; padding: 3px 9px; }
+
+/* exit traffic */
+.pp-traffic-sec .pp-label { display: block; margin-bottom: 2px; }
+.pp-traffic-row { display: flex; align-items: center; gap: 9px; padding: 9px 2px; border-top: 1px solid #161c24; }
+.pp-traffic-cap { font: 600 9px var(--font-sans, inherit); letter-spacing: .1em; color: #6b7682; width: 58px; flex: none; }
+.pp-traffic-name { font: 700 13px var(--font-sans, inherit); color: #cdd3db; flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pp-traffic-name.pp-traffic-empty { color: #5a6472; }
+.pp-traffic-tag { font: 700 8px var(--font-sans, inherit); letter-spacing: .06em; border: 1px solid; border-radius: 4px; padding: 2px 6px; flex: none; }
+.pp-traffic-gap { font: 700 13px var(--font-mono, monospace); width: 56px; text-align: right; flex: none; }
+
+/* empty state (shared: Pit Stop Predictor, Tyre Sets, …) — fills its container and centres both axes */
+.pp-empty, .widget-empty { flex: 1; min-height: 0; padding: 24px; text-align: center; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 13px; }
+.pp-empty-icon, .widget-empty-icon { width: 44px; height: 44px; flex: none; border-radius: 50%; border: 1.5px solid var(--color-border-default); display: flex; align-items: center; justify-content: center; opacity: .7; }
+.pp-empty-dash, .widget-empty-dash { width: 14px; height: 2px; border-radius: 2px; background: var(--color-border-muted); }
+.pp-empty-title, .widget-empty-title { font: 600 13px var(--font-sans, inherit); color: var(--text-secondary); }
+.pp-empty-sub, .widget-empty-sub { font: 400 11px var(--font-sans, inherit); color: var(--text-dim); margin-top: -7px; }
+
 /* Quali Standings */
 .quali-table th {
     font-size: 9px;
@@ -2636,15 +2952,15 @@
 
 
 /* Weather Forecast */
-.weather-forecast {
-    overflow-x: auto;
-}
+.weather-card { display: flex; flex-direction: column; min-height: 0; }
+.widget-body > .card.weather-card { overflow: hidden; }
 
-.weather-placeholder {
-    color: var(--text-dim);
-    font-style: italic;
-    font-size: 13px;
-    padding: 8px 0;
+.weather-forecast {
+    flex: 1;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow-x: auto;
 }
 
 .wf-accuracy {
@@ -5722,6 +6038,13 @@ td.lap-cell__tyre { cursor: default; }
 .tc-map3d-follow:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
 .tc-map3d-follow.active { background: var(--color-accent-primary); color: #fff; border-color: var(--color-accent-primary); }
 .tc-map3d-follow svg { display: block; }
+
+
+/* Track Map dashboard widget — the 3D stage stretches to the widget body instead of the
+   Compare view's default square stage. */
+.tm-card { display: flex; flex-direction: column; }
+.tm-host { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 6px; }
+.tm-host .tc-map3d { aspect-ratio: auto; flex: 1 1 auto; min-height: 0; height: auto; }
 
 .tc-sector-badges {
     display: flex;
