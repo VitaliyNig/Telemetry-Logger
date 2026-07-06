@@ -6275,7 +6275,13 @@ td.lap-cell__tyre { cursor: default; }
     border: 1px solid var(--color-border-default);
     border-radius: 6px;
     padding: 8px;
-    overflow: hidden;
+    /* No overflow:hidden here: that would make .tc-charts itself the nearest
+       scroll container for the sticky sector strip below, and since .tc-charts
+       never scrolls internally (the page/.history-detail-body does), the strip
+       would never actually stick — it'd just scroll away with everything else.
+       The crosshair's off-canvas rest position is clipped locally on
+       .tc-hover-layer instead, so nothing here leaks into the ancestor's
+       scrollable area. */
 }
 
 /* Muted channel palette. Each channel keeps its identity hue — sourced from the
@@ -6529,6 +6535,7 @@ td.lap-cell__tyre { cursor: default; }
     left: calc(var(--tc-label-w, 90px) + 14px);
     right: 8px;
     bottom: 8px;
+    overflow: hidden; /* clips the crosshair's off-canvas rest position (left:-9999px) */
     pointer-events: auto;
     touch-action: none;
     cursor: crosshair;
@@ -6554,12 +6561,20 @@ td.lap-cell__tyre { cursor: default; }
     border-right: 1px solid color-mix(in srgb, var(--accent-brand) 60%, transparent);
     pointer-events: none;
 }
-.tc-overview {
+/* Solid backdrop so the sticky overview strip fully occludes chart rows scrolling
+   underneath it, instead of the translucent pill letting them bleed through. */
+.tc-overview-sticky {
     position: sticky;
     top: 0;
-    z-index: 2;
+    z-index: 3;
+    background: var(--color-bg-card);
+    padding: var(--space-1) 0;
+    margin: calc(var(--space-1) * -1) 0 0;
+}
+.tc-overview {
+    position: relative;
     height: 16px;
-    margin: 0 0 4px calc(var(--tc-label-w, 90px) + 6px);
+    margin: 0 0 0 calc(var(--tc-label-w, 90px) + 6px);
     border: 1px solid var(--color-border-default);
     border-radius: 999px;
     background: rgba(255,255,255,0.06);
