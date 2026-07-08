@@ -60,8 +60,10 @@
     --text-main: var(--color-text-primary);
     --bg-input: #12141a;
 
-    /* Spacing */
+    /* Spacing — 4px base with a sanctioned 2px sub-grid for dense data UI */
+    --space-0-5: 2px;
     --space-1: 4px;
+    --space-1-5: 6px;
     --space-2: 8px;
     --space-3: 12px;
     --space-4: 16px;
