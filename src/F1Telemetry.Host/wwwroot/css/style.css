@@ -5038,8 +5038,12 @@ td.lap-cell__tyre { cursor: default; }
 
 /* History → Results (final classification). Reuses the virtual-grid table skin. */
 .res-container {
-    padding: var(--space-4);
+    padding: var(--space-1);
     max-width: 980px;
+}
+
+@media (max-width: 600px) {
+    .res-container { padding: 0; }
 }
 
 /* Framed, scrollable wrapper matching Events / Lap Times tables. */
@@ -5109,7 +5113,7 @@ td.lap-cell__tyre { cursor: default; }
 }
 
 @media (max-width: 600px) {
-    .lt-container { gap: var(--space-2); padding: 0; }
+    .lt-container { padding: 0; }
     .lap-grid-wrap {
         max-height: calc(100vh - 180px);
         /* Simpler gradient on phone: just an inner box-shadow edge hint. */
@@ -5578,7 +5582,7 @@ td.lap-cell__tyre { cursor: default; }
     }
 }
 
-@media (max-width: 640px) {
+@media (max-width: 600px) {
     .pos-layout { flex-direction: column; padding: 0; }
     .pos-sidebar {
         width: auto;
@@ -5608,7 +5612,6 @@ td.lap-cell__tyre { cursor: default; }
 @media (min-width: 1920px) {
     .pos-layout {
         gap: var(--space-4);
-        padding: var(--space-2);
     }
     .pos-sidebar {
         width: 240px;
@@ -5632,7 +5635,6 @@ td.lap-cell__tyre { cursor: default; }
 
 @media (min-width: 2560px) {
     .pos-layout {
-        padding: var(--space-3);
         gap: var(--space-5);
     }
     .pos-sidebar {
@@ -7456,11 +7458,13 @@ td.lap-cell__tyre { cursor: default; }
 
 /* ---------- Events page ---------- */
 
+.ev-container { padding: var(--space-1); }
+
 .ev-toolbar {
     display: flex;
     justify-content: space-between;
     align-items: center;
-    padding: var(--space-1) var(--space-1) var(--space-3);
+    padding: 0 0 var(--space-3);
     gap: var(--space-3);
     flex-wrap: wrap;
 }
@@ -7576,11 +7580,12 @@ td.lap-cell__tyre { cursor: default; }
 }
 
 @media (max-width: 768px) {
-    .ev-toolbar { gap: var(--space-2); padding: var(--space-1) var(--space-0-5) var(--space-2); }
+    .ev-toolbar { gap: var(--space-2); padding: 0 0 var(--space-3); }
     .ev-search { flex: 1 1 100%; min-width: 0; }
 }
 
 @media (max-width: 600px) {
+    .ev-container { padding: 0; }
     .ev-table-wrap {
         max-height: none;
         overflow: visible;
