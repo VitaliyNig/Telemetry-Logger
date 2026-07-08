@@ -903,17 +903,184 @@
         }
     }
 
-    // Renders the Insights panel (Top Loss Zones list) into its own host and refreshes the
-    // tab badge count. Detection runs every redraw regardless of which tab is active so the
-    // badge stays current even while the user is on the Controls tab.
+    // Renders the Insights panel (tool usage, attack-tool events, Top Loss Zones) into its
+    // own host and refreshes the tab badge count. Detection runs every redraw regardless of
+    // which tab is active so the badge stays current even while the user is on Controls.
     function drawInsights(lapData) {
         var host = document.getElementById('tcInsights');
         if (!host) return;
         var sess = window.HistoryDetail.state.session;
         var zones = detectTopLossZones(lapData, sess, 3);
         updateInsightsBadge(zones.length);
-        host.innerHTML = renderTopLossZonesHtml(zones);
+        host.innerHTML = renderToolUsageHtml(toolUsageStats(lapData, sess), sess)
+            + renderAttackEventsHtml(detectAttackEvents(lapData, sess, 5))
+            + renderTopLossZonesHtml(zones);
         wireInsightsHost(host);
+    }
+
+    // ---------- tool usage (full-lap DRS / SM / Boost / ERS aggregates per driver) ----------
+
+    /** Per visible lap: metres+activations for each binary tool, deploy/harvest MJ peaks. */
+    function toolUsageStats(lapData, sess) {
+        var refSel = ensureReferenceSelection(lapData);
+        var rows = [];
+        window.HistoryDetail.state.driverSelection.forEach(function (sel, carIdx) {
+            if (!sel || sel.hidden || sel.lap == null || !lapData || !lapData.has(carIdx)) return;
+            var d = lapData.get(carIdx);
+            if (!d || !d.samples || !d.samples.length) return;
+            var driver = resolveCompareDriver(sess, carIdx, sel);
+            var nameRaw = (driver && (driver.shortName || driver.code || driver.name)) || ('Car ' + carIdx);
+            function meters(field) {
+                var m = 0, n = 0;
+                runLengthRuns(d.samples, field, 0, Number.MAX_SAFE_INTEGER).forEach(function (r) {
+                    if (r.v !== 1) return;
+                    m += (r.to - r.from);
+                    n++;
+                });
+                return { m: m, n: n };
+            }
+            var depMax = 0, harvMax = 0;
+            for (var i = 0; i < d.samples.length; i++) {
+                var s = d.samples[i];
+                if ((s.ersDepLapJ || 0) > depMax) depMax = s.ersDepLapJ;
+                if ((s.harvJ || 0) > harvMax) harvMax = s.harvJ;
+            }
+            rows.push({
+                carIdx: carIdx,
+                name: String(nameRaw).toUpperCase().substring(0, 3),
+                lap: Number(sel.lap),
+                color: laneColorFor(carIdx),
+                isRef: refSel != null && carIdx === refSel.carIdx,
+                drs: meters('drs'),
+                sm: meters('aero'),
+                bst: meters('ovt'),
+                depMJ: depMax / 1e6,
+                harvMJ: harvMax / 1e6,
+            });
+        });
+        rows.sort(function (a, b) { return (b.isRef ? 1 : 0) - (a.isRef ? 1 : 0); });
+        return rows;
+    }
+
+    function renderToolUsageHtml(rows, sess) {
+        if (rows.length < 1) return '';
+        var trackLen = (sess && sess.meta && sess.meta.trackLengthM) || 0;
+        // Column exists only when some lap carries the signal — a 2025 session shows
+        // DRS but no SM/BST column, a 2026 one the reverse, F2 only DEP-less columns.
+        var cols = [
+            { key: 'drs', head: 'DRS', has: rows.some(function (r) { return r.drs.m > 0; }),
+              fmt: function (r) { return r.drs.n + '× ' + Math.round(r.drs.m) + 'm'; } },
+            { key: 'sm', head: 'SM', has: rows.some(function (r) { return r.sm.m > 0; }),
+              fmt: function (r) { return trackLen > 0 ? Math.round(r.sm.m / trackLen * 100) + '%' : Math.round(r.sm.m) + 'm'; } },
+            { key: 'bst', head: 'BST', has: rows.some(function (r) { return r.bst.m > 0; }),
+              fmt: function (r) { return r.bst.n + '× ' + Math.round(r.bst.m) + 'm'; } },
+            { key: 'dep', head: 'DEP', has: rows.some(function (r) { return r.depMJ > 0; }),
+              fmt: function (r) { return r.depMJ.toFixed(2); } },
+            { key: 'harv', head: 'HRV', has: rows.some(function (r) { return r.harvMJ > 0; }),
+              fmt: function (r) { return r.harvMJ.toFixed(2); } },
+        ].filter(function (c) { return c.has; });
+        if (!cols.length) return '';
+
+        var html = '<div class="tc-insights tc-tools">'
+            + '<div class="tc-insights-title">Tool usage <span class="tc-insights-title-note">full lap · MJ</span></div>'
+            + '<table class="tc-tools-table"><thead><tr><th></th>'
+            + cols.map(function (c) { return '<th>' + c.head + '</th>'; }).join('')
+            + '</tr></thead><tbody>';
+        rows.forEach(function (r) {
+            html += '<tr>'
+                + '<td class="tc-tools-driver">'
+                +   '<span class="tc-chip-dot" style="background:' + r.color + '"></span>'
+                +   '<span>' + escapeHtml(r.name) + ' L' + r.lap + '</span>'
+                +   (r.isRef ? '<span class="tc-tools-ref">REF</span>' : '')
+                + '</td>'
+                + cols.map(function (c) { return '<td>' + escapeHtml(c.fmt(r)) + '</td>'; }).join('')
+                + '</tr>';
+        });
+        html += '</tbody></table></div>';
+        return html;
+    }
+
+    // ---------- attack-tool events (Boost / DRS runs of the compare lap vs REF) ----------
+
+    /** Each Boost/DRS activation of the first compare lap with the time gained or lost
+     *  vs the reference across the run. Sorted by |effect|, top N. */
+    function detectAttackEvents(lapData, sess, topN) {
+        var refSel = ensureReferenceSelection(lapData);
+        if (!refSel) return [];
+        var cmpEntry = null;
+        window.HistoryDetail.state.driverSelection.forEach(function (sel, carIdx) {
+            if (cmpEntry || !sel || sel.hidden || sel.lap == null) return;
+            if (carIdx === refSel.carIdx || !lapData.has(carIdx)) return;
+            cmpEntry = [carIdx, sel];
+        });
+        if (!cmpEntry) return [];
+        var cmpData = lapData.get(cmpEntry[0]);
+        var refData = lapData.get(refSel.carIdx);
+        if (!cmpData || !cmpData.samples || !refData || !refData.samples) return [];
+
+        // Gains need the cumulative series even when the user is viewing per-sector
+        // delta — a sector reset inside a run would corrupt the subtraction.
+        var prevMode = compareState.deltaMode;
+        compareState.deltaMode = 'cumulative';
+        var series = getDeltaSeriesForRange(cmpEntry[0], refSel.carIdx, cmpData.samples, refData.samples, 0, Number.MAX_SAFE_INTEGER, sess);
+        compareState.deltaMode = prevMode;
+        if (series.length < 4) return [];
+
+        function deltaAt(dist) {
+            var lo = 0, hi = series.length - 1;
+            while (lo < hi) {
+                var mid = (lo + hi) >> 1;
+                if (series[mid].d < dist) lo = mid + 1;
+                else hi = mid;
+            }
+            return series[lo].v;
+        }
+
+        var events = [];
+        // Runs longer than 40% of the lap are a latched/stuck signal (seen in F1 26 logs
+        // where OvertakeActive stays 1 the whole lap) — an "activation" that long carries
+        // no per-event insight, so it's dropped rather than reported as a full-lap gain.
+        var maxLenM = ((sess && sess.meta && sess.meta.trackLengthM) || 5000) * 0.4;
+        [{ field: 'ovt', tool: 'BST' }, { field: 'drs', tool: 'DRS' }].forEach(function (def) {
+            runLengthRuns(cmpData.samples, def.field, 0, Number.MAX_SAFE_INTEGER).forEach(function (r) {
+                if (r.v !== 1) return;
+                var lenM = r.to - r.from;
+                if (lenM < 15 || lenM > maxLenM) return; // ignore one-tick blips and stuck signals
+                events.push({
+                    tool: def.tool,
+                    from: r.from,
+                    to: r.to,
+                    lenM: lenM,
+                    gain: deltaAt(r.to) - deltaAt(r.from), // negative = time gained vs REF
+                });
+            });
+        });
+        events.sort(function (a, b) { return Math.abs(b.gain) - Math.abs(a.gain); });
+        return events.slice(0, topN);
+    }
+
+    function renderAttackEventsHtml(events) {
+        if (!events.length) return '';
+        var html = '<div class="tc-insights tc-attack">'
+            + '<div class="tc-insights-title">Attack tools vs REF</div>';
+        events.forEach(function (ev) {
+            var cornerLbl = compareState.cornersEnabled ? cornerRangeLabel(ev.from, ev.to) : '';
+            var where = cornerLbl || (Math.round(ev.from) + '–' + Math.round(ev.to) + ' m');
+            var tone = ev.gain < -0.01 ? 'gain' : (ev.gain > 0.01 ? 'loss' : 'neutral');
+            var z0 = Math.max(0, ev.from - 60);
+            var z1 = ev.to + 60;
+            html += '<button class="tc-attack-row" data-start="' + z0 + '" data-end="' + z1
+                + '" title="Zoom charts to this activation">'
+                + '<span class="tc-attack-tool tc-attack-tool--' + ev.tool.toLowerCase() + '">' + ev.tool + '</span>'
+                + '<span class="tc-attack-where">' + escapeHtml(where) + '</span>'
+                + '<span class="tc-attack-len">' + Math.round(ev.lenM) + ' m</span>'
+                + '<span class="tc-attack-gain tc-attack-gain--' + tone + '">'
+                +   escapeHtml((ev.gain >= 0 ? '+' : '−') + Math.abs(ev.gain).toFixed(3) + ' s')
+                + '</span>'
+                + '</button>';
+        });
+        html += '</div>';
+        return html;
     }
 
     // Idempotent delegated wiring for the Insights host: hover bridges a loss-zone card to
