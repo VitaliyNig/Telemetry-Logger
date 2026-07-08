@@ -20,6 +20,7 @@
         heightScale: 1.9,           // 1.3 | 1.9 | 2.8 (Compact / Normal / Tall presets)
         miniPerSector: 3,
         insightsEnabled: true,
+        cornersEnabled: true,       // corner ruler + per-chart corner lines + hover tag
         sideTab: 'controls',        // 'controls' | 'insights' — active left-column tab
         chipMode: 'pair',           // 'pair' | 'diff'
         mapLayers: { line: true, deltaHeat: true, events: true, dominance: false, loss: true },
@@ -59,6 +60,7 @@
             if (typeof p.heightScale === 'number') compareState.heightScale = p.heightScale;
             if ([1, 3, 4].indexOf(Number(p.miniPerSector)) >= 0) compareState.miniPerSector = Number(p.miniPerSector);
             compareState.insightsEnabled = p.insightsEnabled !== false;
+            compareState.cornersEnabled = p.cornersEnabled !== false;
             if (p.sideTab === 'insights' || p.sideTab === 'controls') compareState.sideTab = p.sideTab;
             if (p.chipMode === 'diff' || p.chipMode === 'pair') compareState.chipMode = p.chipMode;
             if (p.mapLayers && typeof p.mapLayers === 'object') {
@@ -89,6 +91,7 @@
                 heightScale: compareState.heightScale,
                 miniPerSector: compareState.miniPerSector,
                 insightsEnabled: compareState.insightsEnabled,
+                cornersEnabled: compareState.cornersEnabled,
                 sideTab: compareState.sideTab,
                 chipMode: compareState.chipMode,
                 mapLayers: compareState.mapLayers,
@@ -468,6 +471,7 @@
         compareState.__laneColors = null; // lap/driver selection may have changed
 
         ensureReferenceSelection(lapData);
+        ensureCornerData(window.HistoryDetail.state.session);
         drawBadges(lapData);
         drawChartStack(lapData);
         drawTrackMap(lapData);
@@ -540,6 +544,98 @@
             }
         });
         return segments;
+    }
+
+    // ---------- corner markers ----------
+    // Corner positions come from the authored track geometry (/data/track-geometry/{id}.json):
+    // corners = [{n, at}] where `at` is a fraction of the lap. Scaled by the session's
+    // trackLengthM so corner distances live in the same X domain as the telemetry samples.
+
+    var cornerFetch = { trackId: null };
+
+    /** Returns the loaded corner array for the current track, or null while the geometry
+     *  fetch is in flight (the resolve handler re-renders the stack + insights once). */
+    function ensureCornerData(sess) {
+        if (!sess || !sess.meta || sess.meta.trackId == null) return null;
+        var tid = sess.meta.trackId;
+        if (compareState.__cornersTrackId === tid) return compareState.__corners;
+        if (cornerFetch.trackId !== tid) {
+            cornerFetch.trackId = tid;
+            fetch('/data/track-geometry/' + tid + '.json')
+                .then(function (r) { return r.ok ? r.json() : null; })
+                .catch(function () { return null; })
+                .then(function (geom) {
+                    if (cornerFetch.trackId !== tid) return; // track changed mid-flight
+                    var trackLen = sess.meta.trackLengthM || (geom && geom.lengthM) || 0;
+                    compareState.__corners = ((geom && geom.corners) || []).map(function (c) {
+                        return { n: c.n, d: c.at * trackLen };
+                    }).sort(function (a, b) { return a.d - b.d; });
+                    compareState.__cornersTrackId = tid;
+                    if (latestCompareLapData) {
+                        drawChartStack(latestCompareLapData);
+                        drawInsights(latestCompareLapData);
+                    }
+                });
+        }
+        return null;
+    }
+
+    /** "T7" when the distance sits within the corner's influence window, else null. */
+    function nearestCornerLabel(d) {
+        var cs = compareState.__corners;
+        if (!cs || !cs.length) return null;
+        var best = null, bestDist = Infinity;
+        for (var i = 0; i < cs.length; i++) {
+            var dd = Math.abs(cs[i].d - d);
+            if (dd < bestDist) { bestDist = dd; best = cs[i]; }
+        }
+        return best && bestDist <= 80 ? ('T' + best.n) : null;
+    }
+
+    /** "T5" / "T5–T8" for corners inside [start,end] (±50 m slack), '' when none. */
+    function cornerRangeLabel(start, end) {
+        var cs = compareState.__corners;
+        if (!cs || !cs.length) return '';
+        var inZone = cs.filter(function (c) { return c.d >= start - 50 && c.d <= end + 50; });
+        if (!inZone.length) return '';
+        return inZone.length === 1
+            ? 'T' + inZone[0].n
+            : 'T' + inZone[0].n + '–T' + inZone[inZone.length - 1].n;
+    }
+
+    /** Rebuilds the sticky corner ruler for the visible range. Ticks always render;
+     *  numbers are decluttered greedily (skip label closer than 2.2% to the last shown). */
+    function updateCornerRuler(host, xMin, xMax) {
+        var ruler = host.querySelector('#tcCornerRuler');
+        if (!ruler) return;
+        var corners = compareState.cornersEnabled ? compareState.__corners : null;
+        if (!corners || !corners.length) { ruler.hidden = true; return; }
+        var span = Math.max(1, xMax - xMin);
+        var html = '';
+        var lastLabelPct = -10;
+        corners.forEach(function (c) {
+            if (c.d < xMin || c.d > xMax) return;
+            var pct = (c.d - xMin) / span * 100;
+            html += '<span class="tc-corner-tick" style="left:' + pct.toFixed(3) + '%"></span>';
+            if (pct - lastLabelPct >= 2.2) {
+                html += '<span class="tc-corner-num" style="left:' + pct.toFixed(3) + '%">' + c.n + '</span>';
+                lastLabelPct = pct;
+            }
+        });
+        if (!html) { ruler.hidden = true; return; }
+        ruler.innerHTML = html;
+        ruler.hidden = false;
+    }
+
+    /** Shows/positions the "T7" tag that rides the crosshair in the hover layer. */
+    function positionCornerTag(host, d, pct01) {
+        var tag = host.querySelector('#tcCornerTag');
+        if (!tag) return;
+        var label = compareState.cornersEnabled ? nearestCornerLabel(d) : null;
+        if (!label) { tag.hidden = true; return; }
+        tag.textContent = label;
+        tag.style.left = (pct01 * 100) + '%';
+        tag.hidden = false;
     }
 
     // ---------- sector badges ----------
@@ -640,6 +736,15 @@
             +   '</div>'
             + '</div>';
 
+        // Corner markers (ruler strip + per-chart vertical lines + hover tag).
+        html += '<div class="tc-ctrl-row">'
+            +   '<span class="tc-ctrl-label">Corners</span>'
+            +   '<div class="tc-segmented tc-segmented--full">'
+            +     '<button class="tc-seg-btn ' + (compareState.cornersEnabled ? 'active' : '') + '" data-corners="1" title="Show corner markers">On</button>'
+            +     '<button class="tc-seg-btn ' + (!compareState.cornersEnabled ? 'active' : '') + '" data-corners="0" title="Hide corner markers">Off</button>'
+            +   '</div>'
+            + '</div>';
+
         // Row-height preset (S / M / L → heightScale 1.3 / 1.9 / 2.8).
         html += '<div class="tc-ctrl-row">'
             +   '<span class="tc-ctrl-label">Size</span>'
@@ -727,6 +832,17 @@
                     persistState();
                     drawBadges(data);
                     drawChartStack(data);
+                    return;
+                }
+                // Corner-marker visibility.
+                if (ds.corners != null) {
+                    var cornersOn = ds.corners === '1';
+                    if (cornersOn === compareState.cornersEnabled) return;
+                    compareState.cornersEnabled = cornersOn;
+                    persistState();
+                    drawBadges(data);
+                    drawChartStack(data);
+                    drawInsights(data);
                     return;
                 }
                 // Chip display mode (values vs delta).
@@ -818,10 +934,12 @@
             var recsHtml = (z.recommendations || []).map(function (r) {
                 return '<li>' + escapeHtml(r) + '</li>';
             }).join('');
+            var cornerLbl = compareState.cornersEnabled ? cornerRangeLabel(z.start, z.end) : '';
             html += '<div class="tc-loss-zone" data-zone-id="z' + i + '">'
                 +   '<div class="tc-loss-zone-head">'
                 +     '<button class="tc-loss-jump" data-start="' + z.start + '" data-end="' + z.end + '" data-zone-id="z' + i + '" title="Zoom charts to this segment + highlight on map">'
                 +       '<span class="tc-loss-num">#' + (i + 1) + '</span>'
+                +       (cornerLbl ? '<span class="tc-loss-corner">' + cornerLbl + '</span>' : '')
                 +       '<span class="tc-loss-range">' + Math.round(z.start) + '–' + Math.round(z.end) + ' m</span>'
                 +     '</button>'
                 +     '<span class="tc-loss-amount">+' + z.loss.toFixed(3) + ' s</span>'
@@ -1214,6 +1332,7 @@
              +     renderOverviewSegments(sess.meta, compareState.miniPerSector, trackLen)
              +     '<div class="tc-overview-window" id="tcOverviewWin" title="Drag to move zoom window"></div>'
              +   '</div>'
+             +   '<div class="tc-corner-ruler" id="tcCornerRuler" hidden></div>'
              + '</div>';
         visibleMetrics.forEach(function (m) {
             var h = effectiveHeight(m);
@@ -1228,6 +1347,7 @@
         // row's overflow:hidden — it just spills over the neighbouring rows.
         html += '<div class="tc-hover-layer" id="tcHoverLayer">'
              + '<div class="tc-crosshair" id="tcCrosshair"></div>'
+             + '<div class="tc-corner-tag" id="tcCornerTag" hidden></div>'
              + '<div class="tc-brush" id="tcBrush"></div>'
              + visibleMetrics.map(function (m) {
                     return '<div class="tc-row-chip" data-metric="' + m.key + '" hidden></div>';
@@ -1245,6 +1365,7 @@
             row.innerHTML = renderChartSvg(m, lapData, selections, refSamples, refIdx, xMin, xMax, sess, effectiveHeight(m));
         });
 
+        updateCornerRuler(host, xMin, xMax);
         wireHover(host, lapData, selections, refSamples, refIdx, xMin, xMax, sess);
         bindCompareShortcuts();
 
@@ -1262,6 +1383,7 @@
                 overviewWin.style.left = l + '%';
                 overviewWin.style.width = w + '%';
             }
+            updateCornerRuler(host, nextXMin, nextXMax);
             // Keep the bridge-driven crosshair anchored to the actual hovered distance
             // as the chart auto-pans. Without this, the crosshair pins to an edge on
             // first map-hover and only "snaps" into place on the next mousemove — the
@@ -1272,6 +1394,7 @@
                     var bSpan = Math.max(1, nextXMax - nextXMin);
                     var bPct = Math.max(0, Math.min(1, (compareState.__lastBridgeD - nextXMin) / bSpan));
                     crosshairEl.style.left = (bPct * 100) + '%';
+                    positionCornerTag(host, compareState.__lastBridgeD, bPct);
                 }
             }
         }
@@ -1684,6 +1807,16 @@
             lines += '<line class="tc-baseline" x1="0" x2="' + W + '" y1="' + baseY + '" y2="' + baseY + '"/>';
         }
 
+        // Corner markers — fainter than sector lines, drawn beneath them.
+        var cornerMarkers = '';
+        if (compareState.cornersEnabled && compareState.__corners) {
+            compareState.__corners.forEach(function (c) {
+                if (c.d < xMin || c.d > xMax) return;
+                cornerMarkers += '<line class="tc-corner-line" x1="' + x(c.d) + '" x2="' + x(c.d)
+                    + '" y1="' + PAD_T + '" y2="' + (PAD_T + plotH) + '"/>';
+            });
+        }
+
         // Sector markers.
         var sectorMarkers = '';
         buildSegmentBoundaries(sess.meta, compareState.miniPerSector).forEach(function (seg, i) {
@@ -1695,7 +1828,7 @@
         });
 
         return '<svg class="tc-chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
-            + gridPack.grid + ersBg + sectorMarkers + lines + '</svg>' + ersLabelsHtml + gridPack.yLabels + insetTitle;
+            + gridPack.grid + ersBg + cornerMarkers + sectorMarkers + lines + '</svg>' + ersLabelsHtml + gridPack.yLabels + insetTitle;
     }
 
     // Resamples driverSamples onto reference sample distances and returns per-distance Δtime (seconds).
@@ -2133,6 +2266,7 @@
             var pct = Math.max(0, Math.min(1, lastX / rect.width));
             var d = curMin + pct * (curMax - curMin);
             crosshair.style.left = (pct * 100) + '%';
+            positionCornerTag(host, d, pct);
             lastHoverDistance = d;
 
             var perDriver = resolvePerDriver(d, interpCtx);
@@ -2391,6 +2525,8 @@
             scheduled = false;
             chips.forEach(function (chip) { chip.hidden = true; });
             crosshair.style.left = '-9999px';
+            var cornerTagEl = host.querySelector('#tcCornerTag');
+            if (cornerTagEl) cornerTagEl.hidden = true;
             renderFocusPanel([], null, null);
         });
 
@@ -2601,6 +2737,8 @@
                 compareState.__lastBridgeD = null;
                 chips.forEach(function (chip) { chip.hidden = true; });
                 crosshair.style.left = '-9999px';
+                var cornerTagEl = host.querySelector('#tcCornerTag');
+                if (cornerTagEl) cornerTagEl.hidden = true;
                 renderFocusPanel([], null, null);
             },
         };

@@ -6610,6 +6610,18 @@ td.lap-cell__tyre { cursor: default; }
 .tc-loss-jump:hover { border-color: var(--accent-brand); }
 .tc-loss-num { font-weight: 700; color: var(--accent-brand); }
 .tc-loss-range { font-variant-numeric: tabular-nums; color: var(--text-dim); }
+/* Corner chip ("T4" / "T4–T6") between the zone number and the metre range. */
+.tc-loss-corner {
+    padding: var(--space-0-5) var(--space-1);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--color-text-secondary);
+    background: var(--widget-subcard-bg);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+}
 .tc-loss-amount {
     font-size: 11px;
     font-weight: 700;
@@ -6940,6 +6952,61 @@ td.lap-cell__tyre { cursor: default; }
 .tc-line.tc-line--dotted { stroke-dasharray: 1 4; stroke-linecap: round; }
 .tc-baseline { stroke: rgba(255, 255, 255, 0.08); stroke-width: 0.5; }
 .tc-sector-line { stroke: var(--accent-brand); stroke-dasharray: 3 3; stroke-width: 0.5; opacity: 0.6; }
+/* Corner markers — deliberately fainter than sector lines so they read as a background grid. */
+.tc-corner-line {
+    stroke: var(--color-border-muted);
+    stroke-width: 0.5;
+    opacity: 0.45;
+    vector-effect: non-scaling-stroke;
+    pointer-events: none;
+}
+
+/* Corner ruler: thin strip under the sticky overview. Tick marks at every corner,
+   numbers decluttered by JS when zoomed out. Margins mirror the hover layer so the
+   ruler aligns 1:1 with the plot area of every chart row. */
+.tc-corner-ruler {
+    position: relative;
+    height: 14px;
+    margin: var(--space-0-5) 8px 0 calc(var(--tc-label-w, 90px) + 14px);
+    pointer-events: none;
+}
+.tc-corner-ruler[hidden] { display: none; }
+.tc-corner-tick {
+    position: absolute;
+    bottom: 0;
+    width: 1px;
+    height: 4px;
+    background: var(--color-border-muted);
+}
+.tc-corner-num {
+    position: absolute;
+    top: 0;
+    transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    line-height: 1;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+}
+
+/* "T7" tag riding the crosshair at the top of the hover layer. */
+.tc-corner-tag {
+    position: absolute;
+    z-index: 2;
+    top: var(--space-0-5);
+    transform: translateX(var(--space-1));
+    padding: var(--space-0-5) var(--space-1);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    font-weight: 700;
+    line-height: 1;
+    color: var(--color-text-secondary);
+    background: color-mix(in srgb, var(--color-bg-elevated) 90%, transparent);
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm);
+    pointer-events: none;
+}
+.tc-corner-tag[hidden] { display: none; }
 
 .tc-hover-layer {
     position: absolute;
