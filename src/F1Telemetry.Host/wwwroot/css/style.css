@@ -262,8 +262,10 @@
     font-size: 14px;
     user-select: none;
     line-height: 1;
+    transition: color .15s;
 }
 
+.widget-drag-handle:hover { color: var(--text-primary); }
 .widget-drag-handle:active { cursor: grabbing; }
 
 .widget-header-title {
@@ -645,7 +647,8 @@
 
 .session-grid, .status-grid, .lap-grid {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
+    grid-template-columns: repeat(auto-fit, minmax(min(120px, 100%), 1fr));
+    grid-auto-flow: row dense;
     gap: 8px;
 }
 
@@ -656,6 +659,49 @@
 }
 
 .stat-box[hidden] { display: none; }
+
+/* Reworked Session tiles: bordered cards in a dense, reflowing grid. */
+.session-tile {
+    position: relative;
+    gap: 7px;
+    padding: 11px 13px;
+    background: var(--widget-subcard-bg);
+    border: 1px solid var(--widget-subcard-border);
+    border-radius: var(--radius-md);
+}
+
+/* Label row: drag grip prefixes the label, like the widget header handle. */
+.session-tile-head {
+    display: flex;
+    align-items: center;
+    gap: 4px;
+}
+
+/* Drag-to-reorder grip — only the grip starts a drag. Always visible, dim,
+   brighter on hover (matches .widget-drag-handle). */
+.session-tile-grip {
+    flex-shrink: 0;
+    cursor: grab;
+    color: var(--text-dim);
+    font-size: 14px;
+    line-height: 1;
+    transition: color .15s;
+    user-select: none;
+    -webkit-user-select: none;
+}
+.session-tile-grip:hover { color: var(--text-primary); }
+.session-tile-grip:active { cursor: grabbing; }
+.session-tile-dragging { opacity: .4; }
+.session-tile.session-drop-target {
+    outline: 2px dashed var(--color-accent-primary);
+    outline-offset: -2px;
+}
+/* Track and Flags span two columns once the widget is wide enough to hold two —
+   below that they stay single so the grid never overflows on resize. */
+@container (min-width: 280px) {
+    .session-tile-track,
+    .session-flags-box { grid-column: span 2; }
+}
 
 .stat-label {
     font-size: 10px;
@@ -672,31 +718,90 @@
 }
 
 .flag-rect {
-    display: inline-flex;
+    position: relative;
+    display: flex;
     align-items: center;
     justify-content: center;
-    align-self: flex-start;
-    padding: 4px 8px;
-    border-radius: 4px;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 9px;
+    border-radius: var(--radius-sm);
     border: 1px solid var(--color-border-default);
     background: transparent;
     color: var(--text-dim);
-    min-width: 56px;
-    font-weight: 700;
-    letter-spacing: 0.5px;
+    font-weight: 800;
+    letter-spacing: 1.5px;
 }
+.flag-rect[data-flag="none"]   { border-style: dashed; border-color: var(--color-border-muted); }
 .flag-rect[data-flag="yellow"] { background: var(--accent-yellow); color: #0f1117; border-color: var(--accent-yellow); }
 .flag-rect[data-flag="blue"]   { background: var(--accent-blue);   color: #0f1117; border-color: var(--accent-blue); }
 .flag-rect[data-flag="red"]    { background: var(--semantic-red);  color: #fff;    border-color: var(--semantic-red); }
 .flag-rect[data-flag="green"]  { background: var(--accent-green);  color: #0f1117; border-color: var(--accent-green); }
 
-.stat-box[data-session-field="flags"] {
-    justify-content: center;
+/* Pulsing ring for safety-car (yellow) and red-flag states. */
+.flag-rect[data-pulse="1"]::after {
+    content: "";
+    position: absolute;
+    inset: -3px;
+    border-radius: 7px;
+    pointer-events: none;
+    animation: sessPulse 1.3s ease-in-out infinite;
 }
-.stat-box[data-session-field="flags"] .flag-rect {
-    padding: 2px 8px;
-    font-size: 13px;
+.flag-rect[data-flag="yellow"][data-pulse="1"]::after { box-shadow: 0 0 0 2px var(--accent-yellow); }
+.flag-rect[data-flag="red"][data-pulse="1"]::after { box-shadow: 0 0 0 2px var(--semantic-red); animation-duration: 1.1s; }
+
+.session-flags-box {
+    justify-content: flex-end;
 }
+
+@keyframes sessPulse {
+    0%   { opacity: .85; transform: scale(1); }
+    50%  { opacity: .2;  transform: scale(1.02); }
+    100% { opacity: .85; transform: scale(1); }
+}
+@keyframes sessFill {
+    from { transform: scaleX(0); }
+    to   { transform: scaleX(1); }
+}
+
+/* Big trend-coloured temperature value. */
+.session-temp {
+    display: flex;
+    align-items: baseline;
+    gap: 8px;
+}
+.session-temp .temp-num {
+    font-size: 24px;
+    font-weight: 700;
+    line-height: 1;
+    font-family: var(--font-mono);
+}
+.session-temp .temp-delta {
+    font-size: 12px;
+    font-weight: 700;
+}
+
+/* Session progress bar. */
+.session-tile-progress { gap: 6px; }
+.session-progress-track {
+    position: relative;
+    height: 6px;
+    border-radius: 3px;
+    background: var(--color-bg-elevated);
+    overflow: hidden;
+}
+.session-progress-fill {
+    position: absolute;
+    inset-block: 0;
+    left: 0;
+    width: 0;
+    transform-origin: left;
+    border-radius: 3px;
+    background: linear-gradient(90deg, var(--color-accent-primary), var(--color-accent-primary-hover));
+    transition: width .4s ease;
+}
+.session-progress-fill.is-animated { animation: sessFill .6s ease both; }
+.session-progress-track[hidden] { display: none; }
 
 .stat-value.big {
     font-size: 32px;
@@ -1713,29 +1818,13 @@
     flex: 1;
     cursor: pointer;
 }
-.session-settings-order {
-    display: flex;
-    gap: 4px;
-}
-.session-settings-arrow {
-    background: none;
-    border: 1px solid var(--color-border-default);
-    border-radius: 3px;
-    color: var(--color-text-secondary);
-    cursor: pointer;
-    padding: 0 8px;
-    font-size: 10px;
-    line-height: 18px;
-    font-family: var(--font-mono);
-    transition: color 0.15s, border-color 0.15s;
-}
-.session-settings-arrow:hover:not([disabled]) {
-    color: var(--text-primary);
-    border-color: var(--accent-blue);
-}
-.session-settings-arrow[disabled] {
-    opacity: 0.35;
-    cursor: not-allowed;
+.session-settings-hint {
+    margin-top: 8px;
+    padding-top: 8px;
+    border-top: 1px solid var(--color-border-default);
+    font-size: 11px;
+    line-height: 1.4;
+    color: var(--color-text-muted);
 }
 
 /* Pit times — all tracks (header dropdown) */
@@ -6044,6 +6133,20 @@ td.lap-cell__tyre { cursor: default; }
 .tc-map3d-follow:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
 .tc-map3d-follow.active { background: var(--color-accent-primary); color: #fff; border-color: var(--color-accent-primary); }
 .tc-map3d-follow svg { display: block; }
+/* Live-widget follow-target picker — matched to the icon controls beside it. */
+.tc-map3d-follow-sel {
+    height: 22px;
+    max-width: 120px;
+    padding: 0 6px;
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-sm, 4px);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-secondary);
+    font-size: 11px;
+    cursor: pointer;
+}
+.tc-map3d-follow-sel:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
+.tc-map3d-follow-sel:focus { outline: none; border-color: var(--color-accent-primary); }
 
 
 /* Track Map dashboard widget — the 3D stage stretches to the widget body instead of the
