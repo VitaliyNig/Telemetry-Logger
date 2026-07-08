@@ -126,6 +126,10 @@
         { key: 'gr',    label: 'Gear', plotTitle: 'GEAR', height: 50, min: -1, max: 8 },
         { key: 'rpm',   label: 'RPM', plotTitle: 'RPM', height: 60, min: 0, max: 14000 },
         { key: 'ers',   label: 'ERS', plotTitle: 'ERS', height: 60, min: 0, max: 100 },
+        // Cumulative ERS deployment over the lap (Joules → MJ via scale). Hidden when
+        // every visible lap is flat-zero (e.g. F2). Range is computed dynamically —
+        // 2025 laps top out near 4 MJ, 2026 near the 6 MJ harvest cap.
+        { key: 'dep',   label: 'Deploy', plotTitle: 'ERS DEPLOY', height: 60, min: 0, max: 4, field: 'ersDepLapJ', scale: 1 / 1e6, hideWhenFlat: true },
         { key: 'drs',   label: 'DRS', plotTitle: 'DRS', height: 22, min: 0, max: 1, style: 'band' },
         // 2026-regulation rows (Season Pack, CarTelemetry26): Active Aero Straight Mode is
         // the DRS analogue, Overtake (Boost) is the gap-based attack tool. Band rows are
@@ -134,6 +138,12 @@
         { key: 'aero',  label: 'Aero', plotTitle: 'ACTIVE AERO', height: 22, min: 0, max: 1, style: 'band' },
         { key: 'ovt',   label: 'Boost', plotTitle: 'BOOST', height: 22, min: 0, max: 1, style: 'band' },
     ];
+
+    /** Sample value for a metric: reads metric.field (falls back to key), applies metric.scale. */
+    function metricValue(metric, s) {
+        var v = s[metric.field || metric.key] || 0;
+        return metric.scale ? v * metric.scale : v;
+    }
 
     var ERS_MODE_TAGS = ['', 'MED', 'HOT', 'OT'];
 
@@ -180,9 +190,25 @@
         });
         return found;
     }
+    // True when at least one visible lap has a non-zero value in `field` — decides
+    // whether hideWhenFlat rows (ERS Deploy) exist for the current comparison.
+    function seriesHasSignal(lapData, field) {
+        if (!lapData) return false;
+        var found = false;
+        lapData.forEach(function (d) {
+            if (found || !d || !d.samples) return;
+            var samples = d.samples;
+            for (var i = 0; i < samples.length; i++) {
+                if ((samples[i][field] || 0) > 0) { found = true; return; }
+            }
+        });
+        return found;
+    }
     function metricsFor(lapData) {
         return METRICS.filter(function (m) {
-            return m.style !== 'band' || bandHasSignal(lapData, m.key);
+            if (m.style === 'band') return bandHasSignal(lapData, m.key);
+            if (m.hideWhenFlat) return seriesHasSignal(lapData, m.field || m.key);
+            return true;
         });
     }
 
@@ -201,6 +227,7 @@
             case 'rpm':   return Math.round(sample.rpm).toLocaleString();
             case 'ers':   return Math.round(sample.ers || 0) + '% '
                 + ersModeTag(sample.ersMd || 0, carIdx);
+            case 'dep':   return ((sample.ersDepLapJ || 0) / 1e6).toFixed(2) + ' MJ';
             case 'drs':   return sample.drs ? 'ON' : 'OFF';
             case 'aero':  return sample.aero ? 'STRAIGHT' : 'CORNER';
             case 'ovt':   return sample.ovt ? 'ON' : 'OFF';
@@ -570,6 +597,10 @@
                     compareState.__corners = ((geom && geom.corners) || []).map(function (c) {
                         return { n: c.n, d: c.at * trackLen };
                     }).sort(function (a, b) { return a.d - b.d; });
+                    // DRS zones ship as [fromFrac, toFrac] pairs in the same geometry file.
+                    compareState.__drsZones = ((geom && geom.drsZones) || []).map(function (z) {
+                        return { from: z[0] * trackLen, to: z[1] * trackLen };
+                    });
                     compareState.__cornersTrackId = tid;
                     if (latestCompareLapData) {
                         drawChartStack(latestCompareLapData);
@@ -612,6 +643,14 @@
         if (!corners || !corners.length) { ruler.hidden = true; return; }
         var span = Math.max(1, xMax - xMin);
         var html = '';
+        // DRS-zone spans behind the ticks (activation stretch, from track geometry).
+        (compareState.__drsZones || []).forEach(function (z) {
+            var from = Math.max(z.from, xMin), to = Math.min(z.to, xMax);
+            if (to <= from) return;
+            var l = (from - xMin) / span * 100;
+            var w = (to - from) / span * 100;
+            html += '<span class="tc-ruler-drs" style="left:' + l.toFixed(3) + '%;width:' + w.toFixed(3) + '%"></span>';
+        });
         var lastLabelPct = -10;
         corners.forEach(function (c) {
             if (c.d < xMin || c.d > xMax) return;
@@ -1585,6 +1624,13 @@
                 { v: 14000, label: '14k' },
             ];
         }
+        if (key === 'dep') {
+            return [
+                { v: plotVMin, label: plotVMin.toFixed(1) },
+                { v: (plotVMin + plotVMax) / 2, label: ((plotVMin + plotVMax) / 2).toFixed(1) },
+                { v: plotVMax, label: plotVMax.toFixed(1) + ' MJ' },
+            ];
+        }
         if (metric.style === 'band') {
             return [
                 { v: 0, label: '0' },
@@ -1604,6 +1650,22 @@
     }
 
     function computePlotValueRange(metric, lapData, selections, refSamples, refCarIdx, xMin, xMax, sess) {
+        // ERS Deploy is cumulative and regulation-dependent (≈4 MJ in 2025, up to 6 MJ
+        // in 2026) — scale the axis to the visible data instead of a fixed cap.
+        if (metric.key === 'dep') {
+            var maxV = 0.5;
+            selections.forEach(function (kv) {
+                var d = lapData && lapData.get(kv[0]);
+                if (!d || !d.samples) return;
+                for (var i = 0; i < d.samples.length; i++) {
+                    var s = d.samples[i];
+                    if (s.d < xMin || s.d > xMax) continue;
+                    var v = metricValue(metric, s);
+                    if (v > maxV) maxV = v;
+                }
+            });
+            return { min: 0, max: Math.min(10, maxV * 1.05) };
+        }
         if (metric.key !== 'delta') {
             return { min: metric.min, max: metric.max };
         }
@@ -1674,10 +1736,6 @@
         var vMinPlot = plotRange.min;
         var vMaxPlot = plotRange.max;
 
-        // Reference driver samples for overlays (DRS overlay on Speed; ERS bg band).
-        var refDriverData = (refCarIdx != null && lapData) ? lapData.get(refCarIdx) : null;
-        var refDriverSamples = refDriverData ? refDriverData.samples : null;
-
         var gridPack = buildHorizontalGridAndYLabels(metric, vMinPlot, vMaxPlot, PAD_T, plotH, W);
         var titleStr = escapeHtml(metric.plotTitle || metric.label);
         // HTML overlay (not SVG text): the chart SVG uses preserveAspectRatio="none" so its
@@ -1711,6 +1769,18 @@
             tracks.forEach(function (track, idx) {
                 var ty = PAD_T + trackH * idx + trackGap / 2;
                 var th = Math.max(2, trackH - trackGap);
+                // DRS row: dim underlay where DRS was *available* (detection passed) so a
+                // late open or an unused zone reads as "underlay without fill" at a glance.
+                if (metric.key === 'drs') {
+                    runLengthRuns(track.samples, 'drsAllowed', xMin, xMax).forEach(function (r) {
+                        if (r.v !== 1) return;
+                        var ax0 = Math.max(0, x(Math.max(r.from, xMin)));
+                        var ax1 = Math.min(W, x(Math.min(r.to, xMax)));
+                        if (ax1 <= ax0) return;
+                        bandSvg += '<rect class="tc-drs-allowed" x="' + ax0 + '" y="' + ty
+                            + '" width="' + (ax1 - ax0) + '" height="' + th + '" fill="' + track.color + '"/>';
+                    });
+                }
                 runLengthRuns(track.samples, metric.key, xMin, xMax).forEach(function (r) {
                     if (r.v !== 1) return;
                     var x0 = Math.max(0, x(Math.max(r.from, xMin)));
@@ -1730,20 +1800,40 @@
                 + gridPack.grid + bandSvg + '</svg>' + drsLabelsHtml + gridPack.yLabels + insetTitle;
         }
 
-        // ---- ERS row: background mode band + floating mode tags, polyline on top. ----
+        // ---- ERS row: per-driver deploy-mode lanes at the top of the plot, polyline on
+        // top. One thin lane per visible driver (reference first), coloured by ERS mode
+        // run — the old version painted the reference's mode across the whole plot and
+        // hid every compare lap's strategy. A 2.5px notch in the driver's team colour
+        // keys each lane; floating MED/HOT/OT tags stay reference-only.
         var ersBg = '';
         var ersLabelsHtml = '';
-        if (metric.key === 'ers' && refDriverSamples) {
-            runLengthRuns(refDriverSamples, 'ersMd', xMin, xMax).forEach(function (r) {
-                var x0 = Math.max(0, x(Math.max(r.from, xMin)));
-                var x1 = Math.min(W, x(Math.min(r.to, xMax)));
-                if (x1 <= x0) return;
-                ersBg += '<rect class="tc-ers-band tc-ers-mode-' + r.v + '" x="' + x0 + '" y="' + PAD_T
-                    + '" width="' + (x1 - x0) + '" height="' + plotH + '"/>';
-                var tag = ersModeTag(r.v, refCarIdx);
-                if (tag && (x1 - x0) > 30) {
-                    ersLabelsHtml += '<div class="tc-ers-mode-tag" style="left:' + ((x1 - 3) / W * 100) + '%;top:' + (PAD_T + 2) + 'px">' + tag + '</div>';
-                }
+        if (metric.key === 'ers') {
+            var ersLanes = [];
+            selections.forEach(function (kv) {
+                var dd = lapData && lapData.get(kv[0]);
+                if (!dd || !dd.samples) return;
+                ersLanes.push({ carIdx: kv[0], samples: dd.samples, isRef: kv[0] === refCarIdx });
+            });
+            ersLanes.sort(function (a, b) { return (b.isRef ? 1 : 0) - (a.isRef ? 1 : 0); });
+            var laneH = 5, laneGap = 1;
+            var tagTop = PAD_T + ersLanes.length * (laneH + laneGap) + 2;
+            ersLanes.forEach(function (lane, li) {
+                var ly = PAD_T + li * (laneH + laneGap);
+                runLengthRuns(lane.samples, 'ersMd', xMin, xMax).forEach(function (r) {
+                    var x0 = Math.max(0, x(Math.max(r.from, xMin)));
+                    var x1 = Math.min(W, x(Math.min(r.to, xMax)));
+                    if (x1 <= x0) return;
+                    ersBg += '<rect class="tc-ers-lane tc-ers-mode-' + r.v + '" x="' + x0 + '" y="' + ly
+                        + '" width="' + (x1 - x0) + '" height="' + laneH + '"/>';
+                    if (lane.isRef) {
+                        var tag = ersModeTag(r.v, lane.carIdx);
+                        if (tag && (x1 - x0) > 30) {
+                            ersLabelsHtml += '<div class="tc-ers-mode-tag" style="left:' + ((x1 - 3) / W * 100) + '%;top:' + tagTop + 'px">' + tag + '</div>';
+                        }
+                    }
+                });
+                ersBg += '<rect class="tc-ers-lane-key" x="0" y="' + ly + '" width="2.5" height="' + laneH
+                    + '" fill="' + laneColorFor(lane.carIdx) + '"/>';
             });
         }
 
@@ -1782,7 +1872,7 @@
                 if (!refSamples) return;
                 values = getDeltaSeriesForRange(carIdx, refCarIdx, d.samples, refSamples, xMin, xMax, sess);
             } else {
-                values = d.samples.map(function (s) { return { d: s.d, v: s[metric.key] || 0 }; });
+                values = d.samples.map(function (s) { return { d: s.d, v: metricValue(metric, s) }; });
             }
             if (metric.key !== 'delta') values = values.filter(function (pt) { return pt.d >= xMin && pt.d <= xMax; });
             if (values.length === 0) return;
@@ -1890,7 +1980,9 @@
             rpm: a.rpm + (b.rpm - a.rpm) * f,
             ers: (a.ers || 0) + ((b.ers || 0) - (a.ers || 0)) * f,
             ersMd: a.ersMd || 0,
+            ersDepLapJ: (a.ersDepLapJ || 0) + ((b.ersDepLapJ || 0) - (a.ersDepLapJ || 0)) * f,
             drs: a.drs || 0,
+            drsAllowed: a.drsAllowed || 0,
             aero: a.aero || 0,
             ovt: a.ovt || 0,
         };
@@ -2245,6 +2337,10 @@
             if (metricKey === 'rpm') return (dv >= 0 ? '+' : '') + Math.round(dv);
             if (metricKey === 'gr') return (dv >= 0 ? '+' : '') + Math.round(dv);
             if (metricKey === 'ers') return (dv >= 0 ? '+' : '') + Math.round(dv) + '%';
+            if (metricKey === 'dep') {
+                var depDv = ((currentSample.ersDepLapJ || 0) - (refSample.ersDepLapJ || 0)) / 1e6;
+                return (depDv >= 0 ? '+' : '') + depDv.toFixed(2) + ' MJ';
+            }
             if (metricKey === 'drs' || metricKey === 'aero' || metricKey === 'ovt') return dv === 0 ? '0' : (dv > 0 ? '+ON' : '-ON');
             if (metricKey === 'delta') return (dv >= 0 ? '+' : '') + dv.toFixed(3) + ' s';
             return (dv >= 0 ? '+' : '') + dv.toFixed(2);
@@ -2317,7 +2413,7 @@
                 if (metricDef && pair.current) {
                     var yv;
                     if (metricKey === 'delta') yv = (pair.current.delta != null) ? pair.current.delta : 0;
-                    else if (pair.current.sample) yv = pair.current.sample[metricKey] != null ? pair.current.sample[metricKey] : 0;
+                    else if (pair.current.sample) yv = metricValue(metricDef, pair.current.sample);
                     else yv = 0;
                     var pr = getYRange(metricKey);
                     var yNorm = (yv - pr.min) / Math.max(0.0001, pr.max - pr.min);

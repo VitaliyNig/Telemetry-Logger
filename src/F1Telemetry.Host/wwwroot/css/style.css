@@ -6723,6 +6723,7 @@ td.lap-cell__tyre { cursor: default; }
     --tc-ch-gr:    color-mix(in srgb, var(--accent-yellow) 62%, #8b9096);
     --tc-ch-rpm:   color-mix(in srgb, var(--accent-orange) 68%, #8b9096);
     --tc-ch-ers:   color-mix(in srgb, var(--ers) 62%, #8b9096);
+    --tc-ch-dep:   color-mix(in srgb, var(--boost) 55%, #8b9096);
     --tc-ch-drs:   color-mix(in srgb, var(--drs, #00d4ff) 66%, #8b9096);
     --tc-ch-boost: color-mix(in srgb, var(--boost) 68%, #8b9096);
 }
@@ -6739,6 +6740,7 @@ td.lap-cell__tyre { cursor: default; }
 .tc-chart-row[data-metric="gr"]    { --tc-metric-color: var(--tc-ch-gr); }
 .tc-chart-row[data-metric="rpm"]   { --tc-metric-color: var(--tc-ch-rpm); }
 .tc-chart-row[data-metric="ers"]   { --tc-metric-color: var(--tc-ch-ers); }
+.tc-chart-row[data-metric="dep"]   { --tc-metric-color: var(--tc-ch-dep); }
 .tc-chart-row[data-metric="drs"]   { --tc-metric-color: var(--tc-ch-drs); }
 .tc-chart-row[data-metric="aero"]  { --tc-metric-color: var(--tc-ch-drs); }
 .tc-chart-row[data-metric="ovt"]   { --tc-metric-color: var(--tc-ch-boost); }
@@ -6872,6 +6874,7 @@ td.lap-cell__tyre { cursor: default; }
 .tc-row-chip[data-metric="gr"]    { --tc-metric-color: var(--tc-ch-gr); }
 .tc-row-chip[data-metric="rpm"]   { --tc-metric-color: var(--tc-ch-rpm); }
 .tc-row-chip[data-metric="ers"]   { --tc-metric-color: var(--tc-ch-ers); }
+.tc-row-chip[data-metric="dep"]   { --tc-metric-color: var(--tc-ch-dep); }
 .tc-row-chip[data-metric="drs"]   { --tc-metric-color: var(--tc-ch-drs); }
 .tc-row-chip[data-metric="aero"]  { --tc-metric-color: var(--tc-ch-drs); }
 .tc-row-chip[data-metric="ovt"]   { --tc-metric-color: var(--tc-ch-boost); }
@@ -7444,6 +7447,24 @@ td.lap-cell__tyre { cursor: default; }
 .tc-ers-mode-1 { fill: #3498db; opacity: 0.25; }
 .tc-ers-mode-2 { fill: #ffd700; opacity: 0.22; }
 .tc-ers-mode-3 { fill: #e10600; opacity: 0.25; }
+/* Per-driver mode lanes at the top of the ERS plot: stronger than the old full-height
+   wash so a 5px strip still reads, keyed by a small team-colour notch on the left. */
+.tc-ers-lane { opacity: 0.55; }
+.tc-ers-lane.tc-ers-mode-0 { opacity: 0.18; }
+.tc-ers-lane-key { opacity: 0.9; }
+
+/* DRS availability underlay in the DRS band row: same driver colour as the ON fill
+   but dim, so "could open" reads behind "did open". */
+.tc-drs-allowed { opacity: 0.16; }
+
+/* DRS activation zones on the corner ruler (from track geometry). */
+.tc-ruler-drs {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: color-mix(in srgb, var(--drs) 16%, transparent);
+    border-radius: 1px;
+}
 .tc-ers-mode-tag {
     position: absolute;
     transform: translateX(-100%);
