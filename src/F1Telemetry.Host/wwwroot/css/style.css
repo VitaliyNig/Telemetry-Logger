@@ -6073,12 +6073,14 @@ td.lap-cell__tyre { cursor: default; }
 }
 
 /* 3D track map (track3d.js) — square WebGL stage plus a one-line caption. */
+/* ── 3D track map (track3d.js): WebGL stage + one-line caption toolbar ───────────
+   All colours/spacing/radii come from tokens.css so the map matches app chrome. */
 .tc-map3d {
     position: relative;
     width: 100%;
     aspect-ratio: 1;
     min-height: 200px;
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     overflow: hidden;
     background: color-mix(in srgb, var(--color-bg-base) 60%, transparent);
     touch-action: none;
@@ -6089,16 +6091,18 @@ td.lap-cell__tyre { cursor: default; }
     align-items: center;
     justify-content: space-between;
     gap: var(--space-2);
-    font-size: 11px;
+    font-size: var(--font-size-xs, 11px);
     color: var(--color-text-muted);
     letter-spacing: 0.2px;
 }
 .tc-map3d-hint { white-space: nowrap; }
-/* Three-position overlay selector: DRS | hide (eye-off) | SM. */
+.tc-map3d-ctrls { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+/* Segmented button group — camera view (3D | top) and overlay (DRS | SM | DOM | hide). */
 .tc-map3d-seg {
     display: inline-flex;
     border: 1px solid var(--color-border-default);
-    border-radius: var(--radius-sm, 4px);
+    border-radius: var(--radius-sm);
     overflow: hidden;
     flex-shrink: 0;
 }
@@ -6112,44 +6116,53 @@ td.lap-cell__tyre { cursor: default; }
     border-left: 1px solid var(--color-border-default);
     background: var(--color-bg-elevated);
     color: var(--color-text-secondary);
-    font-size: 11px;
+    font-size: var(--font-size-xs, 11px);
     font-weight: 600;
     letter-spacing: 0.4px;
     cursor: pointer;
-    transition: background var(--motion-fast, .15s), color var(--motion-fast, .15s);
+    transition: background var(--motion-fast), color var(--motion-fast);
 }
 .tc-map3d-seg button:first-child { border-left: none; }
 .tc-map3d-seg button:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
-.tc-map3d-seg button.active { background: var(--color-accent-primary); color: #fff; }
+.tc-map3d-seg button.active { background: var(--color-accent-primary); color: var(--color-text-on-accent, #fff); }
 .tc-map3d-seg button svg { display: block; }
-.tc-map3d-ctrls { display: inline-flex; align-items: center; gap: var(--space-2); }
+
+/* Standalone icon toggle (follow / name tags / tyre badges / marshal flags). */
 .tc-map3d-follow {
-    display: inline-flex; align-items: center; justify-content: center;
-    width: 26px; height: 22px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 26px;
+    height: 22px;
     border: 1px solid var(--color-border-default);
-    border-radius: var(--radius-sm, 4px);
+    border-radius: var(--radius-sm);
     background: var(--color-bg-elevated);
     color: var(--color-text-secondary);
     cursor: pointer;
+    transition: background var(--motion-fast), color var(--motion-fast);
 }
 .tc-map3d-follow:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
-.tc-map3d-follow.active { background: var(--color-accent-primary); color: #fff; border-color: var(--color-accent-primary); }
+.tc-map3d-follow.active {
+    background: var(--color-accent-primary);
+    color: var(--color-text-on-accent, #fff);
+    border-color: var(--color-accent-primary);
+}
 .tc-map3d-follow svg { display: block; }
+
 /* Live-widget follow-target picker — matched to the icon controls beside it. */
 .tc-map3d-follow-sel {
     height: 22px;
     max-width: 120px;
     padding: 0 var(--space-1-5);
     border: 1px solid var(--color-border-default);
-    border-radius: var(--radius-sm, 4px);
+    border-radius: var(--radius-sm);
     background: var(--color-bg-elevated);
     color: var(--color-text-secondary);
-    font-size: 11px;
+    font-size: var(--font-size-xs, 11px);
     cursor: pointer;
 }
 .tc-map3d-follow-sel:hover { background: var(--color-bg-card-hover); color: var(--color-text-primary); }
 .tc-map3d-follow-sel:focus { outline: none; border-color: var(--color-accent-primary); }
-
 
 /* Track Map dashboard widget — the 3D stage stretches to the widget body instead of the
    Compare view's default square stage. */
