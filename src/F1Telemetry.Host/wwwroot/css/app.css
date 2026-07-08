@@ -14,13 +14,16 @@ html, body {
     color: var(--color-text-primary);
     line-height: 1.5;
     overflow: hidden;
-    /* Onest renders lighter with grayscale smoothing (esp. on macOS) */
+    /* Geist renders cleaner with grayscale smoothing (esp. on macOS) */
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
-    /* Disable JetBrains Mono ligatures so -> += -- don't glue in numeric displays */
+    /* Disable Geist Mono ligatures so -> += -- don't glue in numeric displays */
     font-feature-settings: 'liga' 0, 'calt' 0;
     /* Tabular figures everywhere so timings/deltas don't shift on update */
     font-variant-numeric: tabular-nums;
+    /* Geist runs a touch wide; slight negative tracking tightens the UI.
+       Uniform shift keeps monospace columns aligned. */
+    letter-spacing: -0.01em;
 }
 
 /* === HEADER === */
