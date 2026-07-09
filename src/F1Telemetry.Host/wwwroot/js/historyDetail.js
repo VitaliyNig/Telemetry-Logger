@@ -1388,6 +1388,23 @@
         return Math.max(String(chars || '').length, 2) * fontSizePx * 0.62;
     }
 
+    // Checkered-flag end marker for finishers: 4x4 alternating black/white squares in a
+    // white-ringed tile, centered on (cx, cy). `uu` scales it to a constant screen size.
+    function svgCheckeredFlagMark(cx, cy, uu) {
+        var half = 5 * uu, cell = half / 2;
+        var squares = '';
+        for (var row = 0; row < 4; row++) {
+            for (var col = 0; col < 4; col++) {
+                var dark = (row + col) % 2 === 0;
+                squares += '<rect x="' + (cx - half + col * cell) + '" y="' + (cy - half + row * cell)
+                    + '" width="' + cell + '" height="' + cell + '" fill="' + (dark ? '#111' : '#fff') + '"/>';
+            }
+        }
+        return '<g class="pos-finish-mark"><rect x="' + (cx - half) + '" y="' + (cy - half)
+            + '" width="' + (half * 2) + '" height="' + (half * 2) + '" stroke-width="' + uu + '" fill="none"/>'
+            + squares + '</g>';
+    }
+
     // Small eye SVG for positions chart (stroke matches driver color).
     function svgPositionEyeMarkup(isHidden, strokeColor) {
         var esc = escapeHtml(String(strokeColor || '#ccc'));
@@ -1753,20 +1770,27 @@
                 endY: y(last.position),
             });
 
-            // DNF/DSQ/retired: × at the point where the line stops.
-            var dnfMark = '';
-            if (endLabels[carIdx] && endLabels[carIdx].dnf) {
+            // End-of-line marker: DSQ → solid black square; DNF/retired → ×; finisher → checkered flag.
+            var endMark = '';
+            var endLbl = endLabels[carIdx];
+            if (endLbl && endLbl.dsq) {
+                var qxc = x(last.lapNum), qyc = y(last.position), qs = 3.6 * uu;
+                endMark = '<rect class="pos-dsq-mark" x="' + (qxc - qs) + '" y="' + (qyc - qs)
+                    + '" width="' + (qs * 2) + '" height="' + (qs * 2) + '" stroke-width="' + uu + '"/>';
+            } else if (endLbl && endLbl.dnf) {
                 var dxc = x(last.lapNum), dyc = y(last.position), ds = 4 * uu;
-                dnfMark = '<path class="pos-dnf-mark" stroke="' + color + '" stroke-width="' + (1.6 * uu) + '" d="'
+                endMark = '<path class="pos-dnf-mark" stroke="' + color + '" stroke-width="' + (1.6 * uu) + '" d="'
                     + 'M' + (dxc - ds) + ' ' + (dyc - ds) + 'L' + (dxc + ds) + ' ' + (dyc + ds)
                     + 'M' + (dxc - ds) + ' ' + (dyc + ds) + 'L' + (dxc + ds) + ' ' + (dyc - ds) + '"/>';
+            } else if (endLbl && endLbl.text) {
+                endMark = svgCheckeredFlagMark(x(last.lapNum), y(last.position), uu);
             }
 
             driverGroups += '<g class="pos-driver-group' + (hidden ? ' is-hidden' : '') + '" data-car-idx="' + carIdx + '">'
                 + '<polyline class="pos-line" stroke="' + color + '" points="' + pts.join(' ') + '"/>'
                 + '<g class="pos-dots">' + dots + '</g>'
                 + '<g class="pos-pits">' + pits + '</g>'
-                + dnfMark
+                + endMark
                 + '</g>';
         });
 
@@ -2162,7 +2186,7 @@
                     return { text: ordinalEnglish(cls.position) + ' ' + surname, dnf: false };
                 }
                 if (isNonFinisherResultStatus(rs)) {
-                    return { text: surname, dnf: true };
+                    return { text: surname, dnf: true, dsq: rs === 5 };
                 }
             }
         }

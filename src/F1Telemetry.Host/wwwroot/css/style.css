@@ -5498,6 +5498,16 @@ td.lap-cell__tyre { cursor: default; }
     stroke-linecap: round;
 }
 
+.pos-finish-mark rect:first-child {
+    stroke: #fff;
+}
+
+.pos-dsq-mark {
+    fill: #000;
+    stroke: #fff;
+    paint-order: stroke fill;
+}
+
 .pos-band-sc     { fill: rgba(255, 140, 0, 0.18); }
 .pos-band-vsc    { fill: rgba(255, 215, 0, 0.15); }
 .pos-band-red    { fill: rgba(225, 6, 0, 0.22); }
