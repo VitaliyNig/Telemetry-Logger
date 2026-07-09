@@ -6900,6 +6900,41 @@ td.lap-cell__tyre { cursor: default; }
     shape-rendering: crispEdges;
     pointer-events: none;
 }
+/* Vertical distance gridlines — fainter than the horizontal grid so rows stay airy. */
+.tc-grid-v {
+    stroke: rgba(255, 255, 255, 0.04);
+    stroke-width: 1;
+    vector-effect: non-scaling-stroke;
+    shape-rendering: crispEdges;
+    pointer-events: none;
+}
+
+/* Distance axis under the chart stack. Margins mirror the hover layer so labels
+   align 1:1 with the plot area (same trick as the corner ruler). */
+.tc-xaxis {
+    position: relative;
+    height: 14px;
+    margin: var(--space-0-5) 8px 0 calc(var(--tc-label-w, 90px) + 14px);
+    pointer-events: none;
+}
+.tc-xaxis-tick {
+    position: absolute;
+    top: 0;
+    width: 1px;
+    height: 4px;
+    background: var(--color-border-muted);
+}
+.tc-xaxis-label {
+    position: absolute;
+    bottom: 0;
+    transform: translateX(-50%);
+    font-family: var(--font-mono);
+    font-size: 9px;
+    line-height: 1;
+    color: var(--color-text-muted);
+    white-space: nowrap;
+    font-variant-numeric: tabular-nums;
+}
 
 .tc-axis-tick {
     position: absolute;

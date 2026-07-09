@@ -666,6 +666,37 @@
         ruler.hidden = false;
     }
 
+    /** Nice-number distance ticks for the visible range (~8 ticks target). */
+    function xAxisTicks(xMin, xMax) {
+        var span = Math.max(1, xMax - xMin);
+        var target = span / 8;
+        var steps = [10, 20, 25, 50, 100, 200, 250, 500, 1000, 2000];
+        var step = steps[steps.length - 1];
+        for (var i = 0; i < steps.length; i++) {
+            if (steps[i] >= target) { step = steps[i]; break; }
+        }
+        var out = [];
+        for (var d = Math.ceil(xMin / step) * step; d <= xMax + 1e-6; d += step) out.push(d);
+        return out;
+    }
+
+    /** Rebuilds the distance axis under the chart stack for the visible range. */
+    function updateXAxis(host, xMin, xMax) {
+        var axis = host.querySelector('#tcXAxis');
+        if (!axis) return;
+        var span = Math.max(1, xMax - xMin);
+        var ticks = xAxisTicks(xMin, xMax);
+        var html = '';
+        ticks.forEach(function (d, i) {
+            var pct = (d - xMin) / span * 100;
+            if (pct < 0.5 || pct > 99.5) return;
+            var label = Math.round(d) + (i === ticks.length - 1 ? ' m' : '');
+            html += '<span class="tc-xaxis-tick" style="left:' + pct.toFixed(3) + '%"></span>'
+                + '<span class="tc-xaxis-label" style="left:' + pct.toFixed(3) + '%">' + label + '</span>';
+        });
+        axis.innerHTML = html;
+    }
+
     /** Shows/positions the "T7" tag that rides the crosshair in the hover layer. */
     function positionCornerTag(host, d, pct01) {
         var tag = host.querySelector('#tcCornerTag');
@@ -675,6 +706,42 @@
         tag.textContent = label;
         tag.style.left = (pct01 * 100) + '%';
         tag.hidden = false;
+    }
+
+    // ---------- channel presets ----------
+    // keys: null = show everything. Lists may name channels absent from the current
+    // session (drs vs aero/ovt, dep on F2) — they're intersected with the live metric
+    // set, so each preset degrades gracefully across regulations.
+    var CHANNEL_PRESETS = [
+        { id: 'all', label: 'All', title: 'Show every channel', keys: null },
+        { id: 'inputs', label: 'Inputs', title: 'Driver inputs: delta, speed, throttle, brake, steering, gear',
+          keys: ['delta', 'spd', 'thr', 'brk', 'str', 'gr'] },
+        { id: 'energy', label: 'Energy', title: 'Energy management: delta, speed, ERS, deploy, attack tools',
+          keys: ['delta', 'spd', 'ers', 'dep', 'drs', 'aero', 'ovt'] },
+    ];
+
+    function applyChannelPreset(presetId) {
+        var preset = CHANNEL_PRESETS.find(function (p) { return p.id === presetId; });
+        if (!preset) return;
+        compareState.hiddenMetrics.clear();
+        if (preset.keys) {
+            METRICS.forEach(function (m) {
+                if (preset.keys.indexOf(m.key) < 0) compareState.hiddenMetrics.add(m.key);
+            });
+        }
+    }
+
+    /** Preset id whose visible-channel set exactly matches the current state, or null. */
+    function activePresetId(metrics) {
+        var visible = metrics.filter(function (m) { return !compareState.hiddenMetrics.has(m.key); })
+            .map(function (m) { return m.key; }).sort().join(',');
+        var match = null;
+        CHANNEL_PRESETS.forEach(function (p) {
+            var expected = metrics.filter(function (m) { return !p.keys || p.keys.indexOf(m.key) >= 0; })
+                .map(function (m) { return m.key; }).sort().join(',');
+            if (expected === visible && match == null) match = p.id;
+        });
+        return match;
     }
 
     // ---------- sector badges ----------
@@ -748,6 +815,17 @@
                 + '<span class="tc-sector-card-label">' + fullLabel + '</span>'
                 + '<span class="tc-sector-card-time">' + window.HistoryDetail.formatSectorTime(segmentMs) + '</span>'
                 + '</button>';
+        });
+        html += '</div></div>';
+
+        // Channel presets — one-click channel sets instead of 11 individual toggles.
+        var activePreset = activePresetId(metrics);
+        html += '<div class="tc-ctrl-row">'
+            +   '<span class="tc-ctrl-label">View</span>'
+            +   '<div class="tc-segmented tc-segmented--full">';
+        CHANNEL_PRESETS.forEach(function (p) {
+            html += '<button class="tc-seg-btn ' + (activePreset === p.id ? 'active' : '') + '"'
+                + ' data-preset="' + p.id + '" title="' + p.title + '">' + p.label + '</button>';
         });
         html += '</div></div>';
 
@@ -860,6 +938,15 @@
                 if (ds.mode != null) {
                     compareState.deltaMode = ds.mode;
                     redraw(data);
+                    return;
+                }
+                // Channel preset.
+                if (ds.preset != null) {
+                    applyChannelPreset(ds.preset);
+                    enforceMetricLimit();
+                    persistState();
+                    drawBadges(data);
+                    drawChartStack(data);
                     return;
                 }
                 // Channel visibility toggle.
@@ -1559,6 +1646,7 @@
                     return '<div class="tc-row-chip" data-metric="' + m.key + '" hidden></div>';
                }).join('')
              + '</div>';
+        html += '<div class="tc-xaxis" id="tcXAxis" aria-hidden="true"></div>';
         html += '<div class="tc-interact-hint" aria-hidden="true">Wheel zoom · Shift+drag pan · drag select zoom · dbl-click reset · Esc reset · [← →] pan · [+ −] zoom</div>';
         host.innerHTML = html;
 
@@ -1572,6 +1660,7 @@
         });
 
         updateCornerRuler(host, xMin, xMax);
+        updateXAxis(host, xMin, xMax);
         wireHover(host, lapData, selections, refSamples, refIdx, xMin, xMax, sess);
         bindCompareShortcuts();
 
@@ -1590,6 +1679,7 @@
                 overviewWin.style.width = w + '%';
             }
             updateCornerRuler(host, nextXMin, nextXMax);
+            updateXAxis(host, nextXMin, nextXMax);
             // Keep the bridge-driven crosshair anchored to the actual hovered distance
             // as the chart auto-pans. Without this, the crosshair pins to an edge on
             // first map-hover and only "snaps" into place on the next mousemove — the
@@ -1904,6 +1994,14 @@
         var vMaxPlot = plotRange.max;
 
         var gridPack = buildHorizontalGridAndYLabels(metric, vMinPlot, vMaxPlot, PAD_T, plotH, W);
+        // Vertical distance gridlines at the same ticks as the bottom axis, so every
+        // row lines up with the axis labels without the eye having to interpolate.
+        var vGrid = '';
+        xAxisTicks(xMin, xMax).forEach(function (gd) {
+            var gx = x(gd);
+            if (gx <= 1 || gx >= W - 1) return;
+            vGrid += '<line class="tc-grid-v" x1="' + gx + '" x2="' + gx + '" y1="' + PAD_T + '" y2="' + (PAD_T + plotH) + '"/>';
+        });
         var titleStr = escapeHtml(metric.plotTitle || metric.label);
         // HTML overlay (not SVG text): the chart SVG uses preserveAspectRatio="none" so its
         // lines fill the width — SVG text would stretch horizontally with it on wide screens.
@@ -1964,7 +2062,7 @@
                 }
             });
             return '<svg class="tc-chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
-                + gridPack.grid + bandSvg + '</svg>' + drsLabelsHtml + gridPack.yLabels + insetTitle;
+                + gridPack.grid + vGrid + bandSvg + '</svg>' + drsLabelsHtml + gridPack.yLabels + insetTitle;
         }
 
         // ---- ERS row: per-driver deploy-mode lanes at the top of the plot, polyline on
@@ -2043,6 +2141,18 @@
             }
             if (metric.key !== 'delta') values = values.filter(function (pt) { return pt.d >= xMin && pt.d <= xMax; });
             if (values.length === 0) return;
+            // Gear is a step signal: inject a corner vertex at each change so shifts render
+            // as verticals instead of the diagonal ramps a plain polyline draws.
+            if (metric.key === 'gr') {
+                var stepped = [];
+                for (var si = 0; si < values.length; si++) {
+                    if (si > 0 && values[si].v !== values[si - 1].v) {
+                        stepped.push({ d: values[si].d, v: values[si - 1].v });
+                    }
+                    stepped.push(values[si]);
+                }
+                values = stepped;
+            }
             // 2 vertices per CSS pixel is the visual ceiling. W=900 viewBox units → ~1800 cap.
             values = subsamplePolyline(values, 1800);
 
@@ -2085,7 +2195,7 @@
         });
 
         return '<svg class="tc-chart" viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="none">'
-            + gridPack.grid + ersBg + cornerMarkers + sectorMarkers + lines + '</svg>' + ersLabelsHtml + gridPack.yLabels + insetTitle;
+            + gridPack.grid + vGrid + ersBg + cornerMarkers + sectorMarkers + lines + '</svg>' + ersLabelsHtml + gridPack.yLabels + insetTitle;
     }
 
     // Resamples driverSamples onto reference sample distances and returns per-distance Δtime (seconds).
