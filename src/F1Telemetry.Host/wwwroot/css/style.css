@@ -4342,7 +4342,7 @@ input.history-folder-path:focus {
     background: transparent;
     border: none;
     border-radius: 6px;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
     font-size: 14px;
     font-weight: 600;
     letter-spacing: 0.5px;
@@ -4357,7 +4357,7 @@ input.history-folder-path:focus {
 }
 
 .history-sidenav-item:hover {
-    color: var(--color-text-secondary);
+    color: var(--color-text-primary);
     background: rgba(255, 255, 255, 0.06);
 }
 
@@ -4423,7 +4423,7 @@ input.history-folder-path:focus {
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
     padding: var(--space-1) var(--space-1-5) var(--space-2);
     border-bottom: 1px solid var(--border);
     margin-bottom: var(--space-1);
@@ -4534,7 +4534,7 @@ input.history-folder-path:focus {
     overflow-y: auto;
     max-height: calc(100vh - 240px);
     border: 1px solid var(--color-border-default);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background-color: var(--bg-card);
     background-image:
         linear-gradient(to right, var(--bg-card) 30%, rgba(20, 22, 28, 0)),
@@ -4965,6 +4965,9 @@ td.lap-cell__tyre { cursor: default; }
     border-bottom: 1px solid var(--border);
     background: var(--color-bg-header);
     white-space: nowrap;
+    position: sticky;
+    top: 0;
+    z-index: 1;
 }
 
 .lt-virtual-table td {
@@ -5051,19 +5054,12 @@ td.lap-cell__tyre { cursor: default; }
     max-height: calc(100vh - 240px);
     overflow: auto;
     border: 1px solid var(--color-border-default);
-    border-radius: var(--radius-sm);
+    border-radius: var(--radius-md);
     background: var(--color-bg-card);
 }
 
 @supports (max-height: 100dvh) {
     .res-container .lt-virtual-table-wrap { max-height: calc(100dvh - 240px); }
-}
-
-/* Keep the header row visible while scrolling the classification. */
-.res-container .lt-virtual-table thead th {
-    position: sticky;
-    top: 0;
-    z-index: 1;
 }
 
 .res-row--dnf .lt-virtual-cell--driver,
@@ -5174,14 +5170,39 @@ td.lap-cell__tyre { cursor: default; }
 }
 
 .pos-sidebar-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-2);
     font-size: 10px;
     font-weight: 600;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
     padding: var(--space-1) var(--space-2) var(--space-2);
     border-bottom: 1px solid var(--color-border-muted);
     margin-bottom: var(--space-1);
+}
+.pos-sidebar-actions {
+    display: inline-flex;
+    gap: var(--space-1);
+}
+.pos-sidebar-btn {
+    font-size: 9px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.4px;
+    padding: 1px 6px;
+    background: transparent;
+    border: 1px solid var(--color-border-default);
+    border-radius: 3px;
+    color: var(--color-text-secondary);
+    cursor: pointer;
+    transition: color var(--motion-fast), border-color var(--motion-fast);
+}
+.pos-sidebar-btn:hover {
+    color: var(--color-text-primary);
+    border-color: var(--color-border-muted);
 }
 
 .pos-sidebar-row {
@@ -5218,7 +5239,7 @@ td.lap-cell__tyre { cursor: default; }
     text-overflow: ellipsis;
     white-space: nowrap;
     font-size: 11px;
-    color: var(--color-text-secondary);
+    color: var(--color-text-primary);
 }
 .pos-sidebar-eye {
     margin-left: auto;
@@ -5270,8 +5291,11 @@ td.lap-cell__tyre { cursor: default; }
     display: none !important;
 }
 
-/* Vertical-ish range: pan when chart overflows on short viewports */
+/* Vertical-ish range: pan when chart overflows on short viewports.
+   Custom track+thumb in both engines (appearance:none kills accent-color styling). */
 .pos-chart-v-range {
+    appearance: none;
+    -webkit-appearance: none;
     writing-mode: vertical-lr;
     direction: rtl;
     width: 26px;
@@ -5280,7 +5304,7 @@ td.lap-cell__tyre { cursor: default; }
     max-height: none;
     margin: 0;
     cursor: grab;
-    accent-color: var(--color-accent-primary, #9b3ff5);
+    background: transparent;
 }
 
 .pos-chart-v-range:active {
@@ -5291,6 +5315,27 @@ td.lap-cell__tyre { cursor: default; }
     width: 8px;
     border-radius: 4px;
     background: rgba(255, 255, 255, 0.08);
+}
+.pos-chart-v-range::-moz-range-thumb {
+    width: 16px;
+    height: 16px;
+    border: none;
+    border-radius: 50%;
+    background: var(--color-accent-primary, #9b3ff5);
+}
+
+.pos-chart-v-range::-webkit-slider-runnable-track {
+    width: 8px;
+    border-radius: 4px;
+    background: rgba(255, 255, 255, 0.08);
+}
+.pos-chart-v-range::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: var(--color-accent-primary, #9b3ff5);
+    margin-left: -4px;
 }
 
 @media (max-height: 720px) {
@@ -5304,7 +5349,7 @@ td.lap-cell__tyre { cursor: default; }
     flex-wrap: wrap;
     gap: var(--space-2) var(--space-4);
     font-size: 11px;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
     padding: 0 var(--space-0-5);
 }
 .pos-legend-item {
@@ -5405,7 +5450,7 @@ td.lap-cell__tyre { cursor: default; }
 /* Lap Chart SVG: font-size comes from drawPositionChart (user units) → ~constant screen px when viewBox scales. */
 .pos-ytick, .pos-xtick {
     font-family: var(--font-mono, 'Courier New', monospace);
-    fill: var(--text-dim);
+    fill: var(--color-text-secondary);
 }
 
 .pos-driver-label {
@@ -5448,6 +5493,11 @@ td.lap-cell__tyre { cursor: default; }
     transform: scale(1.5);
 }
 
+.pos-dnf-mark {
+    fill: none;
+    stroke-linecap: round;
+}
+
 .pos-band-sc     { fill: rgba(255, 140, 0, 0.18); }
 .pos-band-vsc    { fill: rgba(255, 215, 0, 0.15); }
 .pos-band-red    { fill: rgba(225, 6, 0, 0.22); }
@@ -5476,8 +5526,8 @@ td.lap-cell__tyre { cursor: default; }
     opacity: 0;
     transition: opacity 0.08s ease;
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
-    min-width: 140px;
-    max-width: 240px;
+    min-width: 280px;
+    max-width: 340px;
 }
 .pos-tooltip.is-visible { opacity: 1; }
 
@@ -5495,9 +5545,31 @@ td.lap-cell__tyre { cursor: default; }
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-0-5) 0;
+    padding: var(--space-0-5) var(--space-1);
     line-height: 1.4;
+    border-radius: 3px;
 }
+.pos-tooltip-row--hl {
+    background: rgba(255, 255, 255, 0.08);
+}
+.pos-tooltip-delta {
+    min-width: 24px;
+    font-size: 9px;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+}
+.pos-tooltip-delta--up   { color: var(--color-semantic-success); }
+.pos-tooltip-delta--down { color: var(--color-semantic-danger-alt); }
+/* Interval to car ahead; trend-coloured (closing/losing vs previous lap) */
+.pos-tooltip-int {
+    min-width: 44px;
+    text-align: right;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-muted);
+}
+.pos-tooltip-int--closing { color: var(--color-semantic-success); }
+.pos-tooltip-int--losing  { color: var(--color-semantic-danger-alt); }
 .pos-tooltip-swatch {
     width: 6px;
     height: 6px;
@@ -5516,59 +5588,33 @@ td.lap-cell__tyre { cursor: default; }
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-
-.pos-stints {
-    background: var(--color-bg-card);
-    border: 1px solid var(--color-border-default);
-    border-radius: 6px;
-    padding: var(--space-3);
+.pos-tooltip-tyre {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+    min-width: 34px;
+    flex-shrink: 0;
 }
-
-.pos-stints-title {
+.pos-tooltip-tyre-dot {
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+.pos-tooltip-tyre-letter {
+    font-weight: 700;
     font-size: 10px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.5px;
+}
+.pos-tooltip-tyre-age {
+    font-size: 9px;
     color: var(--text-dim);
-    padding-bottom: var(--space-2);
-    margin-bottom: var(--space-2);
-    border-bottom: 1px solid var(--border);
 }
-
-.stint-grid {
-    display: grid;
-    grid-template-columns: minmax(0, 180px) minmax(0, 1fr);
-    gap: var(--space-1-5) var(--space-3);
-    align-items: center;
-}
-
-.stint-row-label {
-    display: flex;
-    align-items: center;
-    gap: var(--space-1-5);
-    font-size: 12px;
-    color: var(--text-primary);
-    min-width: 0;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
-
-.stint-row-bars {
-    position: relative;
-    height: 14px;
-    background: rgba(255, 255, 255, 0.04);
-    border: 1px solid rgba(255, 255, 255, 0.05);
-    border-radius: 3px;
-    overflow: hidden;
-}
-
-.stint-bar {
-    position: absolute;
-    top: 0;
-    bottom: 0;
-    border-radius: 2px;
-    cursor: help;
+.pos-tooltip-gap {
+    min-width: 62px;
+    text-align: right;
+    flex-shrink: 0;
+    font-variant-numeric: tabular-nums;
+    color: var(--color-text-secondary);
 }
 
 @media (max-width: 960px) {
@@ -5600,11 +5646,6 @@ td.lap-cell__tyre { cursor: default; }
     }
     .pos-sidebar-name { display: none; }
     .pos-chart { padding: var(--space-3); }
-    .stint-grid {
-        grid-template-columns: minmax(0, 120px) minmax(0, 1fr);
-        gap: var(--space-1) var(--space-2);
-    }
-    .stint-row-label { font-size: 11px; gap: var(--space-1); }
     .pos-legend { gap: var(--space-1) var(--space-3); }
 }
 
@@ -5657,7 +5698,7 @@ td.lap-cell__tyre { cursor: default; }
 .tc-root {
     display: flex;
     flex-direction: column;
-    min-height: 0;
+    min-height: 100%;
 }
 
 .tc-layout {
@@ -5838,6 +5879,28 @@ td.lap-cell__tyre { cursor: default; }
         height: 100%;
         overflow-y: auto;
     }
+    /* Bound the height chain while Compare is open: .app-main normally lets the page
+       grow and scroll, so .tc-root's height:100% resolved against an auto-height
+       panel and the transport bar could end up below the fold. Turning the chain
+       into viewport-filling flex columns makes the detail body the real scroll
+       container, so the columns scroll internally and the transport is always
+       on screen. Scoped via :has(.tc-root) — other tabs keep page scrolling. */
+    .app-main:has(#panel-history.active .tc-root) {
+        display: flex;
+        flex-direction: column;
+        overflow-y: hidden;
+    }
+    #panel-history.active:has(.tc-root) {
+        flex: 1 1 auto;
+        min-height: 0;
+        display: flex;
+        flex-direction: column;
+    }
+    #panel-history.active:has(.tc-root) .history-detail {
+        flex: 1 1 auto;
+        min-height: 0;
+        height: auto;
+    }
 }
 
 /* Map-priority mode: the 3D-map rail becomes the hero column; charts shrink to a
@@ -5970,7 +6033,7 @@ td.lap-cell__tyre { cursor: default; }
     bottom: 0;
     z-index: 5;
     padding: var(--space-2) var(--space-3);
-    margin-top: var(--space-2);
+    margin-top: auto;
     background: var(--color-bg-card);
     border: 1px solid var(--color-border-default);
     border-radius: var(--radius-md, 8px);
@@ -6090,13 +6153,20 @@ td.lap-cell__tyre { cursor: default; }
     display: flex;
     align-items: center;
     justify-content: space-between;
-    gap: var(--space-2);
+    flex-wrap: wrap;
+    gap: var(--space-1) var(--space-2);
     font-size: var(--font-size-xs, 11px);
     color: var(--color-text-muted);
     letter-spacing: 0.2px;
 }
 .tc-map3d-hint { white-space: nowrap; }
-.tc-map3d-ctrls { display: inline-flex; align-items: center; gap: var(--space-2); }
+.tc-map3d-ctrls {
+    display: inline-flex;
+    align-items: center;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: var(--space-1) var(--space-2);
+}
 
 /* Segmented button group — camera view (3D | top) and overlay (DRS | SM | DOM | hide). */
 .tc-map3d-seg {
@@ -6217,7 +6287,7 @@ td.lap-cell__tyre { cursor: default; }
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.6px;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     line-height: 1;
     padding: var(--space-0-5) var(--space-0-5) 0;
     user-select: none;
@@ -6369,7 +6439,7 @@ td.lap-cell__tyre { cursor: default; }
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.6px;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     line-height: 1;
     user-select: none;
 }
@@ -6385,7 +6455,7 @@ td.lap-cell__tyre { cursor: default; }
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     line-height: 1;
     user-select: none;
     min-width: 36px;
@@ -6471,7 +6541,7 @@ td.lap-cell__tyre { cursor: default; }
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.6px;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
     padding-bottom: var(--space-2);
     border-bottom: 1px solid var(--border);
 }
@@ -6488,7 +6558,7 @@ td.lap-cell__tyre { cursor: default; }
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
     user-select: none;
 }
 .tc-ctrl-row > .tc-segmented,
@@ -6498,7 +6568,7 @@ td.lap-cell__tyre { cursor: default; }
 .tc-ctrl-count {
     font-size: 10px;
     font-weight: 700;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
     font-variant-numeric: tabular-nums;
 }
 /* Zoom row: 3 equal buttons filling the width. */
@@ -6534,7 +6604,7 @@ td.lap-cell__tyre { cursor: default; }
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.4px;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
 }
 .tc-sector-card.is-active .tc-sector-card-label { color: var(--accent-brand); }
 .tc-sector-card-time {
@@ -6581,12 +6651,12 @@ td.lap-cell__tyre { cursor: default; }
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.6px;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
     padding-bottom: var(--space-2);
     border-bottom: 1px solid var(--border);
 }
-.tc-insights-title-note { font-size: 9px; text-transform: none; letter-spacing: 0; color: var(--color-text-muted); margin-left: var(--space-1); }
-.tc-insights-empty { font-size: 11px; color: var(--text-dim); padding: var(--space-1) 0; flex-basis: 100%; }
+.tc-insights-title-note { font-size: 9px; text-transform: none; letter-spacing: 0; color: var(--color-text-secondary); margin-left: var(--space-1); }
+.tc-insights-empty { font-size: 11px; color: var(--color-text-secondary); padding: var(--space-1) 0; flex-basis: 100%; }
 .tc-stb .tc-insights { padding: var(--space-1-5) var(--space-2); }
 
 /* Tool usage table: one row per lap, columns appear only when the signal exists. */
@@ -6602,7 +6672,7 @@ td.lap-cell__tyre { cursor: default; }
     font-weight: 700;
     font-size: 9px;
     letter-spacing: 0.4px;
-    color: var(--color-text-muted);
+    color: var(--color-text-secondary);
     padding: 0 0 var(--space-1) var(--space-1-5);
 }
 .tc-tools-table td {
@@ -6659,7 +6729,7 @@ td.lap-cell__tyre { cursor: default; }
 .tc-attack-tool--bst { background: color-mix(in srgb, var(--boost) 28%, transparent); color: var(--boost); }
 .tc-attack-tool--drs { background: color-mix(in srgb, var(--drs) 24%, transparent); color: var(--drs); }
 .tc-attack-where { color: var(--text-primary); font-weight: 700; }
-.tc-attack-len { color: var(--color-text-muted); }
+.tc-attack-len { color: var(--color-text-secondary); }
 .tc-attack-gain { margin-left: auto; font-variant-numeric: tabular-nums; font-weight: 700; }
 .tc-attack-gain--gain { color: var(--accent-green); }
 .tc-attack-gain--loss { color: var(--color-semantic-danger-alt); }
@@ -6739,15 +6809,15 @@ td.lap-cell__tyre { cursor: default; }
     font-weight: 700;
     text-transform: uppercase;
     letter-spacing: 0.4px;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
 }
 .tc-loss-cause--late_brake,
-.tc-loss-cause--soft_brake { color: color-mix(in srgb, var(--color-semantic-danger-alt) 70%, #8b9096); }
-.tc-loss-cause--low_apex   { color: color-mix(in srgb, var(--accent-yellow) 62%, #8b9096); }
+.tc-loss-cause--soft_brake { color: color-mix(in srgb, var(--color-semantic-danger-alt) 78%, #c9d1d9); }
+.tc-loss-cause--low_apex   { color: color-mix(in srgb, var(--accent-yellow) 72%, #c9d1d9); }
 .tc-loss-cause--late_throttle,
-.tc-loss-cause--poor_exit  { color: color-mix(in srgb, var(--color-semantic-success) 65%, #8b9096); }
-.tc-loss-cause--choppy_thr { color: color-mix(in srgb, var(--accent) 65%, #8b9096); }
-.tc-loss-cause--mixed      { color: var(--text-dim); }
+.tc-loss-cause--poor_exit  { color: color-mix(in srgb, var(--color-semantic-success) 72%, #c9d1d9); }
+.tc-loss-cause--choppy_thr { color: color-mix(in srgb, var(--accent) 72%, #c9d1d9); }
+.tc-loss-cause--mixed      { color: var(--color-text-secondary); }
 
 .tc-loss-facts {
     display: flex;
@@ -6767,7 +6837,7 @@ td.lap-cell__tyre { cursor: default; }
     font-variant-numeric: tabular-nums;
     line-height: 1.4;
 }
-.tc-loss-fact-label { color: var(--text-dim); text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; }
+.tc-loss-fact-label { color: var(--color-text-secondary); text-transform: uppercase; font-size: 9px; letter-spacing: 0.5px; }
 .tc-loss-fact-value { color: var(--text-primary); font-weight: 600; }
 .tc-loss-fact--loss .tc-loss-fact-value { color: var(--color-semantic-danger-alt); }
 .tc-loss-fact--gain .tc-loss-fact-value { color: var(--color-semantic-success); }
@@ -6777,7 +6847,7 @@ td.lap-cell__tyre { cursor: default; }
     margin: 0;
     padding: 0 0 0 var(--space-4);
     list-style: disc;
-    color: var(--text-secondary);
+    color: var(--color-text-primary);
     font-size: 12px;
     line-height: 1.55;
 }
@@ -7104,9 +7174,13 @@ td.lap-cell__tyre { cursor: default; }
 .tc-corner-tick {
     position: absolute;
     bottom: 0;
-    width: 1px;
-    height: 4px;
-    background: var(--color-border-muted);
+    /* Widen the invisible hit area so the thin tick still catches a hover tooltip. */
+    width: 7px;
+    margin-left: -3px;
+    height: 14px;
+    background: linear-gradient(var(--color-border-muted), var(--color-border-muted)) no-repeat center bottom / 1px 4px;
+    pointer-events: auto;
+    cursor: help;
 }
 .tc-corner-num {
     position: absolute;
@@ -7117,6 +7191,8 @@ td.lap-cell__tyre { cursor: default; }
     line-height: 1;
     color: var(--color-text-muted);
     white-space: nowrap;
+    pointer-events: auto;
+    cursor: help;
 }
 
 /* "T7" tag riding the crosshair at the top of the hover layer. */
@@ -7218,6 +7294,18 @@ td.lap-cell__tyre { cursor: default; }
 .tc-overview-tick--major { background: color-mix(in srgb, var(--color-text-primary) 55%, transparent); }
 .tc-overview-tick--minor { background: color-mix(in srgb, var(--color-text-primary) 22%, transparent); }
 
+/* Transparent full-width sector hit zone: carries the S1/S2/S3 hover tooltip.
+   Sits below the zoom window (later in DOM) so window drag wins; mousedown bubbles
+   to .tc-overview so click-to-centre / pan still work. */
+.tc-overview-band {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: transparent;
+    pointer-events: auto;
+    cursor: help;
+}
+
 .tc-overview-label {
     position: absolute;
     top: 50%;
@@ -7226,10 +7314,14 @@ td.lap-cell__tyre { cursor: default; }
     font-weight: 700;
     letter-spacing: 0.4px;
     color: color-mix(in srgb, var(--color-text-primary) 75%, transparent);
-    pointer-events: none;
+    /* Sits above the zoom window (z-index) and stays hoverable so the S1/S2/S3 tip
+       shows even when the window covers the full track; padding widens the hit area. */
+    pointer-events: auto;
+    cursor: help;
+    padding: 3px 5px;
     user-select: none;
     line-height: 1;
-    z-index: 1;
+    z-index: 4;
     text-shadow: 0 0 2px rgba(0, 0, 0, 0.6);
 }
 
@@ -7569,7 +7661,6 @@ td.lap-cell__tyre { cursor: default; }
 }
 
 /* ERS mode bands (behind the ERS polyline). */
-.tc-ers-band { }
 .tc-ers-mode-0 { fill: #2a2e3a; opacity: 0.25; }
 .tc-ers-mode-1 { fill: #3498db; opacity: 0.25; }
 .tc-ers-mode-2 { fill: #ffd700; opacity: 0.22; }
@@ -7591,6 +7682,18 @@ td.lap-cell__tyre { cursor: default; }
     bottom: 0;
     background: color-mix(in srgb, var(--drs) 16%, transparent);
     border-radius: 1px;
+    pointer-events: auto;
+    cursor: help;
+}
+/* Straight Mode (X-mode) zone — magenta, matching the 3D map overlay (XMODE_COLOR). */
+.tc-ruler-sm {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    background: color-mix(in srgb, #ff3fd8 16%, transparent);
+    border-radius: 1px;
+    pointer-events: auto;
+    cursor: help;
 }
 .tc-ers-mode-tag {
     position: absolute;
@@ -7621,6 +7724,14 @@ td.lap-cell__tyre { cursor: default; }
 }
 
 @media (max-width: 1200px) {
+    /* Below 1201px the page scrolls in .app-main, but .history-detail-body's own
+       overflow:auto (and .history-detail's overflow:hidden) become the sticky
+       containers for the transport bar, so it scrolls away with the content.
+       On the Compare tab, open the overflow chain so the transport's sticky
+       bottom resolves against .app-main's scrollport — the bar stays pinned to
+       the bottom of the screen. */
+    .history-detail:has(.tc-root) { overflow: visible; height: auto; }
+    .history-detail-body:has(.tc-root) { overflow: visible; }
     .tc-layout {
         grid-template-columns: minmax(220px, 260px) minmax(0, 1fr);
         grid-template-areas:
@@ -7734,7 +7845,7 @@ td.lap-cell__tyre { cursor: default; }
     max-height: calc(100vh - 240px);
     overflow: auto;
     border: 1px solid var(--color-border-default);
-    border-radius: 6px;
+    border-radius: var(--radius-md);
     background: var(--color-bg-card);
 }
 
@@ -7742,7 +7853,7 @@ td.lap-cell__tyre { cursor: default; }
     width: 100%;
     min-width: 640px;
     border-collapse: collapse;
-    font-size: 12px;
+    font-size: 13px;
     color: var(--text-primary);
 }
 
@@ -7750,13 +7861,13 @@ td.lap-cell__tyre { cursor: default; }
     position: sticky;
     top: 0;
     z-index: 1;
-    background: rgba(15, 17, 23, 0.98);
+    background: var(--color-bg-header);
     backdrop-filter: blur(4px);
     color: var(--text-dim);
     font-weight: 600;
     font-size: 10px;
     text-transform: uppercase;
-    letter-spacing: 0.5px;
+    letter-spacing: 1px;
     padding: var(--space-2) var(--space-3);
     text-align: left;
     border-bottom: 1px solid var(--border);
@@ -8199,7 +8310,7 @@ td.lap-cell__tyre { cursor: default; }
     text-overflow: ellipsis;
     white-space: nowrap;
 }
-.export-card-meta { font-size: 11px; color: var(--text-dim); }
+.export-card-meta { font-size: 11px; color: var(--color-text-secondary); }
 .export-card-badge {
     margin-left: auto;
     flex-shrink: 0;
@@ -8320,7 +8431,7 @@ td.lap-cell__tyre { cursor: default; }
     font-family: var(--font-mono, 'Courier New', monospace);
     font-size: 11px;
     font-variant-numeric: tabular-nums;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
     letter-spacing: 0.2px;
 }
 .tc-lap-card-time--none { color: var(--color-text-muted, var(--text-dim)); }
@@ -8342,7 +8453,7 @@ td.lap-cell__tyre { cursor: default; }
     box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.4);
 }
 .tc-tyre-letter { color: var(--text-primary); letter-spacing: 0.3px; }
-.tc-tyre-age { color: var(--text-dim); }
+.tc-tyre-age { color: var(--color-text-secondary); }
 .tc-tyre-age::before { content: '·'; margin-right: var(--space-1); }
 .tc-lap-card-actions {
     display: inline-flex;
@@ -8354,7 +8465,7 @@ td.lap-cell__tyre { cursor: default; }
     border: 1px solid var(--color-border-default);
     border-radius: 4px;
     background: transparent;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
     cursor: pointer;
     font-size: 9px;
     font-weight: 700;
@@ -8374,7 +8485,7 @@ td.lap-cell__tyre { cursor: default; }
 .tc-lap-card-vis, .tc-lap-card-remove {
     border: 0;
     background: transparent;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
     cursor: pointer;
     font-size: 11px;
     line-height: 1;
@@ -8396,7 +8507,7 @@ td.lap-cell__tyre { cursor: default; }
 .tc-lap-card-count {
     font-size: 10px;
     font-weight: 700;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
     font-variant-numeric: tabular-nums;
     letter-spacing: 0;
     text-transform: none;
@@ -8408,7 +8519,7 @@ td.lap-cell__tyre { cursor: default; }
     justify-content: center;
     cursor: pointer;
     background: transparent;
-    color: var(--text-dim);
+    color: var(--color-text-secondary);
     font-size: 11px;
     font-weight: 500;
     border-style: dashed;
@@ -8420,41 +8531,47 @@ td.lap-cell__tyre { cursor: default; }
 .tc-lap-modal {
     display: flex;
     flex-direction: column;
-    gap: var(--space-2);
+    gap: var(--space-3);
     min-height: 0;
     width: 100%;
     box-sizing: border-box;
 }
-.tc-lap-modal-title {
-    margin: 0;
-    font-size: 11px;
-    line-height: 1.4;
-    color: var(--text-dim);
-}
+/* Two-column driver card grid, mirrors .export-grid; open item spans both columns. */
 .tc-lap-accordion {
     display: grid;
-    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-    gap: var(--space-1);
+    grid-template-columns: 1fr 1fr;
+    gap: var(--space-2);
     min-height: 0;
     align-content: start;
 }
 .tc-lap-acc-item {
-    border: 1px solid color-mix(in srgb, var(--color-border-default) 70%, #fff 30%);
-    border-radius: 6px;
-    background: color-mix(in srgb, var(--bg-dark) 80%, #fff 5%);
-    overflow: hidden;
+    border: 1px solid var(--color-border-default);
+    border-radius: var(--radius-md, 8px);
+    background: rgba(255, 255, 255, 0.02);
     min-width: 0;
+    transition: border-color var(--motion-fast), background var(--motion-fast);
+}
+.tc-lap-acc-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+    border-color: color-mix(in srgb, var(--accent-brand) 45%, var(--color-border-default));
 }
 .tc-lap-acc-item.is-open {
     border-color: var(--accent-brand);
+    background: color-mix(in srgb, var(--accent-brand) 8%, rgba(255, 255, 255, 0.02));
     grid-column: 1 / -1;
 }
+/* Player card pinned across both columns, same as .export-card--you. */
+.tc-lap-acc-item--you {
+    grid-column: 1 / -1;
+    background: color-mix(in srgb, var(--accent-brand) 8%, rgba(255, 255, 255, 0.02));
+}
+.tc-lap-acc-item--disabled { opacity: 0.4; pointer-events: none; }
 .tc-lap-acc-trigger {
     width: 100%;
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    padding: var(--space-1-5) var(--space-2);
+    padding: var(--space-2) var(--space-3);
     border: 0;
     background: transparent;
     color: var(--text-primary);
@@ -8464,18 +8581,10 @@ td.lap-cell__tyre { cursor: default; }
     box-sizing: border-box;
     min-width: 0;
 }
-.tc-lap-acc-trigger:hover {
-    background: rgba(255, 255, 255, 0.05);
-}
-.tc-lap-acc-name {
-    flex: 1 1 auto;
-    min-width: 0;
-    font-size: 12px;
-    font-weight: 600;
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-}
+.tc-lap-acc-trigger .export-card-badge { margin-left: auto; }
+.tc-lap-acc-trigger .export-card-badge + .tc-lap-acc-chevron { margin-left: var(--space-1); }
+/* P## prefix: secondary (not dim) — dim fails contrast on the card surface. */
+.tc-lap-acc-trigger .driver-race-pos { color: var(--color-text-secondary); }
 .tc-lap-acc-chevron {
     flex-shrink: 0;
     width: 0;
@@ -8483,7 +8592,7 @@ td.lap-cell__tyre { cursor: default; }
     border-top: 4px solid transparent;
     border-bottom: 4px solid transparent;
     border-left: 6px solid var(--text-dim);
-    margin-left: var(--space-0-5);
+    margin-left: auto;
     transition: transform 0.15s ease;
 }
 .tc-lap-acc-item.is-open .tc-lap-acc-chevron {
@@ -8508,8 +8617,8 @@ td.lap-cell__tyre { cursor: default; }
     box-sizing: border-box;
     border: 1px solid var(--color-border-default);
     border-radius: 6px;
-    background: color-mix(in srgb, var(--color-bg-card) 88%, transparent);
-    color: var(--text-primary);
+    background: var(--color-bg-elevated);
+    color: var(--color-text-primary);
     text-align: left;
     padding: var(--space-1-5) var(--space-2);
     cursor: pointer;
@@ -8517,9 +8626,22 @@ td.lap-cell__tyre { cursor: default; }
 }
 .tc-lap-option:hover {
     border-color: var(--accent-brand);
+    background: var(--color-bg-card-hover);
 }
 .tc-lap-option-main { font-weight: 700; font-size: 12px; }
-.tc-lap-option-meta { font-size: 10px; color: var(--text-dim); }
+.tc-lap-option-meta {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1-5);
+    font-size: 11px;
+    color: var(--color-text-secondary);
+}
+.tc-lap-option-time {
+    color: var(--color-text-primary);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+}
+.tc-lap-option-invalid { color: var(--color-semantic-danger-alt); }
 .tc-lap-tag-list {
     display: inline-flex;
     align-items: center;
@@ -8527,4 +8649,4 @@ td.lap-cell__tyre { cursor: default; }
     margin-left: var(--space-1-5);
     vertical-align: middle;
 }
-.tc-lap-empty { font-size: 11px; color: var(--text-dim); padding: var(--space-1); line-height: 1.4; }
+.tc-lap-empty { font-size: 11px; color: var(--color-text-secondary); padding: var(--space-1); line-height: 1.4; }

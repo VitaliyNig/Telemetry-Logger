@@ -236,15 +236,63 @@
     }
 
     // ---------- lap playback ----------
-    // Sweeps lap distance over time and feeds it through the existing hover bridge, so the
-    // chart crosshair, value chips, focus cards, top delta and the 3D-map marker all animate
-    // in lock-step. The scrubber lets you drag to any point; speed scales the sweep rate.
-    var PLAY_SECONDS = 6; // real seconds for a full lap at 1×.
-    var playback = { playing: false, d: 0, raf: 0, last: 0, speed: 1 };
+    // Replays the reference lap in real time: playback advances lap TIME and maps it to
+    // lap distance through the reference lap's samples, so at 1× the marker moves exactly
+    // as the car did — fast down the straights, slow through the hairpins. The distance is
+    // fed through the existing hover bridge, so the chart crosshair, value chips, focus
+    // cards, top delta and the 3D-map marker all animate in lock-step. Falls back to a
+    // constant-speed sweep while no lap samples are loaded.
+    var PLAY_SECONDS = 6; // fallback sweep (no samples): real seconds for a full lap at 1×.
+    var playback = { playing: false, d: 0, t: 0, raf: 0, last: 0, speed: 1 };
+
+    /** Reference lap's samples (sorted by d, t monotonic), or null before data loads. */
+    function playbackRefSamples() {
+        var lapData = latestCompareLapData;
+        if (!lapData || !lapData.size) return null;
+        var ref = ensureReferenceSelection(lapData);
+        var entry = ref != null ? lapData.get(ref.carIdx) : null;
+        var samples = entry && entry.samples;
+        return samples && samples.length > 1 ? samples : null;
+    }
+    /** Seconds from lap start to lap end covered by the samples. */
+    function playbackLapDuration(samples) {
+        return samples[samples.length - 1].t - samples[0].t;
+    }
+    /** Lap distance at `tRel` seconds after lap start — binary search + lerp over samples. */
+    function distanceAtLapTime(samples, tRel) {
+        var t = samples[0].t + tRel;
+        if (t <= samples[0].t) return samples[0].d;
+        if (t >= samples[samples.length - 1].t) return samples[samples.length - 1].d;
+        var lo = 1, hi = samples.length - 1;
+        while (lo < hi) {
+            var mid = (lo + hi) >> 1;
+            if (samples[mid].t < t) lo = mid + 1;
+            else hi = mid;
+        }
+        var a = samples[lo - 1], b = samples[lo];
+        var span = b.t - a.t;
+        if (span <= 0) return a.d;
+        return a.d + (b.d - a.d) * ((t - a.t) / span);
+    }
+    /** Seconds after lap start at lap distance `d` — inverse of distanceAtLapTime. */
+    function lapTimeAtDistance(samples, d) {
+        var s = interpAtDistance(samples, d, null);
+        return s ? Math.max(0, s.t - samples[0].t) : 0;
+    }
 
     function playbackTrackLen() {
         var s = window.HistoryDetail.state.session;
         return Math.round((s && s.meta && s.meta.trackLengthM) || 5000);
+    }
+    // F1 26 (m_formula 13) drops DRS for driver-activated Straight Mode (X-mode). Pick which
+    // zone set the corner ruler shows by formula, not game year — an F1 25 install can run
+    // the 2026 ruleset, so meta.formula is the reliable discriminator. Every other formula
+    // — F2 (2), F1 Classic (1), Esports (6), etc. — keeps DRS.
+    var FORMULA_F1_26 = 13;
+    function sessionUsesStraightMode() {
+        var s = window.HistoryDetail.state.session;
+        var meta = s && s.meta;
+        return !!(meta && Number(meta.formula) === FORMULA_F1_26);
     }
     function getMapSyncMode() {
         try { return localStorage.getItem('tcMapSync') === 'time' ? 'time' : 'dist'; } catch (e) { return 'dist'; }
@@ -252,11 +300,20 @@
     function driveBridge(d, source) {
         if (compareState.__hoverBridge) compareState.__hoverBridge.setDistance(d, source);
     }
+    function formatPlaybackTime(sec) {
+        var m = Math.floor(sec / 60);
+        var s = sec - m * 60;
+        return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1);
+    }
     function updateScrubberUI(d) {
         var scrub = document.getElementById('tcScrub');
         var label = document.getElementById('tcScrubLabel');
         if (scrub && document.activeElement !== scrub) scrub.value = String(Math.round(d));
-        if (label) label.textContent = Math.round(d) + ' m';
+        if (label) {
+            var samples = playbackRefSamples();
+            label.textContent = Math.round(d) + ' m'
+                + (samples ? ' · ' + formatPlaybackTime(lapTimeAtDistance(samples, d)) : '');
+        }
     }
     function updatePlayBtn() {
         var b = document.getElementById('tcPlay');
@@ -266,15 +323,27 @@
         if (!playback.playing) return;
         var dt = playback.last ? Math.min(0.1, (ts - playback.last) / 1000) : 0;
         playback.last = ts;
-        var len = playbackTrackLen();
-        playback.d += (len / PLAY_SECONDS) * playback.speed * dt;
-        if (playback.d >= len) playback.d -= len; // loop the lap
+        var samples = playbackRefSamples();
+        var dur = samples ? playbackLapDuration(samples) : 0;
+        if (samples && dur > 0) {
+            playback.t += dt * playback.speed;
+            if (playback.t >= dur) playback.t -= dur; // loop the lap
+            playback.d = distanceAtLapTime(samples, playback.t);
+        } else {
+            var len = playbackTrackLen();
+            playback.d += (len / PLAY_SECONDS) * playback.speed * dt;
+            if (playback.d >= len) playback.d -= len; // loop the lap
+        }
         driveBridge(playback.d, 'playback');
         updateScrubberUI(playback.d);
         playback.raf = requestAnimationFrame(playbackTick);
     }
     function playbackPlay() {
         if (playback.playing) return;
+        // Re-derive lap time from the current distance: the reference lap (or the loaded
+        // data) may have changed while paused / scrubbed.
+        var samples = playbackRefSamples();
+        if (samples) playback.t = lapTimeAtDistance(samples, playback.d);
         playback.playing = true; playback.last = 0;
         playback.raf = requestAnimationFrame(playbackTick);
         updatePlayBtn();
@@ -287,11 +356,13 @@
     }
     function playbackSeek(d) {
         playback.d = Math.max(0, d);
+        var samples = playbackRefSamples();
+        if (samples) playback.t = lapTimeAtDistance(samples, playback.d);
         driveBridge(playback.d, 'scrub');
         updateScrubberUI(playback.d);
     }
     function wireTransport(root) {
-        playbackPause(); playback.d = 0;
+        playbackPause(); playback.d = 0; playback.t = 0;
         var play = root.querySelector('#tcPlay');
         var restart = root.querySelector('#tcRestart');
         var scrub = root.querySelector('#tcScrub');
@@ -601,6 +672,11 @@
                     compareState.__drsZones = ((geom && geom.drsZones) || []).map(function (z) {
                         return { from: z[0] * trackLen, to: z[1] * trackLen };
                     });
+                    // Straight-Mode (X-mode) zones — same [fromFrac, toFrac] shape; shown
+                    // instead of DRS for F1 26+ sessions.
+                    compareState.__xModeZones = ((geom && geom.xModeZones) || []).map(function (z) {
+                        return { from: z[0] * trackLen, to: z[1] * trackLen };
+                    });
                     compareState.__cornersTrackId = tid;
                     if (latestCompareLapData) {
                         drawChartStack(latestCompareLapData);
@@ -643,21 +719,29 @@
         if (!corners || !corners.length) { ruler.hidden = true; return; }
         var span = Math.max(1, xMax - xMin);
         var html = '';
-        // DRS-zone spans behind the ticks (activation stretch, from track geometry).
-        (compareState.__drsZones || []).forEach(function (z) {
+        // Overtake-aid zone spans behind the ticks (activation stretch, from track geometry).
+        // F1 26 dropped DRS for driver-activated Straight Mode, so show whichever the
+        // session's game year uses.
+        var useSm = sessionUsesStraightMode();
+        var zones = useSm ? compareState.__xModeZones : compareState.__drsZones;
+        var zoneCls = useSm ? 'tc-ruler-sm' : 'tc-ruler-drs';
+        var zoneName = useSm ? 'Straight Mode zone' : 'DRS zone';
+        (zones || []).forEach(function (z) {
             var from = Math.max(z.from, xMin), to = Math.min(z.to, xMax);
             if (to <= from) return;
             var l = (from - xMin) / span * 100;
             var w = (to - from) / span * 100;
-            html += '<span class="tc-ruler-drs" style="left:' + l.toFixed(3) + '%;width:' + w.toFixed(3) + '%"></span>';
+            var tip = zoneName + ' · ' + Math.round(z.from) + '–' + Math.round(z.to) + ' m';
+            html += '<span class="' + zoneCls + '" title="' + tip + '" style="left:' + l.toFixed(3) + '%;width:' + w.toFixed(3) + '%"></span>';
         });
         var lastLabelPct = -10;
         corners.forEach(function (c) {
             if (c.d < xMin || c.d > xMax) return;
             var pct = (c.d - xMin) / span * 100;
-            html += '<span class="tc-corner-tick" style="left:' + pct.toFixed(3) + '%"></span>';
+            var tip = 'Turn ' + c.n + ' · ' + Math.round(c.d) + ' m';
+            html += '<span class="tc-corner-tick" title="' + tip + '" style="left:' + pct.toFixed(3) + '%"></span>';
             if (pct - lastLabelPct >= 2.2) {
-                html += '<span class="tc-corner-num" style="left:' + pct.toFixed(3) + '%">' + c.n + '</span>';
+                html += '<span class="tc-corner-num" title="' + tip + '" style="left:' + pct.toFixed(3) + '%">' + c.n + '</span>';
                 lastLabelPct = pct;
             }
         });
@@ -1585,7 +1669,10 @@
                     + ' aria-hidden="true"></div>';
             });
         }
-        // S1/S2/S3 labels centred over each sector.
+        // S1/S2/S3 labels centred over each sector, each backed by a full-width hover
+        // band carrying an explanatory tooltip. The band lets pointer events bubble to
+        // the overview (mousedown-driven pan), so hovering shows the tip without breaking
+        // drag/click-to-centre.
         var bands = [
             { sector: 1, start: 0,  end: s2 || trackLen },
             { sector: 2, start: s2, end: s3 || trackLen },
@@ -1593,8 +1680,16 @@
         ];
         bands.forEach(function (b) {
             if (b.end <= b.start) return;
+            var lPct = (b.start / trackLen) * 100;
+            var wPct = ((b.end - b.start) / trackLen) * 100;
             var midPct = ((b.start + (b.end - b.start) / 2) / trackLen) * 100;
-            html += '<div class="tc-overview-label"'
+            var corners = cornerRangeLabel(b.start, b.end);
+            var tip = 'Sector ' + b.sector + ' · ' + Math.round(b.start) + '–' + Math.round(b.end) + ' m'
+                + (corners ? ' · ' + corners : '');
+            html += '<div class="tc-overview-band" title="' + tip + '"'
+                + ' style="left:' + lPct.toFixed(3) + '%;width:' + wPct.toFixed(3) + '%"'
+                + ' aria-hidden="true"></div>';
+            html += '<div class="tc-overview-label" title="' + tip + '"'
                 + ' style="left:' + midPct.toFixed(3) + '%"'
                 + ' aria-hidden="true">S' + b.sector + '</div>';
         });

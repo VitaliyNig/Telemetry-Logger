@@ -10,10 +10,13 @@
 
     --color-border-default: #30363d;
     --color-border-muted: #3d444d;
+    /* Text ladder tuned for WCAG on card surfaces (#1c2128):
+       primary 13.7:1 · secondary 6.4:1 (AA) · muted 4.75:1 (AA) · dim 3.8:1 (AA-large).
+       Old values had muted at 3.5:1 and dim at 2.7:1 — both failed AA for body text. */
     --color-text-primary: #e6edf3;
-    --color-text-secondary: #8b949e;
-    --color-text-muted: #6e7681;
-    --color-text-dim: #5f6368;
+    --color-text-secondary: #9aa4b0;
+    --color-text-muted: #828c99;
+    --color-text-dim: #727c89;
 
     --color-accent-primary: #9b3ff5;
     --color-accent-primary-hover: #b56fff;
