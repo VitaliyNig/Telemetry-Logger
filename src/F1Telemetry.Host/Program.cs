@@ -6,6 +6,7 @@ using System.Text.RegularExpressions;
 using System.Windows;
 using System.Windows.Media;
 using System.Xml.Linq;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.Extensions.Options;
 using F1Telemetry.Config;
 using F1Telemetry.Debug;
@@ -423,8 +424,14 @@ static class Program
         // no-cache ≠ no-store: browsers may keep a copy but must revalidate (ETag → 304)
         // before using it. Without this, heuristic caching serves stale JS/CSS after an app
         // update until the cache expires on its own.
+        // .glb (3D car models for the track map) isn't a built-in MIME type, so
+        // the static-file middleware would 404 it without this registration.
+        var contentTypes = new FileExtensionContentTypeProvider();
+        contentTypes.Mappings[".glb"] = "model/gltf-binary";
+        contentTypes.Mappings[".gltf"] = "model/gltf+json";
         app.UseStaticFiles(new StaticFileOptions
         {
+            ContentTypeProvider = contentTypes,
             OnPrepareResponse = ctx =>
                 ctx.Context.Response.Headers.CacheControl = "no-cache",
         });

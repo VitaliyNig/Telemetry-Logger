@@ -82,6 +82,74 @@
 
     var geomCache = {};          // trackId -> Promise<geometry json | null> (shared by all instances)
 
+    // ---- Car model markers ---------------------------------------------------
+    // A low-poly F1 car (LOD 5, ~13k tris; exported by F1ModelExporter) stands in
+    // for each driver, tinted to the team colour and yawed to face its direction
+    // of travel. Loaded once, cloned per car; until it arrives markers fall back
+    // to the old spheres. The exporter authors the car in metres with the nose
+    // along +Z and Y up — the same frame as the track — so no reorientation.
+    var CAR_SCALE = 1.6;         // model is real-scale metres; scaled up for legibility on big tracks
+    var carTemplate = null;      // prepared THREE.Object3D, or null until loaded
+    var carWaiters = [];         // fns to run once the template becomes available
+
+    (function loadCarModel() {
+        if (!THREE.GLTFLoader) return;   // loader script missing — spheres stay
+        try {
+            new THREE.GLTFLoader().load('/data/vehicle-models/f1car_lod5.glb',
+                function (gltf) {
+                    carTemplate = gltf.scene;
+                    carWaiters.forEach(function (fn) { try { fn(); } catch (e) { } });
+                    carWaiters = [];
+                },
+                null,
+                function () { /* load failed — keep spheres */ });
+        } catch (e) { /* keep spheres */ }
+    })();
+
+    // Tinted clone of the car template as a THREE.Group; sub-meshes get a flat
+    // Lambert material in the team colour so the scene lights model the shape.
+    function makeCarModel(color) {
+        var g = new THREE.Group();
+        var car = carTemplate.clone(true);
+        var col = (color && color.isColor) ? color : new THREE.Color(color || '#9aa0a6');
+        car.traverse(function (n) {
+            if (n.isMesh) n.material = new THREE.MeshLambertMaterial({ color: col });
+        });
+        car.scale.setScalar(CAR_SCALE);
+        g.add(car);
+        g.userData.isCar = true;
+        return g;
+    }
+
+    // Yaw a marker so the car nose (+Z) points from `fromV` toward `toV` (XZ
+    // plane; the track is near-flat so pitch/roll stay zero).
+    function faceHeading(obj, fromV, toV) {
+        var dx = toV.x - fromV.x, dz = toV.z - fromV.z;
+        if (dx * dx + dz * dz > 1e-6) obj.rotation.y = Math.atan2(dx, dz);
+    }
+
+    // When the car model finishes loading, rebuild the active instance's markers
+    // so the placeholder spheres become cars (live widget and replay both).
+    carWaiters.push(function () {
+        if (!R) return;
+        if (R.pendingLiveCars) setLiveCars(R.pendingLiveCars);
+        if (R.lastDrivers) {
+            buildDrivers(R.lastDrivers, R.geom, R.center);
+            if (R.lastMarkerDistance != null) setMarkerDistance(R.lastMarkerDistance);
+        }
+    });
+
+    // Re-tint a car/sphere marker (a Group holding userData.body) to `col`.
+    function recolorMarker(mk, col) {
+        var body = mk.userData && mk.userData.body;
+        if (!body) return;
+        if (mk.userData.isCar) {
+            body.traverse(function (n) { if (n.isMesh) n.material.color.copy(col); });
+        } else if (body.material) {
+            body.material.color.copy(col);
+        }
+    }
+
     function fetchGeometry(trackId) {
         if (geomCache[trackId]) return geomCache[trackId];
         var p = fetch('/data/track-geometry/' + trackId + '.json')
@@ -462,6 +530,7 @@
     function buildDrivers(drivers, geom, center) {
         disposeGroup(R.driverGroup);
         disposeGroup(R.markerGroup);
+        R.lastDrivers = drivers;   // replayed for an in-place upgrade once the car model loads
         R.markers = [];
         R.refScenePts = null;
         R.refMotion = null;
@@ -481,13 +550,19 @@
             var tube = new THREE.TubeGeometry(curve, Math.min(scenePts.length * 2, 4000), TUBE_RADIUS, 6, false);
             R.driverGroup.add(new THREE.Mesh(tube, new THREE.MeshBasicMaterial({ color: col })));
 
-            var rad = drv.isPlayer ? 4.2 : 3.2;
-            var marker = new THREE.Mesh(
-                new THREE.SphereGeometry(rad, 16, 12),
+            var marker = new THREE.Group();
+            var body = carTemplate ? makeCarModel(col) : new THREE.Mesh(
+                new THREE.SphereGeometry(drv.isPlayer ? 4.2 : 3.2, 16, 12),
                 new THREE.MeshBasicMaterial({ color: col }));
+            marker.userData.body = body;
+            marker.userData.isCar = body.userData.isCar === true;
+            marker.add(body);
             marker.position.copy(scenePts[0]);
             R.markerGroup.add(marker);
-            R.markers.push({ mesh: marker, motion: motion, scenePts: scenePts, isRef: !!drv.isRef });
+            R.markers.push({
+                mesh: marker, motion: motion, scenePts: scenePts,
+                isRef: !!drv.isRef, isCar: marker.userData.isCar,
+            });
             if (!fFirst) fFirst = marker;
             if (drv.isRef) fRef = marker;
             if (drv.isPlayer) fPlayer = marker;
@@ -643,6 +718,14 @@
         // Marshal (sector) flags are live safety info — always visible, independent of the
         // DRS / X-mode / DOM overlay selector.
         var marshalGroup = new THREE.Group();
+        // Lights for the car models only: the track/kerbs/lines use MeshBasic
+        // (unlit) and are unaffected; the Lambert car bodies pick these up so
+        // their shape reads instead of a flat silhouette.
+        scene.add(new THREE.HemisphereLight(0xffffff, 0x444a55, 1.05));
+        var carSun = new THREE.DirectionalLight(0xffffff, 0.55);
+        carSun.position.set(0.4, 1, 0.3);
+        scene.add(carSun);
+
         scene.add(trackGroup); scene.add(pitGroup); scene.add(driverGroup); scene.add(markerGroup);
         scene.add(liveGroup);
         scene.add(sectorGroup); scene.add(cornerGroup); scene.add(pitMergeGroup);
@@ -734,7 +817,12 @@
                 var kids = R.liveGroup.children;
                 for (var ci = 0; ci < kids.length; ci++) {
                     var u = kids[ci].userData;
-                    if (u.toPos) kids[ci].position.lerpVectors(u.fromPos, u.toPos, t);
+                    if (u.toPos) {
+                        kids[ci].position.lerpVectors(u.fromPos, u.toPos, t);
+                        // point the car nose along its direction of travel (the
+                        // per-packet move vector); spheres ignore rotation
+                        if (u.isCar) faceHeading(kids[ci], u.fromPos, u.toPos);
+                    }
                 }
             }
             // Camera follow: ease the orbit target onto the followed car each frame and shift
@@ -821,6 +909,7 @@
 
     function setMarkerDistance(targetD) {
         if (!R || !R.markers) return;
+        R.lastMarkerDistance = targetD;
         var refT = null;
         if (R.syncMode === 'time' && R.refMotion && R.refMotion.length) {
             refT = R.refMotion[nearestIndex(R.refMotion, 'd', targetD)].t;
@@ -830,6 +919,11 @@
                 ? nearestIndex(mk.motion, 't', refT)
                 : nearestIndex(mk.motion, 'd', targetD);
             mk.mesh.position.copy(mk.scenePts[idx]);
+            if (mk.isCar) {
+                var i1 = Math.min(idx + 1, mk.scenePts.length - 1), i0 = idx;
+                if (i1 === i0) i0 = Math.max(idx - 1, 0);
+                if (i1 !== i0) faceHeading(mk.mesh, mk.scenePts[i0], mk.scenePts[i1]);
+            }
         });
     }
 
@@ -935,7 +1029,10 @@
         // A count change rebuilds every marker; those spawn on their exact position with no
         // tween. Otherwise ease over the measured gap since the last packet (clamped so a
         // stall or a burst doesn't produce a crawling or instant jump).
-        var fresh = group.children.length !== cars.length;
+        // Rebuild when the car count changes, or once the car model finishes
+        // loading and the existing markers are still spheres (upgrade in place).
+        var fresh = group.children.length !== cars.length
+            || (carTemplate && group.children.length > 0 && !group.children[0].userData.isCar);
         var now = performance.now();
         R.carTweenDur = (!fresh && R.lastCarsTime) ? Math.max(50, Math.min(300, now - R.lastCarsTime)) : 0;
         R.carTweenStart = now;
@@ -943,16 +1040,22 @@
         if (fresh) {
             disposeGroup(group);
             cars.forEach(function (car) {
-                var mesh = new THREE.Mesh(
+                var col = new THREE.Color(car.color || '#9aa0a6');
+                var mk = new THREE.Group();
+                var body = carTemplate ? makeCarModel(col) : new THREE.Mesh(
                     new THREE.SphereGeometry(car.isPlayer ? 2.8 : 2.1, 16, 12),
-                    new THREE.MeshBasicMaterial({ color: new THREE.Color(car.color || '#9aa0a6') }));
+                    new THREE.MeshBasicMaterial({ color: col }));
+                mk.userData.body = body;
+                mk.userData.isCar = body.userData.isCar === true;
+                mk.add(body);
                 var tag = new THREE.Sprite(new THREE.SpriteMaterial({
                     transparent: true, depthTest: false, sizeAttenuation: false,
                 }));
                 tag.position.set(0, TAG_LIFT, 0);
                 tag.renderOrder = 10;
-                mesh.add(tag);
-                group.add(mesh);
+                mk.add(tag);
+                mk.userData.tag = tag;
+                group.add(mk);
             });
         }
         var fPlayer = null, fSelected = null;
@@ -970,10 +1073,8 @@
                 mk.userData.fromPos.copy(mk.position);
                 mk.userData.toPos.copy(v);
             }
-            if (car.color && '#' + mk.material.color.getHexString().toUpperCase() !== String(car.color).toUpperCase()) {
-                mk.material.color.set(car.color);
-            }
-            var tag = mk.children[0];
+            if (car.color) recolorMarker(mk, new THREE.Color(car.color));
+            var tag = mk.userData.tag;
             var showTyre = !R.tyresHidden;
             var tagKey = (car.label || '') + '|' + (car.position != null ? car.position : '')
                 + '|' + (showTyre && car.tyre != null ? car.tyre : '');
