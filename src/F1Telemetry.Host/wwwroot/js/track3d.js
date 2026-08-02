@@ -16,8 +16,12 @@
     if (!THREE) return; // three.min.js failed to load — leave window.TrackMap3D undefined.
 
     var ROAD_HALF_WIDTH = 6.5;   // fallback half-width, metres, if a track ships no gate widths.
-    var TUBE_RADIUS = 1.0;       // driver racing-line thickness, metres.
+    var TUBE_RADIUS = 0.1;       // driver racing-line thickness, metres.
     var PATH_LIFT = 1.4;         // metres a racing line sits above the road surface.
+    var CAR_CLEARANCE = 0.05;    // metres a car MODEL sits above the road — wheels on tarmac.
+    // Car markers ride paths whose points carry PATH_LIFT (the racing-line height); drop
+    // them back down so cars sit on the road instead of levitating on the line.
+    var CAR_DROP = PATH_LIFT - CAR_CLEARANCE;
     var ZONE_LIFT = 0.7;         // metres a DRS / Straight-Mode overlay sits above the road.
     var KERB_LIFT = 0.02;        // metres a kerb band sits above the road surface (avoid z-fighting).
     var DRS_COLOR = 0x00d700;    // DRS zones — green (matches --accent-green).
@@ -83,37 +87,163 @@
     var geomCache = {};          // trackId -> Promise<geometry json | null> (shared by all instances)
 
     // ---- Car model markers ---------------------------------------------------
-    // A low-poly F1 car (LOD 5, ~13k tris; exported by F1ModelExporter) stands in
-    // for each driver, tinted to the team colour and yawed to face its direction
-    // of travel. Loaded once, cloned per car; until it arrives markers fall back
-    // to the old spheres. The exporter authors the car in metres with the nose
-    // along +Z and Y up — the same frame as the track — so no reorientation.
+    // Each driver gets a real car model (LOD 5, exported by F1ModelExporter), yawed
+    // and tilted from CarMotionData orientation. Two tiers:
+    //   1. Livery models — per-driver GLBs named {year}_{teamId}_{raceNumber}_lod5.glb
+    //      (fallback {year}_{teamId}_lod5.glb for the team's default livery), exported
+    //      --no-tyres, paired with a per-compound tyre set tyres/{year}_{compound}_lod5.glb
+    //      baked in the same car space. Real PBR textures, no tinting.
+    //   2. Generic fallback — f1car_lod5.glb (tyres included), flat-tinted to the team
+    //      colour, used until (or instead of, when no livery GLB exists) tier 1 loads.
+    // Everything loads lazily and is cached; until any model arrives markers are spheres.
+    // The exporter authors cars in metres with the nose along +Z and Y up — the same
+    // frame as the track — so no reorientation.
     var CAR_SCALE = 1.6;         // model is real-scale metres; scaled up for legibility on big tracks
-    var carTemplate = null;      // prepared THREE.Object3D, or null until loaded
-    var carWaiters = [];         // fns to run once the template becomes available
+    var MODEL_BASE = '/data/vehicle-models/';
+    var carTemplate = null;      // generic fallback template, or null until loaded
+    var carWaiters = [];         // fns to run once the generic template becomes available
+
+    // m_visualTyreCompound -> tyre-set file compound name (exporter --compound values).
+    var TYRE_MODEL_FILE = {
+        16: 'soft', 20: 'soft', 17: 'medium', 21: 'medium', 18: 'hard', 22: 'hard',
+        19: 'supersoft', 7: 'intermediate', 8: 'wet', 10: 'wet', 15: 'wet',
+    };
+
+    // Raw m_teamId (Participants/LapData) -> {gen, slug}. NOT keyed by header.gameYear:
+    // a session on the 2026 Season Pack DLC still reports gameYear=25 (base game "F1 25")
+    // while every team broadcasts as the 476-486 id range — gameYear tells you nothing
+    // about which roster/chassis is on track, only the raw teamId does. `gen` selects the
+    // shared tyre-set folder (one chassis generation, all teams); `slug` is the exported
+    // car GLB's file stem (matches the F1ModelExporter team folder codename — several
+    // real teams reuse an older codename, e.g. Aston Martin ships as "force_india").
+    var TEAM_ASSET = {
+        // F1 2025 season (packetFormat 2025, teamId 0-9)
+        0: { gen: 'f1_25', slug: 'mercedes' }, 1: { gen: 'f1_25', slug: 'ferrari' },
+        2: { gen: 'f1_25', slug: 'redbull' }, 3: { gen: 'f1_25', slug: 'williams' },
+        4: { gen: 'f1_25', slug: 'force_india' }, 5: { gen: 'f1_25', slug: 'lotus' },
+        6: { gen: 'f1_25', slug: 'toro_rosso' }, 7: { gen: 'f1_25', slug: 'haas' },
+        8: { gen: 'f1_25', slug: 'mclaren' }, 9: { gen: 'f1_25', slug: 'sauber' },
+        // F1 2026 season (2026 Season Pack DLC, packetFormat 2026, teamId 476-486)
+        476: { gen: 'f1_26', slug: 'mercedes' }, 477: { gen: 'f1_26', slug: 'ferrari' },
+        478: { gen: 'f1_26', slug: 'redbull' }, 479: { gen: 'f1_26', slug: 'williams' },
+        480: { gen: 'f1_26', slug: 'force_india' }, 481: { gen: 'f1_26', slug: 'lotus' },
+        482: { gen: 'f1_26', slug: 'toro_rosso' }, 483: { gen: 'f1_26', slug: 'haas' },
+        484: { gen: 'f1_26', slug: 'mclaren' }, 485: { gen: 'f1_26', slug: 'sauber' },
+        486: { gen: 'f1_26', slug: 'gm_cadillac' },
+        // F2 2025 (packetFormat 2026, teamId 465-475) and F2 2024 (teamId 158-168) — both
+        // confirmed against real recorded F2 races (2026-07-19 Imola/Texas session logs):
+        // every teamId's raceNumber pairs matched these team/slug assignments exactly.
+        // Slugs are ERP folder codenames; 3 teams predate a real-world rebrand the folder
+        // name was never updated for: carlin -> Rodin Motorsport, charouz -> AIX Racing,
+        // virtuosiracing -> Invicta Racing (ex-Virtuosi) — true in both 2024 and 2025.
+        158: { gen: 'f2_24', slug: 'artgp' }, 159: { gen: 'f2_24', slug: 'campos' },
+        160: { gen: 'f2_24', slug: 'carlin' }, 161: { gen: 'f2_24', slug: 'charouz' },
+        162: { gen: 'f2_24', slug: 'dams' }, 163: { gen: 'f2_24', slug: 'hitech' },
+        164: { gen: 'f2_24', slug: 'mpmotorsport' }, 165: { gen: 'f2_24', slug: 'prema' },
+        166: { gen: 'f2_24', slug: 'trident' }, 167: { gen: 'f2_24', slug: 'vanamersfoort' },
+        168: { gen: 'f2_24', slug: 'virtuosiracing' },
+        465: { gen: 'f2_25', slug: 'artgp' }, 466: { gen: 'f2_25', slug: 'campos' },
+        467: { gen: 'f2_25', slug: 'carlin' }, 468: { gen: 'f2_25', slug: 'charouz' },
+        469: { gen: 'f2_25', slug: 'dams' }, 470: { gen: 'f2_25', slug: 'hitech' },
+        471: { gen: 'f2_25', slug: 'mpmotorsport' }, 472: { gen: 'f2_25', slug: 'prema' },
+        473: { gen: 'f2_25', slug: 'trident' }, 474: { gen: 'f2_25', slug: 'vanamersfoort' },
+        475: { gen: 'f2_25', slug: 'virtuosiracing' },
+    };
+
+    // url -> Promise<THREE.Object3D|null> (null = missing/failed; negative-cached so a
+    // 404 is not re-requested every broadcast frame).
+    var glbCache = {};
+    function loadGlb(url) {
+        if (glbCache[url]) return glbCache[url];
+        glbCache[url] = new Promise(function (resolve) {
+            if (!THREE.GLTFLoader) { resolve(null); return; }
+            try {
+                new THREE.GLTFLoader().load(url,
+                    function (gltf) { resolve(prepareLiveryScene(gltf.scene)); },
+                    null,
+                    function () { resolve(null); });
+            } catch (e) { resolve(null); }
+        });
+        return glbCache[url];
+    }
+
+    // The renderer stays in linear output (the grey-box scene's colours are tuned for
+    // it), so leave livery texture bytes undecoded: under the ~white hemisphere light
+    // the albedo then renders as-authored instead of gamma-darkened.
+    function prepareLiveryScene(scene) {
+        scene.traverse(function (n) {
+            if (n.isMesh && n.material) {
+                if (n.material.map) n.material.map.encoding = THREE.LinearEncoding;
+                // Tyre rubber ships glossy (roughness 0.5) — under the scene's directional
+                // light the GGX highlight washes the whole sidewall white. Full-rough matte
+                // keeps the dark rubber and the compound ring readable.
+                if (n.material.name === 'wall' || n.material.name === 'tread') {
+                    n.material.roughness = 1;
+                    n.material.metalness = 0;
+                }
+                // Studio env is bright — temper it so livery paint keeps its
+                // authored saturation instead of washing toward the env grey.
+                if (n.material.envMapIntensity !== undefined) n.material.envMapIntensity = 0.7;
+                n.material.needsUpdate = true;
+            }
+        });
+        return scene;
+    }
 
     (function loadCarModel() {
-        if (!THREE.GLTFLoader) return;   // loader script missing — spheres stay
-        try {
-            new THREE.GLTFLoader().load('/data/vehicle-models/f1car_lod5.glb',
-                function (gltf) {
-                    carTemplate = gltf.scene;
-                    carWaiters.forEach(function (fn) { try { fn(); } catch (e) { } });
-                    carWaiters = [];
-                },
-                null,
-                function () { /* load failed — keep spheres */ });
-        } catch (e) { /* keep spheres */ }
+        loadGlb(MODEL_BASE + 'f1car_lod5.glb').then(function (scene) {
+            if (!scene) return;   // load failed — spheres stay
+            carTemplate = scene;
+            carWaiters.forEach(function (fn) { try { fn(); } catch (e) { } });
+            carWaiters = [];
+        });
     })();
 
-    // Tinted clone of the car template as a THREE.Group; sub-meshes get a flat
+    // Resolved car+tyres template per livery key, assembled once and cloned per marker.
+    // Promise<THREE.Object3D|null>; null = no livery GLB shipped for this driver.
+    var liveryCache = {};
+    function liveryKey(asset, spec) {
+        var comp = TYRE_MODEL_FILE[spec.tyre] || 'medium';
+        return asset.gen + '_' + asset.slug + '_' + (spec.num || 0) + '_' + comp;
+    }
+    function getLiveryTemplate(asset, spec) {
+        var key = liveryKey(asset, spec);
+        if (liveryCache[key]) return liveryCache[key];
+        var comp = TYRE_MODEL_FILE[spec.tyre] || 'medium';
+        liveryCache[key] = loadGlb(MODEL_BASE + asset.gen + '_' + asset.slug + '_' + (spec.num || 0) + '_lod5.glb')
+            .then(function (car) {
+                return car || loadGlb(MODEL_BASE + asset.gen + '_' + asset.slug + '_lod5.glb');
+            })
+            .then(function (car) {
+                if (!car) return null;
+                return loadGlb(MODEL_BASE + 'tyres/' + asset.gen + '_' + comp + '_lod5.glb')
+                    .then(function (tyres) {
+                        // no set for this compound — a medium set beats a wheel-less car
+                        return tyres || (comp === 'medium' ? null
+                            : loadGlb(MODEL_BASE + 'tyres/' + asset.gen + '_medium_lod5.glb'));
+                    })
+                    .then(function (tyres) {
+                        var g = new THREE.Group();
+                        g.add(car.clone(true));
+                        if (tyres) g.add(tyres.clone(true));
+                        return g;
+                    });
+            });
+        return liveryCache[key];
+    }
+
+    // Tinted clone of the generic car template as a THREE.Group; sub-meshes get a flat
     // Lambert material in the team colour so the scene lights model the shape.
     function makeCarModel(color) {
         var g = new THREE.Group();
         var car = carTemplate.clone(true);
         var col = (color && color.isColor) ? color : new THREE.Color(color || '#9aa0a6');
         car.traverse(function (n) {
-            if (n.isMesh) n.material = new THREE.MeshLambertMaterial({ color: col });
+            if (n.isMesh) {
+                n.material = new THREE.MeshLambertMaterial({ color: col });
+                // geometry belongs to the shared template — disposeGroup must skip it
+                n.userData.sharedAsset = true;
+            }
         });
         car.scale.setScalar(CAR_SCALE);
         g.add(car);
@@ -121,11 +251,70 @@
         return g;
     }
 
+    // Livery clone (real textures, geometry+materials shared with the cached template).
+    function makeLiveryModel(template) {
+        var g = new THREE.Group();
+        var car = template.clone(true);
+        car.traverse(function (n) {
+            if (n.isMesh) n.userData.sharedAsset = true;
+        });
+        car.scale.setScalar(CAR_SCALE);
+        g.add(car);
+        g.userData.isCar = true;
+        g.userData.livery = true;
+        return g;
+    }
+
+    // Lazily upgrades a marker's body to the driver's livery model. Idempotent per key —
+    // safe to call every broadcast frame; a compound change (pit stop) re-keys and swaps
+    // the tyre set. Marker may have been rebuilt/disposed by the time the GLB arrives:
+    // the key guard plus parent check drop stale resolutions. No entry in TEAM_ASSET for
+    // this teamId (unmapped team, or F2 — not wired yet) leaves the generic tint marker.
+    function applyLivery(mk, spec) {
+        var asset = spec && spec.team != null ? TEAM_ASSET[spec.team] : null;
+        if (!asset) return;
+        var key = liveryKey(asset, spec);
+        if (mk.userData.liveryKey === key) return;
+        mk.userData.liveryKey = key;
+        getLiveryTemplate(asset, spec).then(function (tpl) {
+            if (!tpl || mk.userData.liveryKey !== key || !mk.parent) return;
+            var body = makeLiveryModel(tpl);
+            var old = mk.userData.body;
+            if (old) {
+                mk.remove(old);
+                old.traverse(disposeNode);
+            }
+            mk.userData.body = body;
+            mk.userData.isCar = true;
+            mk.add(body);
+        });
+    }
+
     // Yaw a marker so the car nose (+Z) points from `fromV` toward `toV` (XZ
-    // plane; the track is near-flat so pitch/roll stay zero).
+    // plane; the track is near-flat so pitch/roll stay zero). Fallback for data
+    // without a recorded orientation (e.g. the sphere placeholder path).
     function faceHeading(obj, fromV, toV) {
         var dx = toV.x - fromV.x, dz = toV.z - fromV.z;
         if (dx * dx + dz * dz > 1e-6) obj.rotation.y = Math.atan2(dx, dz);
+    }
+
+    // Pose a marker from the game's CarMotionData orientation (radians). The game's yaw
+    // equals atan2(worldForwardX, worldForwardZ) — exactly three.js rotation.y for a
+    // +Z-nosed model — while pitch (nose up) and roll (right side down) are opposite to
+    // three's positive X/Z rotations, hence the negations. YXZ order applies yaw first,
+    // then tilts in the car's own frame.
+    function faceOrientation(obj, yaw, pitch, roll) {
+        obj.rotation.order = 'YXZ';
+        obj.rotation.set(-(pitch || 0), yaw, -(roll || 0));
+    }
+
+    // Shortest-arc interpolation between two angles (radians) — a live car crossing the
+    // ±π seam must not spin the long way round during the inter-packet tween.
+    function lerpAngle(a, b, t) {
+        var d = (b - a) % (Math.PI * 2);
+        if (d > Math.PI) d -= Math.PI * 2;
+        else if (d < -Math.PI) d += Math.PI * 2;
+        return a + d * t;
     }
 
     // When the car model finishes loading, rebuild the active instance's markers
@@ -140,9 +329,10 @@
     });
 
     // Re-tint a car/sphere marker (a Group holding userData.body) to `col`.
+    // Livery bodies keep their real textures — never tinted.
     function recolorMarker(mk, col) {
         var body = mk.userData && mk.userData.body;
-        if (!body) return;
+        if (!body || body.userData.livery) return;
         if (mk.userData.isCar) {
             body.traverse(function (n) { if (n.isMesh) n.material.color.copy(col); });
         } else if (body.material) {
@@ -159,19 +349,30 @@
         return p;
     }
 
+    // Frees one scene node's GPU resources. Car-model clones share geometry/materials
+    // with their cached template (userData.sharedAsset) — disposing those would break
+    // every later clone; only their per-clone Lambert tint materials are clone-owned.
+    function disposeNode(n) {
+        if (n.userData && n.userData.sharedAsset) {
+            if (n.material && n.material.isMeshLambertMaterial) n.material.dispose();
+            return;
+        }
+        if (n.geometry) n.geometry.dispose();
+        if (n.material) {
+            if (n.material.map) n.material.map.dispose(); // e.g. corner-label canvas textures
+            n.material.dispose();
+        }
+    }
+
     function disposeGroup(group) {
         if (!group) return;
         for (var i = group.children.length - 1; i >= 0; i--) {
             var o = group.children[i];
             // Ribbons nest sub-groups (road / kerb bands / edge lines), so dispose the
             // whole subtree's geometry+material+texture, not just this direct child.
-            o.traverse(function (n) {
-                if (n.geometry) n.geometry.dispose();
-                if (n.material) {
-                    if (n.material.map) n.material.map.dispose(); // e.g. corner-label canvas textures
-                    n.material.dispose();
-                }
-            });
+            // Car-model clones share geometry/materials with their cached template
+            // (userData.sharedAsset) — disposing those would break every later clone.
+            o.traverse(disposeNode);
             group.remove(o);
         }
     }
@@ -179,17 +380,6 @@
     // World (metres) -> centred scene coordinates, true 1:1 scale. Y is up (elevation).
     function toScene(c, x, y, z) {
         return new THREE.Vector3(x - c.x, y - c.y, z - c.z);
-    }
-
-    // Nearest authored-centreline elevation for an (x,z) — used only for logs without Motion.y.
-    function elevationAt(geom, x, z) {
-        var pts = geom.points, best = pts[0][1], bestD2 = Infinity;
-        for (var i = 0; i < pts.length; i++) {
-            var dx = pts[i][0] - x, dz = pts[i][2] - z;
-            var d2 = dx * dx + dz * dz;
-            if (d2 < bestD2) { bestD2 = d2; best = pts[i][1]; }
-        }
-        return best;
     }
 
     // Ground-plane perpendicular (unit vector) to the centreline's local tangent at index i.
@@ -484,12 +674,34 @@
         applyFollow();
     }
 
+    // Point the follow camera at a specific setData() marker by its wire index and turn
+    // follow on. Used by the replay timing tower — clicking a driver rides that car.
+    // Returns the followed carIdx, or -1 if no marker matches / follow was toggled off.
+    function followCar(carIdx) {
+        if (!R || !R.markers) return -1;
+        // Same idx again -> toggle follow off (click to unfollow).
+        if (R.follow && R.followCarIdx === carIdx) {
+            R.followCarIdx = -1;
+            setFollow(false);
+            return -1;
+        }
+        var found = null;
+        for (var i = 0; i < R.markers.length; i++) {
+            if (R.markers[i].carIdx === carIdx) { found = R.markers[i].mesh; break; }
+        }
+        if (!found) return -1;
+        R.followMarker = found;
+        R.followCarIdx = carIdx;
+        setFollow(true);
+        return carIdx;
+    }
+
     function applyTagsVisibility() {
         if (!R) return;
         var btn = R.caption && R.caption.querySelector('#tcMapTags');
         if (btn) btn.classList.toggle('active', !R.tagsHidden);
         R.liveGroup.children.forEach(function (mk) {
-            var tag = mk.children[0];
+            var tag = mk.userData.tag; // NOT children[0] — that's the car/sphere body
             if (tag) tag.visible = !!tag.userData.hasLabel && !R.tagsHidden;
         });
     }
@@ -541,14 +753,18 @@
             if (!motion || motion.length < 2) return;
             var col = new THREE.Color(drv.color || '#9aa0a6');
             var scenePts = motion.map(function (m) {
-                var y = (m.y != null) ? m.y : elevationAt(geom, m.x, m.z);
-                var v = toScene(center, m.x, y, m.z);
+                var v = toScene(center, m.x, m.y, m.z);
                 v.y += PATH_LIFT;
                 return v;
             });
             var curve = new THREE.CatmullRomCurve3(scenePts, false);
-            var tube = new THREE.TubeGeometry(curve, Math.min(scenePts.length * 2, 4000), TUBE_RADIUS, 6, false);
-            R.driverGroup.add(new THREE.Mesh(tube, new THREE.MeshBasicMaterial({ color: col })));
+            // Replay drivers span the whole session — 22 cars × N laps of overlapping tubes
+            // would be noise and geometry weight, so they opt out of the racing line while
+            // still riding the curve for smooth marker motion.
+            if (!drv.noLine) {
+                var tube = new THREE.TubeGeometry(curve, Math.min(scenePts.length * 2, 4000), TUBE_RADIUS, 6, false);
+                R.driverGroup.add(new THREE.Mesh(tube, new THREE.MeshBasicMaterial({ color: col })));
+            }
 
             var marker = new THREE.Group();
             var body = carTemplate ? makeCarModel(col) : new THREE.Mesh(
@@ -557,11 +773,12 @@
             marker.userData.body = body;
             marker.userData.isCar = body.userData.isCar === true;
             marker.add(body);
+            applyLivery(marker, drv); // async upgrade to the driver's textured model
             marker.position.copy(scenePts[0]);
             R.markerGroup.add(marker);
             R.markers.push({
-                mesh: marker, motion: motion, scenePts: scenePts,
-                isRef: !!drv.isRef, isCar: marker.userData.isCar,
+                mesh: marker, motion: motion, scenePts: scenePts, curve: curve,
+                isRef: !!drv.isRef, carIdx: (drv.carIdx != null ? drv.carIdx : -1),
             });
             if (!fFirst) fFirst = marker;
             if (drv.isRef) fRef = marker;
@@ -579,9 +796,9 @@
         var radius = Math.max(b.maxX - b.minX, b.maxZ - b.minZ) / 2 || 200;
         R.trackRadius = radius;
         R.controls.target.set(0, 0, 0);
-        R.camera.near = Math.max(1, radius / 100);
+        R.camera.near = Math.max(0.1, radius / 1000);
         R.camera.far = radius * 30;
-        R.controls.minDistance = radius * 0.1;
+        R.controls.minDistance = radius * 0.01;
         R.controls.maxDistance = radius * 6;
         setView('3d');
     }
@@ -627,11 +844,21 @@
     }
 
     function pointerMove(e) {
-        if (!R || !R.onHover || !R.refScenePts) return;
+        if (!R) return;
         var rect = R.renderer.domElement.getBoundingClientRect();
         R.pointer.x = ((e.clientX - rect.left) / rect.width) * 2 - 1;
         R.pointer.y = -((e.clientY - rect.top) / rect.height) * 2 + 1;
         R.ray.setFromCamera(R.pointer, R.camera);
+        // Cursor affordance: a pointer when hovering a followable car (both widgets). Skipped
+        // mid-drag (e.buttons) so an orbit/pan keeps the grab feel. three culls each marker by
+        // its bounding sphere before triangle tests, so this stays cheap at pointer-move rate.
+        if (!e.buttons) {
+            var carGroups = R.liveGroup.children.concat(R.markerGroup.children);
+            var overCar = carGroups.length > 0 && R.ray.intersectObjects(carGroups, true).length > 0;
+            R.renderer.domElement.style.cursor = overCar ? 'pointer' : '';
+        }
+        // Hover-distance bridge (Compare view): map the pointer to the nearest ref-lap distance.
+        if (!R.onHover || !R.refScenePts) return;
         var hits = R.ray.intersectObjects(
             R.trackGroup.children.concat(R.pitGroup.children, R.driverGroup.children), false);
         if (!hits.length) return;
@@ -642,6 +869,46 @@
         }
         var dist = R.refMotion[best].d;
         if (Math.abs(dist - R.lastHoverD) > 0.5) { R.lastHoverD = dist; R.onHover(dist); }
+    }
+
+    // Click-to-follow: raycast the car markers (live widget + replay/compare both) and
+    // ride whichever car was clicked. Live markers carry userData.carIdx (wire index) so
+    // the follow survives the per-packet marker updates in setLiveCars; replay/compare
+    // markers with a real wire index route through followCar (toggle parity with the timing
+    // tower), while compare-only markers (carIdx -1) toggle directly on the clicked mesh.
+    function pickCarAt(clientX, clientY) {
+        if (!R) return;
+        var rect = R.renderer.domElement.getBoundingClientRect();
+        R.pointer.x = ((clientX - rect.left) / rect.width) * 2 - 1;
+        R.pointer.y = -((clientY - rect.top) / rect.height) * 2 + 1;
+        R.ray.setFromCamera(R.pointer, R.camera);
+        var groups = R.liveGroup.children.concat(R.markerGroup.children);
+        if (!groups.length) return;
+        var hits = R.ray.intersectObjects(groups, true);
+        if (!hits.length) return;
+        // Walk up from the hit sub-mesh (car body mesh or name-tag sprite) to the marker
+        // Group that sits directly under liveGroup / markerGroup.
+        var o = hits[0].object;
+        while (o && o.parent !== R.liveGroup && o.parent !== R.markerGroup) o = o.parent;
+        if (!o) return;
+        if (o.parent === R.liveGroup) {
+            var idx = o.userData.carIdx;
+            if (idx == null) return;
+            if (R.follow && R.followCarIdx === idx) { R.followCarIdx = -1; setFollow(false); return; }
+            R.followCarIdx = idx;
+            R.followMarker = o;
+            setFollow(true);
+            return;
+        }
+        for (var i = 0; i < R.markers.length; i++) {
+            if (R.markers[i].mesh !== o) continue;
+            var ci = R.markers[i].carIdx;
+            if (ci != null && ci >= 0) { followCar(ci); return; }
+            // Compare marker with no wire index — toggle follow on this exact mesh.
+            if (R.follow && R.followMarker === o) setFollow(false);
+            else { R.followMarker = o; setFollow(true); }
+            return;
+        }
     }
 
     function attach(host, attachOpts) {
@@ -719,12 +986,48 @@
         // DRS / X-mode / DOM overlay selector.
         var marshalGroup = new THREE.Group();
         // Lights for the car models only: the track/kerbs/lines use MeshBasic
-        // (unlit) and are unaffected; the Lambert car bodies pick these up so
-        // their shape reads instead of a flat silhouette.
-        scene.add(new THREE.HemisphereLight(0xffffff, 0x444a55, 1.05));
-        var carSun = new THREE.DirectionalLight(0xffffff, 0.55);
-        carSun.position.set(0.4, 1, 0.3);
+        // (unlit) and are unaffected. Three-point-ish rig: a warm key from the
+        // upper-front, a cool low-intensity fill from the opposite side (keeps
+        // the shadow side coloured instead of dead black), and a hemisphere as
+        // ambient bounce. Lambert cars read shape from key+fill; the PBR livery
+        // bodies additionally pick up the PMREM environment built below.
+        scene.add(new THREE.HemisphereLight(0xfff4e5, 0x3a4150, 0.85));
+        var carSun = new THREE.DirectionalLight(0xfff0dd, 0.85);
+        carSun.position.set(0.45, 1, 0.35);
         scene.add(carSun);
+        var carFill = new THREE.DirectionalLight(0xbfd2ff, 0.3);
+        carFill.position.set(-0.5, 0.35, -0.4);
+        scene.add(carFill);
+
+        // Neutral studio environment (bright overhead panel + dim floor) baked to a
+        // PMREM. scene.environment only affects MeshStandardMaterial, i.e. the GLB
+        // liveries: without it their metallic/low-rough paint has no incoming
+        // radiance and renders near-black; with it the paint gets broad soft
+        // reflections instead of a single hard GGX dot from the directional.
+        var envTex = null;
+        try {
+            var pmrem = new THREE.PMREMGenerator(renderer);
+            var envScene = new THREE.Scene();
+            envScene.background = new THREE.Color(0x8a929e);
+            var panel = new THREE.Mesh(
+                new THREE.PlaneGeometry(60, 60),
+                new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide }));
+            panel.position.set(0, 40, 0);
+            panel.rotation.x = Math.PI / 2;
+            envScene.add(panel);
+            var floor = new THREE.Mesh(
+                new THREE.PlaneGeometry(200, 200),
+                new THREE.MeshBasicMaterial({ color: 0x2c3038, side: THREE.DoubleSide }));
+            floor.position.set(0, -20, 0);
+            floor.rotation.x = -Math.PI / 2;
+            envScene.add(floor);
+            envTex = pmrem.fromScene(envScene, 0.04).texture;
+            scene.environment = envTex;
+            pmrem.dispose();
+            envScene.traverse(function (n) {
+                if (n.isMesh) { n.geometry.dispose(); n.material.dispose(); }
+            });
+        } catch (e) { /* PMREM unavailable — liveries fall back to the light rig */ }
 
         scene.add(trackGroup); scene.add(pitGroup); scene.add(driverGroup); scene.add(markerGroup);
         scene.add(liveGroup);
@@ -737,7 +1040,7 @@
             sectorGroup: sectorGroup, cornerGroup: cornerGroup, pitMergeGroup: pitMergeGroup,
             markerGroup: markerGroup, liveGroup: liveGroup,
             drsGroup: drsGroup, xmodeGroup: xmodeGroup, domGroup: domGroup,
-            marshalGroup: marshalGroup, geom: null, pendingMarshalZones: null,
+            marshalGroup: marshalGroup, envTex: envTex, geom: null, pendingMarshalZones: null,
             pendingLiveCars: null,
             // Live-car interpolation: markers ease from their previous sample to the newest
             // over the measured broadcast interval, so motion is smooth between ~10 Hz packets.
@@ -768,6 +1071,17 @@
 
         var ro = new ResizeObserver(resize); ro.observe(wrap); R.ro = ro;
         renderer.domElement.addEventListener('pointermove', pointerMove);
+        // Click-to-follow: distinguish a click from an orbit/pan drag by pointer travel, so
+        // dragging the camera never hijacks the follow target.
+        var downX = 0, downY = 0;
+        renderer.domElement.addEventListener('pointerdown', function (e) {
+            downX = e.clientX; downY = e.clientY;
+        });
+        renderer.domElement.addEventListener('pointerup', function (e) {
+            if (e.button !== 0) return;
+            if (Math.hypot(e.clientX - downX, e.clientY - downY) > 5) return; // was a drag
+            pickCarAt(e.clientX, e.clientY);
+        });
         renderer.domElement.addEventListener('pointerleave', function () {
             R.lastHoverD = -Infinity;
             if (R.onHoverClear) R.onHoverClear();
@@ -819,9 +1133,17 @@
                     var u = kids[ci].userData;
                     if (u.toPos) {
                         kids[ci].position.lerpVectors(u.fromPos, u.toPos, t);
-                        // point the car nose along its direction of travel (the
-                        // per-packet move vector); spheres ignore rotation
-                        if (u.isCar) faceHeading(kids[ci], u.fromPos, u.toPos);
+                        // pose the car from the broadcast orientation when present
+                        // (exact even at standstill/spins); fall back to the move
+                        // vector for feeds without it. Spheres ignore rotation.
+                        if (u.isCar && u.toRot) {
+                            faceOrientation(kids[ci],
+                                lerpAngle(u.fromRot[0], u.toRot[0], t),
+                                u.fromRot[1] + (u.toRot[1] - u.fromRot[1]) * t,
+                                u.fromRot[2] + (u.toRot[2] - u.fromRot[2]) * t);
+                        } else if (u.isCar) {
+                            faceHeading(kids[ci], u.fromPos, u.toPos);
+                        }
                     }
                 }
             }
@@ -893,13 +1215,20 @@
         });
     }
 
-    function nearestIndex(arr, key, val) {
-        var best = 0, bestDiff = Math.abs(arr[0][key] - val);
-        for (var i = 1; i < arr.length; i++) {
-            var diff = Math.abs(arr[i][key] - val);
-            if (diff < bestDiff) { bestDiff = diff; best = i; }
+    // Binary search (arr sorted ascending by key) returning the bracketing pair and the
+    // fractional position between them, so a scrubbed/played target lands between two
+    // recorded samples instead of snapping to whichever one is nearest — matches the
+    // live-car tween's smooth motion instead of stepping at the recording rate.
+    function sampleAt(arr, key, val) {
+        var lo = 0, hi = arr.length - 1;
+        if (val <= arr[lo][key]) return { i0: lo, i1: lo, frac: 0 };
+        if (val >= arr[hi][key]) return { i0: hi, i1: hi, frac: 0 };
+        while (hi - lo > 1) {
+            var mid = (lo + hi) >> 1;
+            if (arr[mid][key] <= val) lo = mid; else hi = mid;
         }
-        return best;
+        var span = arr[hi][key] - arr[lo][key];
+        return { i0: lo, i1: hi, frac: span > 0 ? (val - arr[lo][key]) / span : 0 };
     }
 
     // 'dist' — every marker at the same track distance (compare technique at one point).
@@ -907,23 +1236,70 @@
     // actually was at that same elapsed lap time, so the live on-track gap is visible.
     function setSyncMode(mode) { if (R) R.syncMode = mode === 'time' ? 'time' : 'dist'; }
 
+    // Shared marker placement for the scrub/playback paths: ride the same Catmull-Rom curve
+    // the racing-line tube is built from, sampled at the fractional sample index — so the
+    // marker follows the smooth spline instead of cutting corners along straight chords
+    // between sparse motion samples (jerky).
+    function placeMarker(mk, s) {
+        var n = mk.scenePts.length;
+        if (n > 1 && mk.curve) {
+            mk.curve.getPoint((s.i0 + s.frac) / (n - 1), mk.mesh.position);
+        } else {
+            mk.mesh.position.lerpVectors(mk.scenePts[s.i0], mk.scenePts[s.i1], s.frac);
+        }
+        // Spheres stay on the lifted racing line; car models sit on the road.
+        if (mk.mesh.userData.isCar) mk.mesh.position.y -= CAR_DROP;
+        // read isCar live off the marker: applyLivery upgrades a sphere to a car
+        // model asynchronously, after this markers array was built
+        if (mk.mesh.userData.isCar) {
+            // v4 logs carry the exact recorded yaw per motion sample; interpolate it
+            // across the bracketing pair when present, else derive heading from the
+            // neighbouring points. Pitch/roll (banking, kerbs, braking dive) are additive
+            // fields — older logs read as 0/undefined and the car simply stays flat.
+            var m0 = mk.motion[s.i0], m1 = mk.motion[s.i1];
+            if (m0.yaw != null && m1.yaw != null) {
+                var p0 = m0.pitch || 0, r0 = m0.roll || 0;
+                faceOrientation(mk.mesh,
+                    lerpAngle(m0.yaw, m1.yaw, s.frac),
+                    p0 + ((m1.pitch || 0) - p0) * s.frac,
+                    r0 + ((m1.roll || 0) - r0) * s.frac);
+            } else {
+                var i1 = Math.min(s.i0 + 1, mk.scenePts.length - 1), i0 = s.i0;
+                if (i1 === i0) i0 = Math.max(s.i0 - 1, 0);
+                if (i1 !== i0) faceHeading(mk.mesh, mk.scenePts[i0], mk.scenePts[i1]);
+            }
+        }
+    }
+
     function setMarkerDistance(targetD) {
         if (!R || !R.markers) return;
         R.lastMarkerDistance = targetD;
         var refT = null;
         if (R.syncMode === 'time' && R.refMotion && R.refMotion.length) {
-            refT = R.refMotion[nearestIndex(R.refMotion, 'd', targetD)].t;
+            var rs = sampleAt(R.refMotion, 'd', targetD);
+            refT = R.refMotion[rs.i0].t + (R.refMotion[rs.i1].t - R.refMotion[rs.i0].t) * rs.frac;
         }
         R.markers.forEach(function (mk) {
-            var idx = (refT != null && !mk.isRef)
-                ? nearestIndex(mk.motion, 't', refT)
-                : nearestIndex(mk.motion, 'd', targetD);
-            mk.mesh.position.copy(mk.scenePts[idx]);
-            if (mk.isCar) {
-                var i1 = Math.min(idx + 1, mk.scenePts.length - 1), i0 = idx;
-                if (i1 === i0) i0 = Math.max(idx - 1, 0);
-                if (i1 !== i0) faceHeading(mk.mesh, mk.scenePts[i0], mk.scenePts[i1]);
-            }
+            var s = (refT != null && !mk.isRef)
+                ? sampleAt(mk.motion, 't', refT)
+                : sampleAt(mk.motion, 'd', targetD);
+            placeMarker(mk, s);
+        });
+    }
+
+    // Whole-session replay: place every marker at absolute session time `t` — motion arrays
+    // must carry monotonic session-relative `t` (the /replay feed). A car whose recording
+    // ended (DNF / finished) fades out instead of freezing on its last point forever.
+    var MARKER_TIME_GRACE_S = 2.0;
+    function setMarkerTime(t) {
+        if (!R || !R.markers) return;
+        R.lastMarkerTime = t;
+        R.markers.forEach(function (mk) {
+            var m = mk.motion;
+            var visible = t >= m[0].t - MARKER_TIME_GRACE_S && t <= m[m.length - 1].t + MARKER_TIME_GRACE_S;
+            mk.mesh.visible = visible;
+            if (!visible) return;
+            placeMarker(mk, sampleAt(m, 't', t));
         });
     }
 
@@ -1061,8 +1437,12 @@
         var fPlayer = null, fSelected = null;
         for (var i = 0; i < cars.length; i++) {
             var mk = group.children[i], car = cars[i];
+            mk.userData.carIdx = car.idx;   // for click-to-follow pick (survives updates)
             var v = toScene(R.center, car.x, car.y, car.z);
-            v.y += PATH_LIFT;
+            // Car models sit on the tarmac; placeholder spheres keep the racing-line height.
+            // The flag flips when the async livery upgrade lands — the next sample then
+            // tweens the car down smoothly over one broadcast interval.
+            v.y += mk.userData.isCar ? CAR_CLEARANCE : PATH_LIFT;
             if (!mk.userData.toPos) {
                 // Freshly spawned marker: sit on the sample, no tween from the origin.
                 mk.userData.fromPos = v.clone();
@@ -1073,7 +1453,22 @@
                 mk.userData.fromPos.copy(mk.position);
                 mk.userData.toPos.copy(v);
             }
+            // Orientation samples ([yaw,pitch,roll]) tween alongside the position; a feed
+            // without them (car.yaw undefined) leaves toRot unset → move-vector heading.
+            if (car.yaw != null) {
+                var rot = [car.yaw, car.pitch || 0, car.roll || 0];
+                if (!mk.userData.toRot) {
+                    mk.userData.fromRot = rot.slice();
+                    mk.userData.toRot = rot;
+                    if (mk.userData.isCar) faceOrientation(mk, rot[0], rot[1], rot[2]);
+                } else {
+                    mk.userData.fromRot = mk.userData.toRot;
+                    mk.userData.toRot = rot;
+                }
+            }
             if (car.color) recolorMarker(mk, new THREE.Color(car.color));
+            // Livery upgrade / pit-stop tyre swap — no-op unless {year,team,num,tyre} re-keys.
+            applyLivery(mk, car);
             var tag = mk.userData.tag;
             var showTyre = !R.tyresHidden;
             var tagKey = (car.label || '') + '|' + (car.position != null ? car.position : '')
@@ -1165,6 +1560,7 @@
         disposeGroup(R.drsGroup); disposeGroup(R.xmodeGroup); disposeGroup(R.domGroup);
         disposeGroup(R.marshalGroup);
         if (R.controls) R.controls.dispose();
+        if (R.envTex) R.envTex.dispose();
         if (R.renderer) R.renderer.dispose();
         R = null;
     }
@@ -1176,7 +1572,9 @@
         setMarshalZones: setMarshalZones,
         setFollowOptions: setFollowOptions,
         setMarkerDistance: setMarkerDistance,
+        setMarkerTime: setMarkerTime,
         setSyncMode: setSyncMode,
+        followCar: followCar,
         dispose: dispose,
     };
     } // end createTrackMap
